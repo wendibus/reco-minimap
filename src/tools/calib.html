@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de"><head><meta charset="utf-8"><title>reco-minimap · Court-Kalibrierung</title>
+<html lang="de"><head><meta charset="utf-8"><title>reco-minimap</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 :root{color-scheme:dark;--bg:#14171c;--panel:#1c2027;--line:#2c323c;--fg:#e6e9ee;--mut:#8b94a3;--acc:#ff8c00;--ok:#4cd964;--bad:#ff5a5a}
@@ -20,34 +20,38 @@ button.primary{background:var(--acc);color:#000;border-color:var(--acc);font-wei
 button:disabled{opacity:.4;cursor:default}
 #q{padding:8px 10px;border-radius:6px;background:#242a33}
 .good{color:var(--ok)}.warn{color:var(--bad)}
-kbd{background:#2c323c;border-radius:4px;padding:0 5px;font-size:12px}
 </style></head><body>
 <div id="app">
  <div id="stage"><canvas id="cv"></canvas><canvas id="loupe" width="168" height="168"></canvas></div>
  <aside>
-  <h1>Court-Kalibrierung</h1>
-  <p>Klicke die Punkte der Reihe nach im Bild an. Nicht sichtbare Punkte mit <kbd>Leertaste</kbd> überspringen. Mindestens 4, besser 8+ und über das ganze Feld verteilt. Mausrad = Zoom, Ziehen = Verschieben, <kbd>⌫</kbd> = letzten Punkt entfernen, <kbd>F</kbd> = ganzes Bild.</p>
-  <p>„hinten“ = Seitenlinie weiter weg von der Kamera, „vorn“ = nah an der Kamera, „links/rechts“ wie im Bild.</p>
-  <div id="q">Noch keine Punkte.</div>
+  <h1 id="t_title"></h1>
+  <p id="t_intro"></p>
+  <p id="t_sides"></p>
+  <div id="q"></div>
   <div id="list"></div>
-  <div style="display:flex;gap:8px"><button id="undo">Letzten entfernen</button><button id="skip">Überspringen</button></div>
-  <button class="primary" id="save" disabled>Speichern</button>
+  <div style="display:flex;gap:8px"><button id="undo"></button><button id="skip"></button></div>
+  <button class="primary" id="save" disabled></button>
   <p id="msg"></p>
-  <p style="font-size:12px">Hinweis: Das Bild verlässt deinen Rechner nicht (lokaler Server auf 127.0.0.1). Bei kleineren Hallen werden die Ecken auf 28×15 m skaliert – Zonenpunkte nur klicken, wenn das Feld normgerecht ist.</p>
+  <p id="t_scaled" style="font-size:12px"></p>
+  <p id="t_priv" style="font-size:12px"></p>
  </aside>
 </div>
+<script src="/i18n.js"></script>
 <script>
 const $=id=>document.getElementById(id);
 let info,img=new Image(),pts={},cur=0,scale=1,ox=0,oy=0,overlay=[],resid={},rms=null,mouse={x:0,y:0,in:false};
 const cv=$('cv'),ctx=cv.getContext('2d'),lp=$('loupe'),lctx=lp.getContext('2d');
-async function init(){info=await (await fetch('/api/info')).json();img.onload=()=>{resize();build();draw();};img.src='/frame.png';}
+function texts(){document.title=T('calp.title');$('t_title').textContent=T('calp.title');$('t_intro').textContent=T('calp.intro');$('t_sides').textContent=T('calp.sides');
+ $('undo').textContent=T('calp.undo');$('skip').textContent=T('calp.skip');$('save').textContent=T('calp.save');$('t_priv').textContent=T('calp.privacy');
+ if(info)$('t_scaled').textContent=T('calp.scaled',{l:info.field[0],w:info.field[1]});}
+async function init(){info=await (await fetch('/api/info')).json();if(info.lang)setLang(info.lang);texts();img.onload=()=>{resize();build();draw();};img.src='/frame.png';}
 function resize(){cv.width=cv.clientWidth;cv.height=cv.clientHeight;fit();}
 function fit(){scale=Math.min(cv.width/img.width,cv.height/img.height);ox=(cv.width-img.width*scale)/2;oy=(cv.height-img.height*scale)/2;draw();}
 addEventListener('resize',()=>{resize()});
-function build(){const l=$('list');l.innerHTML='';info.landmarks.forEach((m,i)=>{const d=document.createElement('div');d.className='row';d.id='r'+i;d.innerHTML=`<span class="num">${i+1}</span><span>${m.name}</span><span class="res" id="s${i}">–</span>`;d.onclick=()=>{cur=i;refresh();};l.appendChild(d);});refresh();}
+function build(){const l=$('list');l.innerHTML='';info.landmarks.forEach((m,i)=>{const d=document.createElement('div');d.className='row';d.id='r'+i;d.innerHTML=`<span class="num">${i+1}</span><span>${landmarkLabel(m.key,info.sport)}</span><span class="res" id="s${i}">–</span>`;d.onclick=()=>{cur=i;refresh();};l.appendChild(d);});refresh();}
 function refresh(){info.landmarks.forEach((m,i)=>{const r=$('r'+i);r.className='row'+(pts[i]?' done':'')+(i===cur?' cur':'');$('s'+i).textContent=pts[i]?(resid[i]!==undefined?resid[i].toFixed(2)+' m':'✓'):'–';});
  const n=Object.keys(pts).length;$('save').disabled=n<4;
- let t=n<4?`${n} Punkt(e) – noch ${4-n} bis zur ersten Berechnung.`:(rms===null?'…':`Fehler (RMS): <b class="${rms<0.5?'good':rms<0.9?'':'warn'}">${rms.toFixed(2)} m</b> – ${n} Punkte`+(n<8?' · besser 8+ Punkte':'')+(rms>=0.9?' · Fehler hoch: Punkte prüfen oder weitere ergänzen':''));
+ let t=n===0?T('calp.none'):n<4?T('calp.need',{n:n,m:4-n}):(rms===null?'…':`${T('calp.rms')}: <b class="${rms<0.5?'good':rms<0.9?'':'warn'}">${rms.toFixed(2)} m</b> – ${T('calp.points',{n:n})}`+(n<8?' · '+T('calp.more'):'')+(rms>=0.9?' · '+T('calp.high'):''));
  $('q').innerHTML=t;draw();}
 function toImg(x,y){return[(x-ox)/scale,(y-oy)/scale];}
 function nextFree(){for(let k=1;k<=info.landmarks.length;k++){const j=(cur+k)%info.landmarks.length;if(!pts[j])return j;}return cur;}
@@ -57,7 +61,7 @@ async function solve(){const arr=Object.entries(pts).map(([i,p])=>({id:+i,u:p.u/
  if(r.ok){overlay=r.overlay;resid={};r.residuals.forEach(e=>resid[e.id]=e.m);rms=r.rms;}else{overlay=[];rms=null;}refresh();}
 function place(ix,iy){pts[cur]={u:ix,v:iy};cur=nextFree();refresh();solve();}
 $('undo').onclick=undo;$('skip').onclick=()=>{cur=(cur+1)%info.landmarks.length;refresh();};
-function undo(){const k=Object.keys(pts).map(Number);if(!k.length)return;const last=Math.max(...k.filter(x=>true));delete pts[last];cur=last;resid={};refresh();solve();}
+function undo(){const k=Object.keys(pts).map(Number);if(!k.length)return;const last=Math.max(...k);delete pts[last];cur=last;resid={};refresh();solve();}
 addEventListener('keydown',e=>{if(e.key==='Backspace'){e.preventDefault();undo();}else if(e.key===' '){e.preventDefault();cur=(cur+1)%info.landmarks.length;refresh();}else if(e.key==='f'||e.key==='F'){fit();}});
 let drag=null;
 cv.addEventListener('mousedown',e=>{drag={x:e.offsetX,y:e.offsetY,ox,oy,moved:false};});
@@ -73,6 +77,6 @@ function draw(){ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.heig
  lctx.clearRect(0,0,168,168);if(mouse.in){const[ix,iy]=toImg(mouse.x,mouse.y);lctx.imageSmoothingEnabled=false;lctx.drawImage(img,ix-21,iy-21,42,42,0,0,168,168);lctx.strokeStyle='#ff8c00';lctx.lineWidth=1;lctx.beginPath();lctx.moveTo(84,0);lctx.lineTo(84,168);lctx.moveTo(0,84);lctx.lineTo(168,84);lctx.stroke();}}
 $('save').onclick=async()=>{const arr=Object.entries(pts).map(([i,p])=>({id:+i,u:p.u/img.width,v:p.v/img.height}));
  const r=await (await fetch('/api/save',{method:'POST',body:JSON.stringify({points:arr})})).json();
- $('msg').innerHTML=r.ok?`<span class="good">Gespeichert:</span> ${r.path}<br>Fehler ${r.rms.toFixed(2)} m. Du kannst das Fenster schließen.`:`<span class="warn">${r.error}</span>`;};
+ $('msg').innerHTML=r.ok?`<span class="good">${T('calp.saved')}:</span> ${r.path}<br>${T('calp.saved_hint',{rms:r.rms.toFixed(2)})}`:`<span class="warn">${r.error}</span>`;};
 init();
 </script></body></html>

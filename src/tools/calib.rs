@@ -1,5 +1,5 @@
-//! Court calibration: a tiny local web page (std-only HTTP server on 127.0.0.1)
-//! where you click court landmarks on a panorama frame. Nothing leaves the machine.
+//! Field calibration: a tiny local web page (std-only HTTP server on 127.0.0.1)
+//! where you click field landmarks on a panorama frame. Nothing leaves the machine.
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -10,30 +10,12 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use super::video::{grab_png, VideoInfo};
-use crate::geom::{Homography, HomographyProjector, Vec2, COURT_LENGTH, COURT_WIDTH};
-
-/// (name, x, y) in court metres. x: left -> right basket as seen in the
-/// panorama, y: far sideline (0) -> near sideline (15).
-pub const LANDMARKS: &[(&str, f32, f32)] = &[
-    ("Ecke links / hinten", 0.0, 0.0),
-    ("Ecke rechts / hinten", 28.0, 0.0),
-    ("Ecke rechts / vorn", 28.0, 15.0),
-    ("Ecke links / vorn", 0.0, 15.0),
-    ("Mittellinie / hinten (Seitenlinie)", 14.0, 0.0),
-    ("Mittellinie / vorn (Seitenlinie)", 14.0, 15.0),
-    ("Mittelkreis – Mitte", 14.0, 7.5),
-    ("Zone links: Grundlinie hinten", 0.0, 5.05),
-    ("Zone links: Grundlinie vorn", 0.0, 9.95),
-    ("Zone links: Freiwurflinie hinten", 5.8, 5.05),
-    ("Zone links: Freiwurflinie vorn", 5.8, 9.95),
-    ("Zone rechts: Grundlinie hinten", 28.0, 5.05),
-    ("Zone rechts: Grundlinie vorn", 28.0, 9.95),
-    ("Zone rechts: Freiwurflinie hinten", 22.2, 5.05),
-    ("Zone rechts: Freiwurflinie vorn", 22.2, 9.95),
-];
+use crate::geom::{Homography, HomographyProjector, Vec2};
+use crate::sport::SportProfile;
 
 #[derive(Clone, Debug)]
 pub struct CalPoint {
+    /// Landmark key (language independent, e.g. `corner_fl`).
     pub name: String,
     pub pano: Vec2,
     pub court: Vec2,
@@ -43,6 +25,10 @@ pub struct CalPoint {
 pub struct CourtCalib {
     pub pano_w: u32,
     pub pano_h: u32,
+    pub sport: String,
+    pub field_m: (f32, f32),
+    pub team_size: usize,
+    pub referees: usize,
     pub points: Vec<CalPoint>,
     pub rms_m: f32,
 }
@@ -54,10 +40,21 @@ impl CourtCalib {
         HomographyProjector::calibrate(&p, &c)
     }
 
+    /// The sport profile this calibration was made for (custom sports use the stored size).
+    pub fn profile(&self) -> SportProfile {
+        let mut p = match SportProfile::builtin(&self.sport) {
+            Some(p) if self.sport != "custom" => p,
+            _ => SportProfile::custom_rect(&self.sport, self.field_m.0, self.field_m.1, self.team_size, self.referees),
+        };
+        p.team_size = self.team_size.max(1);
+        p.referees = self.referees;
+        p
+    }
+
     pub fn save(&self, path: &str, video: &str) -> Result<(), String> {
         let v = json!({
-            "version": 1, "video": video, "pano_w": self.pano_w, "pano_h": self.pano_h, "rms_m": self.rms_m,
-            "court_m": [COURT_LENGTH, COURT_WIDTH],
+            "version": 2, "video": video, "pano_w": self.pano_w, "pano_h": self.pano_h, "rms_m": self.rms_m,
+            "sport": self.sport, "court_m": [self.field_m.0, self.field_m.1], "team_size": self.team_size, "referees": self.referees,
             "points": self.points.iter().map(|p| json!({"name": p.name, "pano": [p.pano.x, p.pano.y], "court": [p.court.x, p.court.y]})).collect::<Vec<_>>(),
         });
         std::fs::write(path, serde_json::to_string_pretty(&v).unwrap()).map_err(|e| format!("{path}: {e}"))
@@ -74,14 +71,25 @@ impl CourtCalib {
         if points.len() < 4 {
             return Err("court.json: need >= 4 points".into());
         }
-        Ok(Self { pano_w: v["pano_w"].as_u64().unwrap_or(0) as u32, pano_h: v["pano_h"].as_u64().unwrap_or(0) as u32, points, rms_m: v["rms_m"].as_f64().unwrap_or(0.0) as f32 })
+        // version 1 files (basketball only) have no sport fields
+        let fm = pt(&v["court_m"]).unwrap_or(Vec2::new(28.0, 15.0));
+        Ok(Self {
+            pano_w: v["pano_w"].as_u64().unwrap_or(0) as u32,
+            pano_h: v["pano_h"].as_u64().unwrap_or(0) as u32,
+            sport: v["sport"].as_str().unwrap_or("basketball").to_string(),
+            field_m: (fm.x, fm.y),
+            team_size: v["team_size"].as_u64().unwrap_or(5) as usize,
+            referees: v["referees"].as_u64().unwrap_or(2) as usize,
+            points,
+            rms_m: v["rms_m"].as_f64().unwrap_or(0.0) as f32,
+        })
     }
 }
 
 /// Pano->court homography and RMS error (metres) for the given (landmark index, pano point) pairs.
-fn solve(pairs: &[(usize, Vec2)]) -> Option<(HomographyProjector, Vec<(usize, f32)>, f32)> {
+fn solve(pairs: &[(usize, Vec2)], profile: &SportProfile) -> Option<(HomographyProjector, Vec<(usize, f32)>, f32)> {
     let pano: Vec<Vec2> = pairs.iter().map(|p| p.1).collect();
-    let court: Vec<Vec2> = pairs.iter().map(|p| Vec2::new(LANDMARKS[p.0].1, LANDMARKS[p.0].2)).collect();
+    let court: Vec<Vec2> = pairs.iter().map(|p| Vec2::new(profile.landmarks[p.0].x, profile.landmarks[p.0].y)).collect();
     let proj = HomographyProjector::calibrate(&pano, &court)?;
     let mut res = Vec::new();
     let mut sum = 0.0;
@@ -94,38 +102,22 @@ fn solve(pairs: &[(usize, Vec2)]) -> Option<(HomographyProjector, Vec<(usize, f3
     Some((proj, res, (sum / pairs.len() as f32).sqrt()))
 }
 
-fn court_lines() -> Vec<Vec<Vec2>> {
-    let (l, w) = (COURT_LENGTH, COURT_WIDTH);
-    let seg = |a: Vec2, b: Vec2| -> Vec<Vec2> { (0..=40).map(|i| a.lerp(b, i as f32 / 40.0)).collect() };
-    let mut out = Vec::new();
-    let rect = |x0: f32, y0: f32, x1: f32, y1: f32| {
-        vec![seg(Vec2::new(x0, y0), Vec2::new(x1, y0)), seg(Vec2::new(x1, y0), Vec2::new(x1, y1)), seg(Vec2::new(x1, y1), Vec2::new(x0, y1)), seg(Vec2::new(x0, y1), Vec2::new(x0, y0))]
-    };
-    out.extend(rect(0.0, 0.0, l, w));
-    out.push(seg(Vec2::new(l / 2.0, 0.0), Vec2::new(l / 2.0, w)));
-    out.extend(rect(0.0, 5.05, 5.8, 9.95));
-    out.extend(rect(l - 5.8, 5.05, l, 9.95));
-    let circle = |c: Vec2, r: f32| -> Vec<Vec2> { (0..=64).map(|i| { let a = i as f32 / 64.0 * std::f32::consts::TAU; Vec2::new(c.x + r * a.cos(), c.y + r * a.sin()) }).collect() };
-    out.push(circle(Vec2::new(l / 2.0, w / 2.0), 1.8));
-    out.push(circle(Vec2::new(5.8, w / 2.0), 1.8));
-    out.push(circle(Vec2::new(l - 5.8, w / 2.0), 1.8));
-    out
-}
-
 struct Shared {
     png: Vec<u8>,
     info: VideoInfo,
     out_path: String,
     video: String,
+    profile: SportProfile,
+    lang: String,
     done: AtomicBool,
 }
 
-fn parse_points(body: &str) -> Option<Vec<(usize, Vec2)>> {
+fn parse_points(body: &str, n_landmarks: usize) -> Option<Vec<(usize, Vec2)>> {
     let v: Value = serde_json::from_str(body).ok()?;
     let mut out = Vec::new();
     for p in v["points"].as_array()? {
         let id = p["id"].as_u64()? as usize;
-        if id >= LANDMARKS.len() {
+        if id >= n_landmarks {
             return None;
         }
         out.push((id, Vec2::new(p["u"].as_f64()? as f32, p["v"].as_f64()? as f32)));
@@ -156,12 +148,12 @@ fn handle(mut s: TcpStream, st: &Shared) {
         }
     };
     let head = String::from_utf8_lossy(&buf[..header_end]).to_string();
-    let mut lines = head.lines();
-    let first = lines.next().unwrap_or("");
-    let (method, path) = {
+    let first = head.lines().next().unwrap_or("");
+    let (method, full_path) = {
         let mut it = first.split_whitespace();
         (it.next().unwrap_or(""), it.next().unwrap_or(""))
     };
+    let path = full_path.split('?').next().unwrap_or("");
     let clen = head.lines().find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0))).unwrap_or(0);
     while buf.len() < header_end + clen {
         match s.read(&mut tmp) {
@@ -170,22 +162,25 @@ fn handle(mut s: TcpStream, st: &Shared) {
         }
     }
     let body = String::from_utf8_lossy(&buf[header_end.min(buf.len())..]).to_string();
+    let n_lm = st.profile.landmarks.len();
 
     match (method, path) {
         ("GET", "/") => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("calib.html").as_bytes()),
+        ("GET", "/i18n.js") => respond(&mut s, "200 OK", "application/javascript; charset=utf-8", include_str!("i18n.js").as_bytes()),
         ("GET", "/frame.png") => respond(&mut s, "200 OK", "image/png", &st.png),
         ("GET", "/api/info") => {
-            let v = json!({"w": st.info.w, "h": st.info.h, "landmarks": LANDMARKS.iter().map(|l| json!({"name": l.0, "x": l.1, "y": l.2})).collect::<Vec<_>>()});
+            let v = json!({"w": st.info.w, "h": st.info.h, "sport": st.profile.id, "field": [st.profile.field.length, st.profile.field.width], "lang": st.lang,
+                           "landmarks": st.profile.landmarks.iter().map(|l| json!({"key": l.key, "x": l.x, "y": l.y})).collect::<Vec<_>>()});
             respond(&mut s, "200 OK", "application/json", v.to_string().as_bytes());
         }
         ("POST", "/api/solve") => {
-            let r = match parse_points(&body).filter(|p| p.len() >= 4).and_then(|p| solve(&p).map(|r| (p, r))) {
+            let r = match parse_points(&body, n_lm).filter(|p| p.len() >= 4).and_then(|p| solve(&p, &st.profile).map(|r| (p, r))) {
                 Some((pairs, (_proj, res, rms))) => {
                     let pano: Vec<Vec2> = pairs.iter().map(|p| p.1).collect();
-                    let court: Vec<Vec2> = pairs.iter().map(|p| Vec2::new(LANDMARKS[p.0].1, LANDMARKS[p.0].2)).collect();
+                    let court: Vec<Vec2> = pairs.iter().map(|p| Vec2::new(st.profile.landmarks[p.0].x, st.profile.landmarks[p.0].y)).collect();
                     match Homography::from_points(&court, &pano) {
                         Some(inv) => {
-                            let overlay: Vec<Vec<[f32; 2]>> = court_lines().iter().map(|pl| pl.iter().filter_map(|c| inv.apply(*c)).map(|p| [p.x, p.y]).collect()).collect();
+                            let overlay: Vec<Vec<[f32; 2]>> = st.profile.densified_lines(0.5).iter().map(|pl| pl.iter().filter_map(|c| inv.apply(*c)).map(|p| [p.x, p.y]).collect()).collect();
                             json!({"ok": true, "rms": rms, "residuals": res.iter().map(|(i, m)| json!({"id": i, "m": m})).collect::<Vec<_>>(), "overlay": overlay})
                         }
                         None => json!({"ok": false}),
@@ -196,13 +191,17 @@ fn handle(mut s: TcpStream, st: &Shared) {
             respond(&mut s, "200 OK", "application/json", r.to_string().as_bytes());
         }
         ("POST", "/api/save") => {
-            let r = match parse_points(&body).filter(|p| p.len() >= 4).and_then(|p| solve(&p).map(|r| (p, r))) {
+            let r = match parse_points(&body, n_lm).filter(|p| p.len() >= 4).and_then(|p| solve(&p, &st.profile).map(|r| (p, r))) {
                 Some((pairs, (_proj, _res, rms))) => {
                     let cal = CourtCalib {
                         pano_w: st.info.w,
                         pano_h: st.info.h,
+                        sport: st.profile.id.clone(),
+                        field_m: (st.profile.field.length, st.profile.field.width),
+                        team_size: st.profile.team_size,
+                        referees: st.profile.referees,
                         rms_m: rms,
-                        points: pairs.iter().map(|(i, p)| CalPoint { name: LANDMARKS[*i].0.to_string(), pano: *p, court: Vec2::new(LANDMARKS[*i].1, LANDMARKS[*i].2) }).collect(),
+                        points: pairs.iter().map(|(i, p)| CalPoint { name: st.profile.landmarks[*i].key.clone(), pano: *p, court: Vec2::new(st.profile.landmarks[*i].x, st.profile.landmarks[*i].y) }).collect(),
                     };
                     match cal.save(&st.out_path, &st.video) {
                         Ok(()) => {
@@ -225,14 +224,14 @@ fn open_browser(url: &str) {
     let _ = std::process::Command::new(cmd).arg(url).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
 }
 
-/// Serve the calibration page until the user saves. Returns the saved path.
-pub fn run(input: &str, info: &VideoInfo, t: f64, out_path: &str, open: bool) -> Result<(), String> {
+/// Serve the calibration page until the user saves.
+pub fn run(input: &str, info: &VideoInfo, t: f64, out_path: &str, open: bool, profile: SportProfile, lang: &str) -> Result<(), String> {
     let png = grab_png(input, t)?;
     let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
-    let st = Arc::new(Shared { png, info: info.clone(), out_path: out_path.to_string(), video: input.to_string(), done: AtomicBool::new(false) });
-    let url = format!("http://127.0.0.1:{port}/");
+    let st = Arc::new(Shared { png, info: info.clone(), out_path: out_path.to_string(), video: input.to_string(), profile, lang: lang.to_string(), done: AtomicBool::new(false) });
+    let url = format!("http://127.0.0.1:{port}/?lang={lang}");
     eprintln!("Kalibrierung: {url}\n(Seite öffnet sich automatisch; sonst URL im Browser öffnen. Strg+C zum Abbrechen.)");
     if open {
         open_browser(&url);
@@ -249,7 +248,6 @@ pub fn run(input: &str, info: &VideoInfo, t: f64, out_path: &str, open: bool) ->
             Err(e) => return Err(e.to_string()),
         }
         if st.done.load(Ordering::SeqCst) {
-            // give the browser a moment to receive the response
             let t0 = *after_done.get_or_insert_with(std::time::Instant::now);
             if t0.elapsed() > Duration::from_millis(800) {
                 return Ok(());

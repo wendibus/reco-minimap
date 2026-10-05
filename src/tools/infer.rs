@@ -15,6 +15,27 @@ pub enum Ep {
     CoreMl,
 }
 
+/// CoreML compute units (`--units`): which hardware CoreML may use.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Units {
+    All,
+    NeuralEngine,
+    Gpu,
+    Cpu,
+}
+
+impl Units {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_ascii_lowercase().as_str() {
+            "all" => Some(Units::All),
+            "ane" | "neuralengine" => Some(Units::NeuralEngine),
+            "gpu" => Some(Units::Gpu),
+            "cpu" => Some(Units::Cpu),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ModelInfo {
     pub onnx: PathBuf,
@@ -71,7 +92,10 @@ pub fn ensure_ort_runtime() -> Result<(), String> {
 }
 
 pub struct RfDetr {
-    session: Session,
+    sessions: Vec<Session>,
+    /// Accumulated time in tile preprocessing / model inference (for the run summary).
+    pub t_prep: std::time::Duration,
+    pub t_infer: std::time::Duration,
     pub info: ModelInfo,
     pub size: usize,
     pub cfg: DecodeCfg,
@@ -79,56 +103,40 @@ pub struct RfDetr {
 
 fn class_from_name(n: &str) -> Option<Class> {
     match n.to_ascii_lowercase().as_str() {
-        "ball" | "basketball" => Some(Class::Ball),
-        "player" | "person" => Some(Class::Player),
-        "referee" | "ref" | "umpire" => Some(Class::Referee),
+        "ball" | "basketball" | "puck" | "shuttlecock" => Some(Class::Ball),
+        "player" | "person" | "goalkeeper" | "keeper" | "skater" => Some(Class::Player),
+        "referee" | "ref" | "umpire" | "linesman" => Some(Class::Referee),
         _ => None,
     }
 }
 
 impl RfDetr {
-    pub fn load(model: &str, ep: Ep) -> Result<Self, String> {
+    pub fn load(model: &str, ep: Ep, units: Units, workers: usize) -> Result<Self, String> {
         let info = resolve_model(model)?;
         if !info.onnx.exists() {
             return Err(format!("model file not found: {}", info.onnx.display()));
         }
         ensure_ort_runtime()?;
-        let builder = Session::builder().map_err(|e| e.to_string())?;
-        #[allow(unused_mut)]
-        let mut builder = builder.with_optimization_level(GraphOptimizationLevel::Level3).map_err(|e| e.to_string())?;
-        if ep == Ep::CoreMl {
-            #[cfg(feature = "coreml")]
-            {
-                builder = builder
-                    .with_execution_providers([ort::ep::CoreML::default().with_compute_units(ort::ep::coreml::ComputeUnits::All).build()])
-                    .map_err(|e| e.to_string())?;
-            }
-            #[cfg(not(feature = "coreml"))]
-            return Err("built without CoreML: rebuild with `--features coreml` or use --ep cpu".into());
+        let workers = workers.clamp(1, 8);
+        let mut sessions = Vec::new();
+        for i in 0..workers {
+            sessions.push(build_session(&info, ep, units, i == 0)?);
         }
-        let session = builder.commit_from_file(&info.onnx).map_err(|e| e.to_string())?;
         let mut cfg = DecodeCfg::basketball_v1();
         cfg.n_classes = info.classes.len();
         cfg.class_map = info.classes.iter().map(|n| class_from_name(n)).collect();
         cfg.box_format = BoxFormat::CxCyWh;
-        Ok(Self { session, size: info.input_size, info, cfg })
+        Ok(Self { sessions, t_prep: Default::default(), t_infer: Default::default(), size: info.input_size, info, cfg })
+    }
+
+    pub fn workers(&self) -> usize {
+        self.sessions.len()
     }
 
     /// One inference on a prepared CHW tensor. Returns (boxes `[nq*4]`, logits `[nq*nc]`, nq, nc).
     pub fn run_raw(&mut self, chw: &[f32]) -> Result<(Vec<f32>, Vec<f32>, usize, usize), String> {
-        let sz = self.size;
-        let input = TensorRef::from_array_view(([1usize, 3, sz, sz], chw)).map_err(|e| format!("tensor: {e}"))?;
-        let outputs = self.session.run(ort::inputs![input]).map_err(|e| format!("ort run: {e}"))?;
-        let pick = |name: &str, idx: usize| -> Result<(Vec<i64>, Vec<f32>), String> {
-            let v = outputs.get(name).unwrap_or(&outputs[idx]);
-            let (shape, data) = v.try_extract_tensor::<f32>().map_err(|e| format!("extract {name}: {e}"))?;
-            Ok((shape.iter().copied().collect(), data.to_vec()))
-        };
-        let (bs, boxes) = pick("dets", 0)?;
-        let (ls, logits) = pick("labels", 1)?;
-        let nq = *bs.get(1).ok_or("dets shape")? as usize;
-        let nc = *ls.get(2).ok_or("labels shape")? as usize;
-        Ok((boxes, logits, nq, nc))
+        let size = self.size;
+        run_session(&mut self.sessions[0], size, chw)
     }
 
     /// Detections in tile-normalized coordinates.
@@ -141,14 +149,112 @@ impl RfDetr {
     }
 
     /// Detections over a set of tiles, mapped to panorama coordinates and NMS-merged.
+    /// Tile preprocessing runs on all cores; inference is spread over the worker sessions
+    /// (each model instance has batch size 1).
     pub fn detect(&mut self, frame: &Frame, tiles: &[Tile]) -> Result<Vec<Det>, String> {
+        let size = self.size;
+        let t0 = std::time::Instant::now();
+        let tensors: Vec<Vec<f32>> = std::thread::scope(|sc| {
+            let hs: Vec<_> = tiles.iter().map(|t| sc.spawn(move || frame.tile_tensor(t, size))).collect();
+            hs.into_iter().map(|h| h.join().expect("tile thread")).collect()
+        });
+        self.t_prep += t0.elapsed();
+
+        let t1 = std::time::Instant::now();
+        let n = self.sessions.len().min(tiles.len()).max(1);
+        let cfg = &self.cfg;
+        let tensors_ref = &tensors;
+        let results: Vec<Result<Vec<(usize, Vec<Det>)>, String>> = std::thread::scope(|sc| {
+            let hs: Vec<_> = self
+                .sessions
+                .iter_mut()
+                .take(n)
+                .enumerate()
+                .map(|(w, sess)| {
+                    sc.spawn(move || {
+                        let mut out = Vec::new();
+                        let mut i = w;
+                        while i < tiles.len() {
+                            let (b, l, _nq, nc) = run_session(sess, size, &tensors_ref[i])?;
+                            if nc != cfg.n_classes {
+                                return Err(format!("model has {nc} class logits, runtime.json lists {}", cfg.n_classes));
+                            }
+                            out.push((i, decode_rfdetr(&b, &l, cfg).map_err(|e| format!("{e:?}"))?));
+                            i += n;
+                        }
+                        Ok(out)
+                    })
+                })
+                .collect();
+            hs.into_iter().map(|h| h.join().expect("inference thread")).collect()
+        });
+        self.t_infer += t1.elapsed();
+
         let mut all = Vec::new();
-        for t in tiles {
-            let chw = frame.tile_tensor(t, self.size);
-            for d in self.detect_tile(&chw)? {
-                all.push(tile_to_pano(&d, t, frame.w as u32, frame.h as u32));
+        for r in results {
+            for (i, dets) in r? {
+                for d in dets {
+                    all.push(tile_to_pano(&d, &tiles[i], frame.w as u32, frame.h as u32));
+                }
             }
         }
         Ok(nms(all, 0.5))
     }
+}
+
+#[allow(unused_variables)]
+fn build_session(info: &ModelInfo, ep: Ep, units: Units, announce: bool) -> Result<Session, String> {
+    let builder = Session::builder().map_err(|e| e.to_string())?;
+    #[allow(unused_mut)]
+    let mut builder = builder.with_optimization_level(GraphOptimizationLevel::Level3).map_err(|e| e.to_string())?;
+    if ep == Ep::CoreMl {
+        #[cfg(feature = "coreml")]
+        {
+            use ort::ep::ExecutionProvider;
+            let cu = match units {
+                Units::All => ort::ep::coreml::ComputeUnits::All,
+                Units::NeuralEngine => ort::ep::coreml::ComputeUnits::CPUAndNeuralEngine,
+                Units::Gpu => ort::ep::coreml::ComputeUnits::CPUAndGPU,
+                Units::Cpu => ort::ep::coreml::ComputeUnits::CPUOnly,
+            };
+            let cache = std::env::var("HOME").map(|h| format!("{h}/.cache/reco-minimap/coreml")).unwrap_or_else(|_| "/tmp/reco-minimap-coreml".into());
+            let _ = std::fs::create_dir_all(&cache);
+            let coreml = ort::ep::CoreML::default()
+                .with_compute_units(cu)
+                .with_model_format(ort::ep::coreml::ModelFormat::MLProgram)
+                .with_specialization_strategy(ort::ep::coreml::SpecializationStrategy::FastPrediction)
+                .with_low_precision_accumulation_on_gpu(true)
+                .with_model_cache_dir(cache)
+                .with_static_input_shapes(true);
+            match coreml.is_available() {
+                Ok(true) => {
+                    if announce {
+                        eprintln!("CoreML-Provider: verfügbar (MLProgram, Einheiten: {units:?})");
+                    }
+                }
+                Ok(false) => return Err("CoreML-Provider ist in dieser ONNX-Runtime NICHT enthalten. Nutze eine ONNX Runtime mit CoreML (pip-Paket `onnxruntime` für macOS: ORT_DYLIB_PATH auf dessen libonnxruntime.*.dylib) oder --ep cpu.".into()),
+                Err(e) => return Err(format!("CoreML-Prüfung fehlgeschlagen: {e}")),
+            }
+            // error_on_failure: do not silently fall back to the CPU
+            builder = builder.with_execution_providers([coreml.build().error_on_failure()]).map_err(|e| format!("CoreML konnte nicht aktiviert werden: {e}"))?;
+        }
+        #[cfg(not(feature = "coreml"))]
+        return Err("built without CoreML: rebuild with `--features tools,coreml` or use --ep cpu".into());
+    }
+    builder.commit_from_file(&info.onnx).map_err(|e| e.to_string())
+}
+
+fn run_session(session: &mut Session, sz: usize, chw: &[f32]) -> Result<(Vec<f32>, Vec<f32>, usize, usize), String> {
+    let input = TensorRef::from_array_view(([1usize, 3, sz, sz], chw)).map_err(|e| format!("tensor: {e}"))?;
+    let outputs = session.run(ort::inputs![input]).map_err(|e| format!("ort run: {e}"))?;
+    let pick = |name: &str, idx: usize| -> Result<(Vec<i64>, Vec<f32>), String> {
+        let v = outputs.get(name).unwrap_or(&outputs[idx]);
+        let (shape, data) = v.try_extract_tensor::<f32>().map_err(|e| format!("extract {name}: {e}"))?;
+        Ok((shape.iter().copied().collect(), data.to_vec()))
+    };
+    let (bs, boxes) = pick("dets", 0)?;
+    let (ls, logits) = pick("labels", 1)?;
+    let nq = *bs.get(1).ok_or("dets shape")? as usize;
+    let nc = *ls.get(2).ok_or("labels shape")? as usize;
+    Ok((boxes, logits, nq, nc))
 }

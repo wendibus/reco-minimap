@@ -47,7 +47,40 @@ impl Mul<f32> for Vec2 {
     }
 }
 
-/// True if `p` lies within the court rectangle grown by `margin` metres.
+/// Playing field size in metres (x: length, left -> right; y: width, far -> near sideline).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Field {
+    pub length: f32,
+    pub width: f32,
+}
+
+impl Field {
+    pub const fn new(length: f32, width: f32) -> Self {
+        Self { length, width }
+    }
+    pub const fn basketball() -> Self {
+        Self { length: COURT_LENGTH, width: COURT_WIDTH }
+    }
+    /// True if `p` lies within the field grown by `margin` metres.
+    pub fn contains(&self, p: Vec2, margin: f32) -> bool {
+        p.x >= -margin && p.x <= self.length + margin && p.y >= -margin && p.y <= self.width + margin
+    }
+    pub fn clamp(&self, p: Vec2, margin: f32) -> Vec2 {
+        Vec2::new(p.x.clamp(-margin, self.length + margin), p.y.clamp(-margin, self.width + margin))
+    }
+    /// Distance to the nearest field edge in metres (negative outside).
+    pub fn edge_dist(&self, p: Vec2) -> f32 {
+        p.x.min(self.length - p.x).min(p.y).min(self.width - p.y)
+    }
+}
+
+impl Default for Field {
+    fn default() -> Self {
+        Field::basketball()
+    }
+}
+
+/// True if `p` lies within the (basketball) court rectangle grown by `margin` metres.
 pub fn in_court(p: Vec2, margin: f32) -> bool {
     p.x >= -margin && p.x <= COURT_LENGTH + margin && p.y >= -margin && p.y <= COURT_WIDTH + margin
 }

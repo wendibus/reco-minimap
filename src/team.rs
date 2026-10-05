@@ -29,6 +29,7 @@ fn dist(a: [f32; 3], b: [f32; 3]) -> f32 {
 pub struct TeamClassifier {
     home: [f32; 3],
     away: [f32; 3],
+    referee: Option<[f32; 3]>,
     /// Reject if farther than this from both teams.
     pub max_dist: f32,
     /// Reject if the two distances are closer than this.
@@ -37,7 +38,31 @@ pub struct TeamClassifier {
 
 impl TeamClassifier {
     pub fn new(home_rgb: [u8; 3], away_rgb: [u8; 3]) -> Self {
-        Self { home: rgb_to_lab(home_rgb), away: rgb_to_lab(away_rgb), max_dist: 45.0, min_margin: 6.0 }
+        Self { home: rgb_to_lab(home_rgb), away: rgb_to_lab(away_rgb), referee: None, max_dist: 45.0, min_margin: 6.0 }
+    }
+
+    /// Set the referee shirt colour (e.g. black or yellow) for 3-way matching.
+    pub fn with_referee(mut self, rgb: [u8; 3]) -> Self {
+        self.referee = Some(rgb_to_lab(rgb));
+        self
+    }
+
+    /// True if the colour is closer to the referee colour than to either team and close enough to it.
+    pub fn is_referee_colored(&self, rgb: [u8; 3]) -> bool {
+        match self.referee {
+            Some(r) => {
+                let lab = rgb_to_lab(rgb);
+                let dr = dist(lab, r);
+                dr <= self.max_dist && dr < dist(lab, self.home).min(dist(lab, self.away))
+            }
+            None => false,
+        }
+    }
+
+    /// True if the colour is clearly neither team's (typical for referees: black / yellow).
+    pub fn is_outlier(&self, rgb: [u8; 3]) -> bool {
+        let lab = rgb_to_lab(rgb);
+        dist(lab, self.home).min(dist(lab, self.away)) > self.max_dist
     }
 
     pub fn classify(&self, rgb: Option<[u8; 3]>) -> Team {

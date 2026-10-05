@@ -7,7 +7,7 @@
 //! * lost players coast with damped velocity (never teleport, never leave the court)
 //! * the *displayed* position follows the filter through a rate limiter
 
-use crate::geom::{clamp_to_court, Vec2};
+use crate::geom::{Field, Vec2};
 use crate::jersey::JerseyVotes;
 use crate::team::Team;
 
@@ -28,6 +28,7 @@ pub enum TrackState {
 
 #[derive(Clone, Debug)]
 pub struct TrackerCfg {
+    pub field: Field,
     pub vmax: f32,
     /// Process noise (acceleration spectral density).
     pub accel_noise: f32,
@@ -50,6 +51,7 @@ pub struct TrackerCfg {
 impl Default for TrackerCfg {
     fn default() -> Self {
         Self {
+            field: Field::basketball(),
             vmax: 9.0,
             accel_noise: 8.0,
             meas_std: 0.6,
@@ -111,6 +113,13 @@ impl Kalman1D {
     }
 }
 
+/// Something the tracker noticed that the layer above may want to interpret (e.g. a substitution).
+#[derive(Clone, Copy, Debug)]
+pub enum TrackerEvent {
+    /// A lost slot was re-taken by a detection (possibly a different player).
+    Retaken { id: u32, team: Team, last_pos: Vec2, new_pos: Vec2, unseen: f32 },
+}
+
 #[derive(Clone, Debug)]
 pub struct Track {
     pub id: u32,
@@ -127,6 +136,11 @@ pub struct Track {
     pub conf: f32,
     reacq_until: f64,
     pub jersey: JerseyVotes,
+    /// Number this slot is considered to carry (sticky: evidence fades, the number stays until someone else's evidence wins).
+    pub confirmed: Option<u8>,
+    /// The confirmed number at the moment the slot was last re-taken.
+    pub number_before: Option<u8>,
+    pub retaken_at: Option<f64>,
 }
 
 impl Track {
@@ -236,13 +250,14 @@ const BIG: f64 = 1e6;
 pub struct Tracker {
     pub cfg: TrackerCfg,
     tracks: Vec<Track>,
+    events: Vec<TrackerEvent>,
     next_id: u32,
     t: Option<f64>,
 }
 
 impl Tracker {
     pub fn new(cfg: TrackerCfg) -> Self {
-        Self { cfg, tracks: Vec::new(), next_id: 1, t: None }
+        Self { cfg, tracks: Vec::new(), events: Vec::new(), next_id: 1, t: None }
     }
 
     pub fn tracks(&self) -> &[Track] {
@@ -250,6 +265,10 @@ impl Tracker {
     }
     pub fn tracks_mut(&mut self) -> &mut [Track] {
         &mut self.tracks
+    }
+
+    pub fn drain_events(&mut self) -> Vec<TrackerEvent> {
+        std::mem::take(&mut self.events)
     }
 
     fn gate(&self, unseen: f32) -> f32 {
@@ -260,8 +279,17 @@ impl Tracker {
         let r = self.cfg.meas_std * self.cfg.meas_std;
         let vmax = self.cfg.vmax;
         let (occ, reacq) = (self.cfg.occluded_after, self.cfg.reacq_secs);
+        let unseen = (t - self.tracks[ti].last_seen) as f32;
+        if unseen > self.cfg.lost_after {
+            // a slot that was lost for a while is picked up again: same player, or a substitute?
+            let tr = &mut self.tracks[ti];
+            let ev = TrackerEvent::Retaken { id: tr.id, team: tr.team, last_pos: Vec2::new(tr.kx.p, tr.ky.p), new_pos: o.pos, unseen };
+            tr.number_before = tr.confirmed;
+            tr.retaken_at = Some(t);
+            tr.jersey.soften(0.3);
+            self.events.push(ev);
+        }
         let tr = &mut self.tracks[ti];
-        let unseen = (t - tr.last_seen) as f32;
         tr.kx.update(o.pos.x, r);
         tr.ky.update(o.pos.y, r);
         let sp = (tr.kx.v * tr.kx.v + tr.ky.v * tr.ky.v).sqrt();
@@ -296,6 +324,9 @@ impl Tracker {
             conf: o.conf,
             reacq_until: 0.0,
             jersey: JerseyVotes::default(),
+            confirmed: None,
+            number_before: None,
+            retaken_at: None,
         };
         self.next_id += 1;
         self.tracks.push(tr);
@@ -326,7 +357,7 @@ impl Tracker {
                 tr.ky.v *= k;
             }
             let m = if tr.referee { cfg.ref_margin } else { cfg.player_margin };
-            let c = clamp_to_court(Vec2::new(tr.kx.p, tr.ky.p), m);
+            let c = cfg.field.clamp(Vec2::new(tr.kx.p, tr.ky.p), m);
             tr.kx.p = c.x;
             tr.ky.p = c.y;
         }

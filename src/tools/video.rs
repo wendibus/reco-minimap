@@ -77,9 +77,25 @@ pub struct FrameReader {
 }
 
 impl FrameReader {
-    pub fn open(input: &str, info: &VideoInfo, start: f64, duration: Option<f64>) -> Result<Self, String> {
+    pub fn open(input: &str, info: &VideoInfo, start: f64, duration: Option<f64>, every: u32) -> Result<Self, String> {
+        Self::open_with(input, info, start, duration, every, false, false, &[])
+    }
+
+    /// `live`: low-latency input flags. `realtime`: read a file at its native speed (simulates a live feed).
+    pub fn open_with(input: &str, info: &VideoInfo, start: f64, duration: Option<f64>, every: u32, live: bool, realtime: bool, in_args: &[String]) -> Result<Self, String> {
         let mut c = Command::new("ffmpeg");
         c.args(["-v", "error", "-nostdin"]);
+        if live {
+            // nobuffer/low_delay break following a growing Matroska file (-follow 1), so skip them there
+            if !in_args.iter().any(|a| a == "-follow") {
+                c.args(["-fflags", "nobuffer", "-flags", "low_delay"]);
+            }
+            c.args(["-probesize", "500000", "-analyzeduration", "1000000"]);
+        }
+        if realtime {
+            c.arg("-re");
+        }
+        c.args(in_args); // extra ffmpeg input options, e.g. -follow 1  or  -f avfoundation -framerate 25
         if start > 0.0 {
             c.args(["-ss", &format!("{start}")]);
         }
@@ -87,7 +103,12 @@ impl FrameReader {
         if let Some(d) = duration {
             c.args(["-t", &format!("{d}")]);
         }
-        c.args(["-an", "-sn", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+        c.args(["-an", "-sn"]);
+        if every > 1 {
+            // only every Nth frame leaves ffmpeg: less pipe traffic and fewer buffers to copy
+            c.args(["-vf", &format!("select=not(mod(n\\,{every}))"), "-fps_mode", "vfr"]);
+        }
+        c.args(["-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
         let mut child = c.stdout(Stdio::piped()).stderr(Stdio::inherit()).spawn().map_err(|e| format!("ffmpeg not found ({e})"))?;
         let stdout = child.stdout.take().ok_or("no ffmpeg stdout")?;
         Ok(Self { child, stdout, w: info.w as usize, h: info.h as usize })
@@ -109,7 +130,7 @@ impl Drop for FrameReader {
 
 /// Decode a single frame at `t` seconds.
 pub fn grab(input: &str, info: &VideoInfo, t: f64) -> Result<Frame, String> {
-    FrameReader::open(input, info, t, None)?.next().ok_or_else(|| format!("no frame at {t}s"))
+    FrameReader::open(input, info, t, None, 1)?.next().ok_or_else(|| format!("no frame at {t}s"))
 }
 
 /// PNG bytes of the frame at `t` (for the calibration page).
@@ -169,35 +190,48 @@ impl FrameWriter {
 }
 
 impl Frame {
-    /// Crop `tile`, resize (bilinear) to `size`x`size`, ImageNet-normalise, CHW.
+    /// Crop `tile`, letterbox it (aspect preserved, centered, padded with the
+    /// mean colour) into `size`x`size`, ImageNet-normalise, CHW. Downscaling
+    /// averages the source footprint (box filter) to avoid aliasing.
     pub fn tile_tensor(&self, tile: &Tile, size: usize) -> Vec<f32> {
         const MEAN: [f32; 3] = [0.485, 0.456, 0.406];
         const STD: [f32; 3] = [0.229, 0.224, 0.225];
-        let mut out = vec![0f32; 3 * size * size];
-        let (tw, th) = (tile.w as f32, tile.h as f32);
-        let native = tile.w as usize == size && tile.h as usize == size;
-        for y in 0..size {
-            for x in 0..size {
-                let rgb = if native {
-                    let i = ((tile.y as usize + y) * self.w + tile.x as usize + x) * 3;
-                    [self.rgb[i] as f32, self.rgb[i + 1] as f32, self.rgb[i + 2] as f32]
+        let mut out = vec![0f32; 3 * size * size]; // 0.0 == mean colour after normalisation
+        let (tw, th) = (tile.w as usize, tile.h as usize);
+        let s = size as f32 / tw.max(th) as f32; // model px per source px
+        let (cw, ch) = ((tw as f32 * s).round() as usize, (th as f32 * s).round() as usize);
+        let (padx, pady) = ((size - cw.min(size)) / 2, (size - ch.min(size)) / 2);
+        let n = ((1.0 / s).ceil() as usize).clamp(1, 4); // samples per axis inside the footprint
+        let (x0, y0) = (tile.x as usize, tile.y as usize);
+        let native = (s - 1.0).abs() < 1e-6;
+        for y in 0..ch.min(size) {
+            for x in 0..cw.min(size) {
+                let mut acc = [0f32; 3];
+                if native {
+                    let i = ((y0 + y) * self.w + x0 + x) * 3;
+                    acc = [self.rgb[i] as f32, self.rgb[i + 1] as f32, self.rgb[i + 2] as f32];
                 } else {
-                    let sx = ((x as f32 + 0.5) * tw / size as f32 - 0.5).max(0.0);
-                    let sy = ((y as f32 + 0.5) * th / size as f32 - 0.5).max(0.0);
-                    let (x0, y0) = (sx.floor() as usize, sy.floor() as usize);
-                    let (x1, y1) = ((x0 + 1).min(tile.w as usize - 1), (y0 + 1).min(tile.h as usize - 1));
-                    let (fx, fy) = (sx - x0 as f32, sy - y0 as f32);
-                    let px = |xx: usize, yy: usize, c: usize| self.rgb[((tile.y as usize + yy) * self.w + tile.x as usize + xx) * 3 + c] as f32;
-                    let mut v = [0f32; 3];
-                    for c in 0..3 {
-                        let top = px(x0, y0, c) * (1.0 - fx) + px(x1, y0, c) * fx;
-                        let bot = px(x0, y1, c) * (1.0 - fx) + px(x1, y1, c) * fx;
-                        v[c] = top * (1.0 - fy) + bot * fy;
+                    let (fx0, fy0) = (x as f32 / s, y as f32 / s);
+                    let (fw, fh) = (1.0 / s, 1.0 / s);
+                    let mut cnt = 0f32;
+                    for j in 0..n {
+                        for i in 0..n {
+                            let sx = ((fx0 + fw * (i as f32 + 0.5) / n as f32) as usize).min(tw - 1);
+                            let sy = ((fy0 + fh * (j as f32 + 0.5) / n as f32) as usize).min(th - 1);
+                            let k = ((y0 + sy) * self.w + x0 + sx) * 3;
+                            for c in 0..3 {
+                                acc[c] += self.rgb[k + c] as f32;
+                            }
+                            cnt += 1.0;
+                        }
                     }
-                    v
-                };
+                    for c in 0..3 {
+                        acc[c] /= cnt;
+                    }
+                }
+                let (ox, oy) = (x + padx, y + pady);
                 for c in 0..3 {
-                    out[c * size * size + y * size + x] = (rgb[c] / 255.0 - MEAN[c]) / STD[c];
+                    out[c * size * size + oy * size + ox] = (acc[c] / 255.0 - MEAN[c]) / STD[c];
                 }
             }
         }
@@ -234,6 +268,20 @@ impl Frame {
             v[v.len() / 2]
         };
         Some([med(&mut ch[0]), med(&mut ch[1]), med(&mut ch[2])])
+    }
+
+    /// Copy a pixel rectangle (clamped to the frame) as RGB: (width, height, data).
+    pub fn crop_rgb(&self, x0: i64, y0: i64, x1: i64, y1: i64) -> (usize, usize, Vec<u8>) {
+        let (x0, y0) = (x0.clamp(0, self.w as i64) as usize, y0.clamp(0, self.h as i64) as usize);
+        let (x1, y1) = (x1.clamp(0, self.w as i64) as usize, y1.clamp(0, self.h as i64) as usize);
+        if x1 <= x0 || y1 <= y0 {
+            return (0, 0, Vec::new());
+        }
+        let mut out = Vec::with_capacity((x1 - x0) * (y1 - y0) * 3);
+        for y in y0..y1 {
+            out.extend_from_slice(&self.rgb[(y * self.w + x0) * 3..(y * self.w + x1) * 3]);
+        }
+        (x1 - x0, y1 - y0, out)
     }
 
     pub fn rect(&mut self, x0: i64, y0: i64, x1: i64, y1: i64, c: [u8; 3], th: i64) {

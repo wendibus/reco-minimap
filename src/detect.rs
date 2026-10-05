@@ -189,14 +189,20 @@ pub fn plan_tiles(roi: Tile, tile: u32, overlap: f32) -> Vec<Tile> {
     out
 }
 
-/// Map a detection from tile-normalized to panorama-normalized coordinates.
+/// Map a detection from model-input-normalized to panorama-normalized coordinates.
+/// Non-square tiles are letterboxed (centered, aspect preserved) into the
+/// square model input, so the padding is undone here.
 pub fn tile_to_pano(d: &Det, t: &Tile, pano_w: u32, pano_h: u32) -> Det {
     let (fw, fh) = (pano_w as f32, pano_h as f32);
+    let m = t.w.max(t.h) as f32;
+    let (fx, fy) = (t.w as f32 / m, t.h as f32 / m);
+    let cx = (d.cx - (1.0 - fx) / 2.0) / fx;
+    let cy = (d.cy - (1.0 - fy) / 2.0) / fy;
     Det {
-        cx: (t.x as f32 + d.cx * t.w as f32) / fw,
-        cy: (t.y as f32 + d.cy * t.h as f32) / fh,
-        w: d.w * t.w as f32 / fw,
-        h: d.h * t.h as f32 / fh,
+        cx: (t.x as f32 + cx * t.w as f32) / fw,
+        cy: (t.y as f32 + cy * t.h as f32) / fh,
+        w: d.w / fx * t.w as f32 / fw,
+        h: d.h / fy * t.h as f32 / fh,
         ..*d
     }
 }

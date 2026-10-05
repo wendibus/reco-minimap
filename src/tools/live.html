@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><title>reco-minimap live</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>html,body{margin:0;height:100%;background:transparent;overflow:hidden}canvas{display:block;width:100vw;height:100vh}
+#st{position:fixed;left:8px;bottom:6px;font:12px -apple-system,sans-serif;color:#9aa;display:none}</style></head>
+<body><canvas id="cv"></canvas><div id="st"></div>
+<script src="/i18n.js"></script>
+<script>
+// URL-Optionen: ?floor=1 (dunkler Boden zum Testen im Browser)  &lead=0.2 (Sekunden weiter vorhersagen, negativ = weniger)
+//               &minalpha=1 (Deckkraft nicht erkannter Spieler)  &debug=1 (Statuszeile)
+const Q = new URLSearchParams(location.search);
+const LEAD = parseFloat(Q.get('lead') || '0'), FLOOR = Q.get('floor') === '1', MINA = parseFloat(Q.get('minalpha') || '1'), DEBUG = Q.get('debug') === '1';
+let cfg = {home: '#ffffff', away: '#2f6bff', referee: '#000000', ball: '#ff8c00', floor: '#262c34', linecolor: '#e1e4e8'};
+let L = 28, W = 15, K = 1, LINES = null, NUMBERS = false, SPORT = '', toasts = []; // Feldgroesse, Markergroesse, Linien (aus /config.json)
+//--pure-begin
+function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+// Verschiebung bei gedaempfter Geschwindigkeit: tau*(1-exp(-dt/tau))*v  (Spieler tau=0.8 s, Ball 0.4 s)
+function predictAxis(p, v, dt, tau) { return p + v * tau * (1 - Math.exp(-dt / tau)); }
+function predict(a, dt, tau) {
+  dt = clamp(dt, 0, 1.5);
+  return {x: clamp(predictAxis(a.x, a.vx || 0, dt, tau), -1, L + 1), y: clamp(predictAxis(a.y, a.vy || 0, dt, tau), -1, W + 1)};
+}
+function ease(cur, target, dt, tau) { return cur + (target - cur) * (1 - Math.exp(-dt / tau)); }
+function lum(hex) { const n = parseInt(hex.slice(1), 16); return 0.2126 * (n >> 16) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255); }
+//--pure-end
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+let msg = null, recv = 0, disp = new Map(), ballD = null, last = performance.now(), lastMsgAt = 0;
+fetch('/config.json').then(r => r.json()).then(c => { cfg = Object.assign(cfg, c); if (c.field) { L = c.field[0]; W = c.field[1]; } K = Math.max(0.8, Math.sqrt(L / 28)); LINES = c.lines || null; NUMBERS = !!c.numbers; SPORT = c.sport || ''; });
+function connect() {
+  const es = new EventSource('/events');
+  es.onmessage = e => { msg = JSON.parse(e.data); recv = performance.now(); lastMsgAt = recv; for (const ev of (msg.events || [])) addToast(ev); };
+  es.onerror = () => { es.close(); setTimeout(connect, 1000); };
+}
+connect();
+function sceneLabel(ev) {
+  const k = ev.kind === 'kickoff' && SPORT === 'handball' ? 'throw_off' : (ev.kind === 'throw_in' && SPORT === 'basketball' ? 'inbound' : ev.kind);
+  const side = ev.side === 'l' ? ' ←' : (ev.side === 'r' ? ' →' : '');
+  const team = ev.team === 'home' || ev.team === 'away' ? T('team.' + ev.team) : '';
+  return T('scene.line', {scene: T('scene.' + k) + side + (ev.borderline ? ' ' + T('scene.borderline') : ''), team: team ? '(' + team + ')' : ''}).trim();
+}
+function addToast(ev) {
+  if (ev.type === 'scene') { toasts.push({text: sceneLabel(ev), until: performance.now() + 7000}); return; }
+  const num = n => n == null ? '?' : '#' + n, team = T('team.' + ev.team);
+  const text = ev.kind === 'confirmed' ? T('evt.sub_confirmed', {team, out: num(ev.out), in: num(ev.in)}) : T('evt.sub_possible', {team, out: num(ev.out)});
+  toasts.push({text, until: performance.now() + 9000});
+}
+function drawToasts(now) {
+  toasts = toasts.filter(t => t.until > now);
+  ctx.font = 'bold ' + Math.round(cv.height * 0.035) + 'px -apple-system, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  toasts.slice(-3).forEach((t, i, a) => {
+    const y = cv.height - cv.height * 0.06 * (a.length - i), w = ctx.measureText(t.text).width + cv.height * 0.05, h = cv.height * 0.05, al = Math.min(1, (t.until - now) / 800);
+    ctx.globalAlpha = 0.85 * al; ctx.fillStyle = '#10141a'; ctx.fillRect(cv.width / 2 - w / 2, y - h / 2, w, h);
+    ctx.globalAlpha = al; ctx.fillStyle = '#ff8c00'; ctx.fillRect(cv.width / 2 - w / 2, y - h / 2, 4, h);
+    ctx.fillStyle = '#ffffff'; ctx.fillText(t.text, cv.width / 2, y); ctx.globalAlpha = 1;
+  });
+  ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+}
+function layout() {
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(cv.clientWidth * dpr); cv.height = Math.round(cv.clientHeight * dpr);
+  const pad = 1.5 * K, s = Math.min(cv.width / (L + 2 * pad), cv.height / (W + 2 * pad));
+  return {s, ox: (cv.width - L * s) / 2, oy: (cv.height - W * s) / 2};
+}
+function drawCourt(g) {
+  const {s, ox, oy} = g, X = x => ox + x * s, Y = y => oy + y * s;
+  ctx.strokeStyle = cfg.linecolor; ctx.lineWidth = Math.max(2, 0.08 * K * s); ctx.lineJoin = 'round';
+  if (LINES) { // beliebige Sportart: Linien als Polygonzuege in Metern
+    for (const pl of LINES) { ctx.beginPath(); pl.forEach(([x, y], i) => i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))); ctx.stroke(); }
+    return;
+  }
+  const path = f => { ctx.beginPath(); f(); ctx.stroke(); };
+  path(() => ctx.rect(X(0), Y(0), L * s, W * s));
+  path(() => { ctx.moveTo(X(L / 2), Y(0)); ctx.lineTo(X(L / 2), Y(W)); });
+  path(() => ctx.arc(X(L / 2), Y(W / 2), 1.8 * s, 0, 2 * Math.PI));
+  const tp = 6.75, bk = 1.575, ang = Math.asin((W / 2 - 0.9) / tp), ex = tp * Math.cos(ang);
+  for (const left of [true, false]) {
+    const sg = left ? 1 : -1, bx = left ? 0 : L, at = d => bx + sg * d;
+    path(() => ctx.rect(X(left ? 0 : L - 5.8), Y(5.05), 5.8 * s, 4.9 * s));
+    path(() => ctx.arc(X(at(5.8)), Y(W / 2), 1.8 * s, left ? -Math.PI / 2 : Math.PI / 2, left ? Math.PI / 2 : 1.5 * Math.PI));
+    path(() => ctx.arc(X(at(bk)), Y(W / 2), 0.23 * s, 0, 2 * Math.PI));
+    path(() => { ctx.moveTo(X(at(0)), Y(0.9)); ctx.lineTo(X(at(bk + ex)), Y(0.9)); });
+    path(() => { ctx.moveTo(X(at(0)), Y(W - 0.9)); ctx.lineTo(X(at(bk + ex)), Y(W - 0.9)); });
+    path(() => ctx.arc(X(at(bk)), Y(W / 2), tp * s, left ? -ang : Math.PI - ang, left ? ang : Math.PI + ang));
+  }
+}
+function disc(x, y, r, color, alpha) { ctx.globalAlpha = alpha; ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI); ctx.fill(); ctx.globalAlpha = 1; }
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  const g = layout(); ctx.clearRect(0, 0, cv.width, cv.height);
+  if (FLOOR) { ctx.fillStyle = cfg.floor; ctx.fillRect(0, 0, cv.width, cv.height); }
+  drawCourt(g);
+  if (msg) {
+    const lead = (now - recv) / 1000 + (msg.age_ms || 0) / 1000 + LEAD;
+    const seen = new Set(), r = 0.45 * K * g.s * (NUMBERS ? 1.35 : 1);
+    const agents = msg.referees.map(a => Object.assign({ref: true}, a)).concat(msg.players);
+    const pos = new Map();
+    for (const a of agents) {
+      const t = predict(a, lead, 0.8); seen.add(a.id);
+      let d = disp.get(a.id); if (!d) { d = {x: t.x, y: t.y}; disp.set(a.id, d); }
+      d.x = ease(d.x, t.x, dt, 0.10); d.y = ease(d.y, t.y, dt, 0.10); pos.set(a.id, d);
+      const fill = a.ref ? cfg.referee : (a.team === 'home' ? cfg.home : cfg.away);
+      const edge = lum(fill) < 90 ? '#ebebeb' : '#0f0f0f', al = Math.max(a.alpha, MINA);
+      const px = g.ox + d.x * g.s, py = g.oy + d.y * g.s;
+      disc(px, py, r + 1.5, edge, al * 0.9); disc(px, py, r, fill, al);
+      if (NUMBERS && a.jersey != null) { ctx.globalAlpha = 1; ctx.fillStyle = lum(fill) < 140 ? '#ffffff' : '#0a0a0a'; ctx.font = 'bold ' + Math.round(r * (String(a.jersey).length > 1 ? 1.0 : 1.2)) + 'px -apple-system, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(a.jersey), px, py + r * 0.05); ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic'; }
+    }
+    for (const id of [...disp.keys()]) if (!seen.has(id)) disp.delete(id);
+    const b = msg.ball;
+    if (b.state === 'held' && pos.has(b.holder)) {
+      const d = pos.get(b.holder), px = g.ox + d.x * g.s, py = g.oy + d.y * g.s;
+      ctx.strokeStyle = cfg.ball; ctx.lineWidth = Math.max(2, 0.13 * K * g.s); ctx.beginPath(); ctx.arc(px, py, r * 1.75, 0, 2 * Math.PI); ctx.stroke(); ballD = null;
+    } else if ((b.state === 'flight' || b.state === 'loose') && b.x != null) {
+      const t = predict({x: b.x, y: b.y, vx: b.vx, vy: b.vy}, lead, 0.4);
+      if (!ballD) ballD = {x: t.x, y: t.y};
+      ballD.x = ease(ballD.x, t.x, dt, 0.08); ballD.y = ease(ballD.y, t.y, dt, 0.08);
+      const px = g.ox + ballD.x * g.s, py = g.oy + ballD.y * g.s, br = 0.2 * K * g.s;
+      if (b.state === 'flight') disc(px + br * 0.5, py + br * 0.9, br * 0.9, '#000', 0.25);
+      disc(px, py, br + 1, '#1e1400', 0.9); disc(px, py, br, cfg.ball, 1);
+    } else ballD = null;
+  }
+  drawToasts(now);
+  if (DEBUG) { const st = document.getElementById('st'); st.style.display = 'block'; st.textContent = msg ? `Alter ${Math.round(msg.age_ms)} ms · letztes Update vor ${Math.round(now - lastMsgAt)} ms · ${msg.players.length} Spieler, ${msg.referees.length} Schiris` : 'warte auf Daten …'; }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script></body></html>

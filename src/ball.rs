@@ -10,7 +10,7 @@
 //! to the court. Offline refinement (parabola fit between release and catch)
 //! is a later step.
 
-use crate::geom::{clamp_to_court, Vec2};
+use crate::geom::{Field, Vec2};
 use crate::tracker::{BBox, Track, TrackState};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -25,14 +25,22 @@ pub enum BallState {
 pub struct BallOut {
     pub state: BallState,
     pub pos: Option<Vec2>,
+    /// Velocity in m/s if known (holder's velocity while held).
+    pub vel: Option<Vec2>,
 }
 
 #[derive(Clone, Debug)]
 pub struct BallCfg {
+    pub field: Field,
     /// Grow player boxes by this fraction when testing "ball in hands".
     pub hold_expand: f32,
-    pub hold_confirm: f32,
-    pub release_confirm: f32,
+    /// Consecutive ball detections inside the same player's box to call it "held".
+    /// Counted in processed frames, so it also works when only every Nth video frame is analysed.
+    pub hold_frames: u32,
+    /// Consecutive detections outside the holder's box to call it released.
+    pub release_frames: u32,
+    /// Consecutive fast detections to call a free ball "in flight".
+    pub flight_frames: u32,
     /// Court speed (m/s) above which a free ball counts as flying.
     pub flight_speed: f32,
     pub coast_secs: f32,
@@ -41,7 +49,7 @@ pub struct BallCfg {
 
 impl Default for BallCfg {
     fn default() -> Self {
-        Self { hold_expand: 0.15, hold_confirm: 0.10, release_confirm: 0.10, flight_speed: 3.0, coast_secs: 0.7, smooth_tau: 0.06 }
+        Self { field: Field::basketball(), hold_expand: 0.15, hold_frames: 2, release_frames: 2, flight_frames: 2, flight_speed: 3.0, coast_secs: 0.7, smooth_tau: 0.06 }
     }
 }
 
@@ -62,9 +70,11 @@ pub struct BallTracker {
     have_pos: bool,
     last_seen: f64,
     last_t: Option<f64>,
-    cand: Option<(u32, f64)>,
-    release_since: Option<f64>,
+    cand: Option<(u32, u32)>,
+    release_count: u32,
+    fast_count: u32,
     slow_since: Option<f64>,
+    slow_count: u32,
 }
 
 fn contains(b: &BBox, x: f32, y: f32, expand: f32) -> bool {
@@ -74,7 +84,17 @@ fn contains(b: &BBox, x: f32, y: f32, expand: f32) -> bool {
 
 impl BallTracker {
     pub fn new(cfg: BallCfg) -> Self {
-        Self { cfg, state: BallState::Unknown, pos: Vec2::default(), vel: Vec2::default(), have_pos: false, last_seen: f64::NEG_INFINITY, last_t: None, cand: None, release_since: None, slow_since: None }
+        Self { cfg, state: BallState::Unknown, pos: Vec2::default(), vel: Vec2::default(), have_pos: false, last_seen: f64::NEG_INFINITY, last_t: None, cand: None, release_count: 0, fast_count: 0, slow_since: None, slow_count: 0 }
+    }
+
+    /// Where the ball should be now (for gating false positives); `None` if not seen recently.
+    pub fn reference(&self, t: f64) -> Option<Vec2> {
+        if self.have_pos && (t - self.last_seen) as f32 <= self.cfg.coast_secs { Some(self.pos) } else { None }
+    }
+
+    /// Seconds since the ball was last accepted (infinite if never).
+    pub fn age(&self, t: f64) -> f32 {
+        if self.have_pos { (t - self.last_seen) as f32 } else { f32::INFINITY }
     }
 
     pub fn state(&self) -> BallState {
@@ -105,7 +125,7 @@ impl BallTracker {
             self.pos = self.pos + self.vel * dt;
             self.vel = self.vel * (-dt / 0.5).exp();
         }
-        self.pos = clamp_to_court(self.pos, 1.5);
+        self.pos = self.cfg.field.clamp(self.pos, 1.5);
 
         // who could be holding the ball (image space)
         let mut cand: Option<u32> = None;
@@ -132,52 +152,77 @@ impl BallTracker {
         match (self.state, obs.is_some(), cand) {
             // ---- ball seen inside somebody's box
             (BallState::Held { track }, true, Some(id)) if id == track => {
-                self.release_since = None;
+                self.release_count = 0;
                 self.cand = None;
             }
             (_, true, Some(id)) => {
-                self.release_since = None;
+                self.release_count = 0;
+                self.fast_count = 0;
                 match self.cand {
-                    Some((cid, since)) if cid == id => {
-                        if (t - since) as f32 >= self.cfg.hold_confirm {
+                    Some((cid, n)) if cid == id => {
+                        if n + 1 >= self.cfg.hold_frames {
                             self.state = BallState::Held { track: id };
                             self.cand = None;
+                        } else {
+                            self.cand = Some((cid, n + 1));
                         }
                     }
-                    _ => self.cand = Some((id, t)),
+                    _ => {
+                        if self.cfg.hold_frames <= 1 {
+                            self.state = BallState::Held { track: id };
+                            self.cand = None;
+                        } else {
+                            self.cand = Some((id, 1));
+                        }
+                    }
                 }
             }
             // ---- ball seen, but in nobody's box
             (BallState::Held { track }, true, None) => {
                 self.cand = None;
-                let since = *self.release_since.get_or_insert(t);
-                if (t - since) as f32 >= self.cfg.release_confirm {
-                    let above = players.iter().find(|p| p.id == track).and_then(|p| p.bbox).map(|b| obs.map(|o| o.bbox.cy < b.cy - b.h * 0.5).unwrap_or(false)).unwrap_or(false);
+                self.release_count += 1;
+                if self.release_count >= self.cfg.release_frames {
+                    let above = players
+                        .iter()
+                        .find(|p| p.id == track)
+                        .and_then(|p| p.bbox)
+                        .map(|b| obs.map(|o| o.bbox.cy < b.cy - b.h * 0.5).unwrap_or(false))
+                        .unwrap_or(false);
                     self.state = if speed > self.cfg.flight_speed || above { BallState::InFlight } else { BallState::Loose };
-                    self.release_since = None;
+                    self.release_count = 0;
                     self.slow_since = None;
+                    self.slow_count = 0;
                 }
             }
             (BallState::InFlight, true, None) => {
                 self.cand = None;
                 if speed < 1.0 {
+                    self.slow_count += 1;
                     let since = *self.slow_since.get_or_insert(t);
-                    if (t - since) >= 0.5 {
+                    if self.slow_count >= 3 && (t - since) >= 0.5 {
                         self.state = BallState::Loose;
                         self.slow_since = None;
+                        self.slow_count = 0;
                     }
                 } else {
                     self.slow_since = None;
+                    self.slow_count = 0;
                 }
             }
             (BallState::Loose, true, None) | (BallState::Unknown, true, None) => {
                 self.cand = None;
-                self.state = if speed > self.cfg.flight_speed { BallState::InFlight } else { BallState::Loose };
+                if speed > self.cfg.flight_speed {
+                    self.fast_count += 1;
+                } else {
+                    self.fast_count = 0;
+                }
+                self.state = if self.fast_count >= self.cfg.flight_frames { BallState::InFlight } else { BallState::Loose };
             }
             // ---- ball not seen
             (BallState::Held { .. }, false, _) => {} // hidden in hands: stay
             (_, false, _) => {
                 self.cand = None;
+                self.fast_count = 0;
                 if (t - self.last_seen) as f32 > self.cfg.coast_secs {
                     self.state = BallState::Unknown;
                 }
@@ -198,6 +243,11 @@ impl BallTracker {
                 if self.have_pos { Some(self.pos) } else { None }
             }
         };
-        BallOut { state: self.state, pos }
+        let vel = match self.state {
+            BallState::Held { track } => players.iter().find(|p| p.id == track).map(|p| p.velocity()),
+            BallState::Unknown => None,
+            _ => if self.have_pos { Some(self.vel) } else { None },
+        };
+        BallOut { state: self.state, pos, vel }
     }
 }

@@ -1,0 +1,169 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><title>reco-minimap</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{color-scheme:dark;--bg:#14171c;--pn:#1c2027;--ln:#2c323c;--fg:#e6e9ee;--mu:#8b94a3;--ac:#ff8c00;--ok:#4cd964;--bad:#ff5a5a}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:14px/1.45 -apple-system,system-ui,sans-serif}
+#app{display:grid;grid-template-rows:auto 1fr auto;height:100%}
+header{display:flex;gap:14px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--ln);background:var(--pn);flex-wrap:wrap}
+header h1{font-size:16px;margin:0}header .tag{color:var(--mu)}
+header .sp{flex:1}
+main{display:grid;grid-template-columns:210px 1fr;min-height:0}
+nav{border-right:1px solid var(--ln);padding:10px;display:flex;flex-direction:column;gap:6px;background:var(--pn)}
+nav button{text-align:left;padding:10px 12px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--fg);cursor:pointer;font-size:14px}
+nav button:hover{background:#242a33}nav button.on{border-color:var(--ac);background:#2a2216}
+#panel{overflow:auto;padding:18px 22px;min-height:0}
+section.card{background:var(--pn);border:1px solid var(--ln);border-radius:10px;padding:14px 16px;margin-bottom:14px}
+h2{font-size:15px;margin:0 0 10px}h3{font-size:13px;margin:12px 0 6px;color:var(--mu);font-weight:600}
+label{display:block;color:var(--mu);font-size:12px;margin:8px 0 3px}
+input[type=text],input[type=number],select{background:#12151a;border:1px solid var(--ln);color:var(--fg);border-radius:6px;padding:7px 9px;font-size:14px;width:100%}
+input[type=color]{width:46px;height:32px;border:1px solid var(--ln);border-radius:6px;background:#12151a;padding:2px}
+.row{display:flex;gap:8px;align-items:center}.row>*{flex:0 0 auto}.row>.grow{flex:1 1 auto}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+button.b{background:#2c323c;color:var(--fg);border:1px solid #3a4250;border-radius:6px;padding:7px 12px;cursor:pointer}
+button.b:hover{background:#343c48}button.b.p{background:var(--ac);color:#000;border-color:var(--ac);font-weight:600}button.b:disabled{opacity:.4;cursor:default}
+.mu{color:var(--mu)}.ok{color:var(--ok)}.bad{color:var(--bad)}.small{font-size:12px}
+.model{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--ln);border-radius:8px;margin-bottom:6px}
+.model.sel{border-color:var(--ac);background:#2a2216}
+.chip{display:inline-block;padding:1px 8px;border-radius:10px;background:#2c323c;font-size:12px;margin-right:4px}
+table{width:100%;border-collapse:collapse}td,th{padding:4px 6px;text-align:left}th{color:var(--mu);font-weight:500;font-size:12px}
+footer{border-top:1px solid var(--ln);background:#0f1115;padding:8px 14px;max-height:34vh;display:flex;flex-direction:column}
+#logh{display:flex;gap:10px;align-items:center;margin-bottom:4px}
+#log{overflow:auto;white-space:pre-wrap;font:12px/1.4 ui-monospace,Menlo,monospace;color:#c8ced8;min-height:60px;max-height:24vh}
+.banner{background:#3a1f1f;border:1px solid #6b2b2b;border-radius:8px;padding:8px 12px;margin-bottom:12px}
+a{color:#7fb7ff}
+</style></head><body>
+<div id="app">
+<header><h1>reco-minimap</h1><span class="tag" id="tag"></span><span class="sp"></span>
+ <div class="row" style="min-width:380px;flex:1;max-width:620px"><span class="mu" id="h_proj"></span><input type="text" id="dir" class="grow"><button class="b" id="dirbrowse"></button><button class="b" id="dirOpen"></button></div>
+ <div class="row"><span class="mu" id="h_lang"></span><select id="lang"></select></div></header>
+<main><nav id="nav"></nav><div id="panel"></div></main>
+<footer><div id="logh"><b id="logt"></b><span id="jst" class="mu"></span><span class="sp" style="flex:1"></span><button class="b" id="cancel" style="display:none"></button></div><div id="log"></div><div class="mu small" id="lognote"></div></footer>
+</div>
+<script src="/i18n.js"></script>
+<script>
+const $=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const api=async(p,b)=>{try{const r=await fetch(p,b===undefined?{}:{method:'POST',body:JSON.stringify(b)});return await r.json();}catch(e){return {ok:false,error:String(e)};}};
+const STEPS=['setup','video','calib','run','live','eval'];
+let INIT=null,S={dir:'',project:{},models:[],files:{}},step='setup',JOB=null,probe=null,queue=null;
+const P=()=>S.project;
+const ALIAS={soccer:'football',fussball:'football','fußball':'football',futbol:'football','fútbol':'football',football11:'football',field_hockey:'hockey','field-hockey':'hockey',fieldhockey:'hockey',feldhockey:'hockey',basket:'basketball',hand:'handball',volley:'volleyball',futsal:'futsal'};
+function sportId(x){if(!x)return null;const k=String(x).toLowerCase().trim();const id=ALIAS[k]||k;return INIT&&INIT.sports.some(s=>s.id===id)?id:null;}
+function sportName(x){const id=sportId(x);return id?T('sport.'+id):String(x);}
+function mergeDefaults(t,d){for(const k in d){if(t[k]===undefined)t[k]=d[k];else if(d[k]&&typeof d[k]==='object'&&!Array.isArray(d[k]))mergeDefaults(t[k],d[k]);}}
+const defaults=()=>({lang:LANG,sport:'basketball',custom:{length:40,width:20,team_size:5,referees:2},model_id:'',video:'',calib_time:60,
+  colors:{draw_home:'#ffffff',draw_away:'#2f6bff',ref_color:'#000000'},segments:[{name:'abschnitt1',start:0,duration:0}],
+  run:{every:5,outputs:{minimap:true,alpha:false,pip:false,json:true},alpha_bg:0.6,min_alpha:1,ep:'auto',units:'all',scenes:false,numbers:{enabled:false,hires:'',roster_home:'',roster_away:''}},live:{source:'',size:'1920x1080',fps:25,port:8765,realtime:false}});
+function ensureDefaults(){mergeDefaults(S.project,defaults());}
+async function save(){await api('/api/project/save',{dir:S.dir,project:S.project});}
+function sport(){return INIT.sports.find(s=>s.id===P().sport)||INIT.sports[0];}
+function activeModel(){return S.models.find(m=>m.id===P().model_id)||null;}
+function ep(){const e=P().run.ep;return e==='auto'?(INIT.coreml?'coreml':'cpu'):e;}
+function common(){return {ep:ep(),units:P().run.units,model_dir:(activeModel()||{}).dir||'',video:P().video,numbers:P().run.numbers,scenes:P().run.scenes};}
+function numbersBlock(withHires){const n=P().run.numbers,ok=INIT.ocr&&INIT.ocr.exists;return `<section class="card"><h2>${T('run.numbers')}</h2><label style="display:flex;gap:8px;align-items:center;color:var(--fg);font-size:14px"><input type="checkbox" data-k="run.numbers.enabled" ${n.enabled?'checked':''}> ${T('run.numbers')}</label><div class="mu small">${T('run.numbers_hint')}</div><div class="row" style="margin-top:8px"><span class="${ok?'ok':'bad'}">${ok?T('run.ocr_ok'):T('run.ocr_missing')}</span>${ok?'':`<button class="b" id="bocr">${T('run.ocr_fetch')}</button>`}</div><div class="grid2"><div><label>${T('run.roster_home')}</label><input type="text" data-k="run.numbers.roster_home" value="${esc(n.roster_home)}"></div><div><label>${T('run.roster_away')}</label><input type="text" data-k="run.numbers.roster_away" value="${esc(n.roster_away)}"></div></div><div class="mu small">${T('run.roster_hint')}</div>${withHires?`<label>${T('run.hires')}</label>${pathField('hpath',n.hires,'file',T('run.hires'))}<div class="mu small">${T('run.hires_hint')}</div>`:''}</section>`;}
+function bindNumbers(withHires){const b=$('bocr');if(b)b.onclick=()=>runJob('fetch_ocr',{},async()=>{INIT=await api('/api/init');render();});if(withHires){bindBrowse((id,p)=>{P().run.numbers.hires=p;save();});const h=$('hpath');if(h)h.onchange=e=>{P().run.numbers.hires=e.target.value;save();};}}
+
+// ---------- i18n chrome
+function chrome(){document.title='reco-minimap';$('tag').textContent=T('app.tagline');$('h_proj').textContent=T('project.folder');$('h_lang').textContent=T('lang.label');
+ $('dirbrowse').textContent=T('btn.browse');$('dirOpen').textContent=T('project.open');$('logt').textContent=T('log.title');$('lognote').textContent=T('log.note');$('cancel').textContent=T('btn.cancel');
+ $('nav').innerHTML=STEPS.map(s=>`<button data-s="${s}" class="${s===step?'on':''}">${T('step.'+s)}</button>`).join('');
+ $('nav').querySelectorAll('button').forEach(b=>b.onclick=()=>{step=b.dataset.s;chrome();render();});
+ const sel=$('lang');sel.innerHTML=Object.keys(I18N).map(l=>`<option value="${l}" ${l===LANG?'selected':''}>${I18N[l]['lang.name']}</option>`).join('');}
+$('lang').onchange=e=>{setLang(e.target.value);P().lang=LANG;save();chrome();render();};
+$('dirbrowse').onclick=async()=>{const r=await api('/api/dialog',{kind:'folder',prompt:T('project.folder')});if(r.path){$('dir').value=r.path;openProject(r.path);}};
+$('dirOpen').onclick=()=>openProject($('dir').value);
+async function openProject(d){const r=await api('/api/project/load',{dir:d});if(!r.ok){log(T('status.error',{m:r.error}));return;}S={dir:r.dir,project:r.project,models:r.models,files:r.files};$('dir').value=r.dir;ensureDefaults();if(r.project.lang&&I18N[r.project.lang])setLang(r.project.lang);if(P().video)doProbe();chrome();render();}
+async function refresh(){const r=await api('/api/project/load',{dir:S.dir});if(r.ok){S.models=r.models;S.files=r.files;render();}}
+
+// ---------- widgets
+function pathField(id,val,kind,prompt,on){return `<div class="row"><input type="text" id="${id}" class="grow" value="${esc(val)}"><button class="b" data-browse="${id}" data-kind="${kind}" data-prompt="${esc(prompt)}">${T('btn.browse')}</button></div>`;}
+function bindBrowse(on){document.querySelectorAll('[data-browse]').forEach(b=>b.onclick=async()=>{const r=await api('/api/dialog',{kind:b.dataset.kind,prompt:b.dataset.prompt});if(r.path){$(b.dataset.browse).value=r.path;on(b.dataset.browse,r.path);}});}
+function bindInputs(){document.querySelectorAll('[data-k]').forEach(el=>{const h=()=>{const path=el.dataset.k.split('.');let o=P();for(let i=0;i<path.length-1;i++)o=o[path[i]];const v=el.type==='checkbox'?el.checked:(el.type==='number'?parseFloat(el.value):el.value);o[path[path.length-1]]=v;save();};el.onchange=h;});}
+
+// ---------- panels
+function renderSetup(){
+ const sp=sport(),m=activeModel(),mm=m&&m.sport&&sportId(m.sport)!==P().sport;
+ const sports=INIT.sports.map(s=>`<option value="${s.id}" ${s.id===P().sport?'selected':''}>${T('sport.'+s.id)}</option>`).join('');
+ const cust=P().sport==='custom'?`<div class="grid2"><div><label>${T('sport.length')}</label><input type="number" data-k="custom.length" value="${P().custom.length}"></div><div><label>${T('sport.width')}</label><input type="number" data-k="custom.width" value="${P().custom.width}"></div><div><label>${T('sport.team')}</label><input type="number" data-k="custom.team_size" value="${P().custom.team_size}"></div><div><label>${T('sport.refs')}</label><input type="number" data-k="custom.referees" value="${P().custom.referees}"></div></div><div class="mu small">${T('sport.custom_hint')}</div>`:`<div class="mu small" style="margin-top:6px">${sp.field[0]} × ${sp.field[1]} m · ${T('sport.team')}: ${sp.team_size} · ${T('sport.refs')}: ${sp.referees}<br>${T('sport.note')}</div>`;
+ const list=S.models.length?S.models.map(x=>`<div class="model ${x.id===P().model_id?'sel':''}"><input type="radio" name="mdl" ${x.id===P().model_id?'checked':''} data-m="${esc(x.id)}"><div><b>${esc(x.id)}</b> ${x.sport?`<span class="chip">${esc(sportName(x.sport))}</span>`:''}<br><span class="mu small">${T('model.classes')}: ${esc(x.classes.join(', '))} · ${T('model.input')}: ${x.input_size}×${x.input_size} · ${x.size_mb} MB · <span class="${x.sha==='ok'?'ok':x.sha==='bad'?'bad':''}">${T('model.sha_'+x.sha)}</span></span></div><span>${x.id===P().model_id?`<span class="ok">${T('model.active')}</span>`:`<button class="b" data-use="${esc(x.id)}">${T('model.use')}</button>`}</span></div>`).join(''):`<div class="mu">${T('model.none')}</div>`;
+ return `<section class="card"><h2>${T('sport.label')}</h2><select id="sportsel">${sports}</select>${cust}</section>
+ <section class="card"><h2>${T('model.title')}</h2>${list}<div class="row" style="margin-top:8px"><button class="b" id="mtest" ${m&&P().video?'':'disabled'}>${T('model.test')}</button></div><div class="mu small">${T('model.test_hint')}</div>${mm?`<div class="bad small">${T('model.mismatch',{m:sportName(m.sport),s:T('sport.'+P().sport)})}</div>`:''}
+ <h3>${T('model.import')}</h3><div class="mu small" style="margin-bottom:6px">${T('model.import_hint')}</div>
+ <label>${T('model.path')}</label><div class="row"><input type="text" id="mpath" class="grow"><button class="b p" id="mimport">${T('model.import_path')}</button></div><div class="row" style="margin-top:8px"><button class="b" id="mfolder">📁 ${T('model.import_folder')}</button><button class="b" id="mfile">📄 ${T('model.import_file')}</button></div></section>`;}
+function bindSetup(){
+ $('sportsel').onchange=e=>{P().sport=e.target.value;save();render();};
+ document.querySelectorAll('[data-m]').forEach(r=>r.onchange=()=>{P().model_id=r.dataset.m;save();render();});
+ document.querySelectorAll('[data-use]').forEach(r=>r.onclick=()=>{P().model_id=r.dataset.use;const m=activeModel();if(m&&sportId(m.sport))P().sport=sportId(m.sport);save();render();});
+ $('mtest').onclick=()=>runJob('selfcheck',common());
+ const doImport=async path=>{path=(path||'').trim();if(!path){log(T('model.need_path'));return;}const r=await api('/api/model/import',{dir:S.dir,path});if(!r.ok){log(T('status.error',{m:r.error}));return;}log(T('model.imported',{id:r.model.id}));P().model_id=r.model.id;if(sportId(r.model.sport))P().sport=sportId(r.model.sport);await save();await refresh();};
+ $('mfolder').onclick=async()=>{const r=await api('/api/dialog',{kind:'folder',prompt:T('model.import')});if(r.path){$('mpath').value=r.path;doImport(r.path);}};
+ $('mfile').onclick=async()=>{const r=await api('/api/dialog',{kind:'file',prompt:'.onnx'});if(r.path){$('mpath').value=r.path;doImport(r.path);}};
+ $('mimport').onclick=()=>doImport($('mpath').value);
+ bindInputs();}
+async function doProbe(){const r=await api('/api/probe',{path:P().video});probe=r.ok?r:{error:true};if(step==='video')render();}
+function renderVideo(){let info='';if(probe&&!probe.error){const tot=Math.round(probe.duration||0),d=tot?`${Math.floor(tot/60)}:${String(tot%60).padStart(2,'0')} min`:'';info=`<div class="ok">${T('video.info',{w:probe.w,h:probe.h,fps:probe.fps,d:d})}</div>`;}else if(probe&&probe.error)info=`<div class="bad">${T('video.err')}</div>`;
+ return `<section class="card"><h2>${T('video.title')}</h2><label>${T('video.path')}</label>${pathField('vpath',P().video,'file',T('video.path'))}<div class="mu small" style="margin-top:6px">${T('video.hint')}</div><div style="margin-top:8px">${info}</div></section>`;}
+function bindVideo(){bindBrowse((id,p)=>{P().video=p;save();doProbe();});$('vpath').onchange=e=>{P().video=e.target.value;save();doProbe();};}
+function ready(){return activeModel()&&P().video;}
+function renderCalib(){const f=S.files,c=f.court,sc=f.scales,tm=f.teams,col=P().colors;
+ if(!ready())return `<section class="card"><div class="bad">${T('cal.need_setup')}</div></section>`;
+ return `<section class="card"><h2>${T('cal.field')}</h2><div class="mu small">${T('cal.field_hint')}</div><div class="row" style="margin-top:8px"><span class="mu">${T('cal.time')}</span><input type="number" data-k="calib_time" value="${P().calib_time}" style="width:90px"><button class="b p" id="bcal">${T('cal.field_btn')}</button><span class="${c?'ok':'mu'}">${c?T('cal.field_state',{n:c.points,rms:(+c.rms).toFixed(2)}):T('cal.field_none')}</span></div></section>
+ <section class="card"><h2>${T('cal.scales')}</h2><div class="mu small">${T('cal.scales_hint')}</div><div class="row" style="margin-top:8px"><button class="b p" id="bsc" ${c?'':'disabled'}>${T('cal.scales_btn')}</button><span class="${sc?'ok':'mu'}">${sc?T('cal.scales_state',{n:sc.n}):T('cal.scales_none')}</span></div></section>
+ <section class="card"><h2>${T('cal.colors')}</h2><div class="mu small">${T('cal.colors_hint')}</div><div class="row" style="margin-top:8px"><button class="b p" id="bcol" ${c?'':'disabled'}>${T('cal.colors_btn')}</button><span class="mu">${T('cal.home')}</span><input type="color" id="chome" value="${esc((tm||{home:'#cccccc'}).home)}"><span class="mu">${T('cal.away')}</span><input type="color" id="caway" value="${esc((tm||{away:'#2f354e'}).away)}"><button class="b" id="cswap">${T('cal.swap')}</button></div>
+ <div class="grid3" style="margin-top:8px"><div><label>${T('cal.draw_home')}</label><input type="color" data-k="colors.draw_home" value="${col.draw_home}"></div><div><label>${T('cal.draw_away')}</label><input type="color" data-k="colors.draw_away" value="${col.draw_away}"></div><div><label>${T('cal.referee')}</label><input type="color" data-k="colors.ref_color" value="${col.ref_color}"></div></div></section>`;}
+function bindCalib(){if(!ready())return;bindInputs();
+ $('bcal').onclick=()=>runJob('calibrate',{...common(),sport:P().sport,time:P().calib_time,lang:LANG,length:P().custom.length,width:P().custom.width,team_size:P().sport==='custom'?P().custom.team_size:'',referees:P().sport==='custom'?P().custom.referees:''});
+ $('bsc').onclick=()=>runJob('scales',common());$('bcol').onclick=()=>runJob('colors',common());
+ const saveT=async(h,a)=>{await api('/api/teams/save',{dir:S.dir,home:h,away:a});await refresh();};
+ $('chome').onchange=()=>saveT($('chome').value,$('caway').value);$('caway').onchange=()=>saveT($('chome').value,$('caway').value);$('cswap').onclick=()=>saveT($('caway').value,$('chome').value);}
+function renderRun(){const r=P().run,o=r.outputs,seg=P().segments;
+ if(!ready()||!S.files.court||!S.files.teams)return `<section class="card"><div class="bad">${!ready()?T('cal.need_setup'):T('run.need_cal')}</div></section>`;
+ const rows=seg.map((s,i)=>`<tr><td><input type="text" data-seg="${i}.name" value="${esc(s.name)}"></td><td><input type="number" data-seg="${i}.start" value="${s.start}"></td><td><input type="number" data-seg="${i}.duration" value="${s.duration}"></td><td><button class="b" data-del="${i}">✕</button></td></tr>`).join('');
+ const ck=(k,l)=>`<label style="display:flex;gap:8px;align-items:center;color:var(--fg);font-size:14px"><input type="checkbox" data-k="run.outputs.${k}" ${o[k]?'checked':''}> ${l}</label>`;
+ const outs=(S.files.out||[]).slice(0,8).map(x=>`<tr><td>${esc(x.name)}</td><td class="mu">${x.mb} MB</td><td><button class="b" data-rev="${esc(x.path)}">${T('btn.reveal')}</button></td></tr>`).join('');
+ return `<section class="card"><h2>${T('run.segments')}</h2><table><tr><th>${T('run.name')}</th><th>${T('run.start')}</th><th>${T('run.duration')} (0 = ${T('run.whole')})</th><th></th></tr>${rows}</table><button class="b" id="addseg" style="margin-top:8px">+ ${T('run.add')}</button></section>
+ <section class="card"><h2>${T('run.outputs')}</h2>${ck('minimap',T('run.out_minimap'))}${ck('alpha',T('run.out_alpha'))}${ck('pip',T('run.out_pip'))}${ck('json',T('run.out_json'))}
+ <div class="grid3"><div><label>${T('run.every')}</label><input type="number" data-k="run.every" value="${r.every}" min="1"></div><div><label>${T('run.alpha_bg')}</label><input type="number" step="0.1" data-k="run.alpha_bg" value="${r.alpha_bg}"></div><div><label>${T('run.min_alpha')}</label><input type="number" step="0.1" data-k="run.min_alpha" value="${r.min_alpha}"></div></div><div class="mu small">${T('run.every_hint')}</div>
+ <div class="grid2"><div><label>${T('run.ep')}</label><select data-k="run.ep"><option value="auto" ${r.ep==='auto'?'selected':''}>${T('run.ep_auto')}</option><option value="coreml" ${r.ep==='coreml'?'selected':''}>CoreML (macOS)</option><option value="cpu" ${r.ep==='cpu'?'selected':''}>CPU</option></select></div><div><label>CoreML</label><select data-k="run.units">${['all','gpu','ane','cpu'].map(u=>`<option value="${u}" ${r.units===u?'selected':''}>${u}</option>`).join('')}</select></div></div>
+ <div class="row" style="margin-top:12px"><button class="b p" id="brun">${T('run.start_btn')}</button><span class="mu small">${T('run.output_dir')}: ${esc(S.dir)}/out</span></div></section>
+ ${numbersBlock(true)}
+ ${outs?`<section class="card"><table>${outs}</table></section>`:''}`;}
+function bindRun(){if(!ready()||!S.files.court||!S.files.teams)return;bindInputs();bindNumbers(true);
+ document.querySelectorAll('[data-seg]').forEach(el=>el.onchange=()=>{const[i,k]=el.dataset.seg.split('.');P().segments[+i][k]=k==='name'?el.value:parseFloat(el.value)||0;save();});
+ document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{P().segments.splice(+b.dataset.del,1);if(!P().segments.length)P().segments.push({name:'abschnitt1',start:0,duration:0});save();render();});
+ $('addseg').onclick=()=>{P().segments.push({name:'abschnitt'+(P().segments.length+1),start:0,duration:600});save();render();};
+ document.querySelectorAll('[data-rev]').forEach(b=>b.onclick=()=>api('/api/reveal',{path:b.dataset.rev}));
+ $('brun').onclick=()=>{queue={i:0,list:P().segments.slice()};nextSegment();};}
+function nextSegment(){if(!queue)return;if(queue.i>=queue.list.length){queue=null;log(T('status.done'));refresh();return;}const s=queue.list[queue.i],r=P().run,c=P().colors;
+ log(T('run.queue',{i:queue.i+1,n:queue.list.length,name:s.name}));
+ runJob('run',{...common(),name:s.name,start:s.start,duration:s.duration,every:r.every,outputs:r.outputs,alpha_bg:r.alpha_bg,min_alpha:r.min_alpha,draw_home:c.draw_home,draw_away:c.draw_away,ref_color:c.ref_color},()=>{if(queue){queue.i++;nextSegment();}},()=>{queue=null;});}
+function renderLive(){const l=P().live;if(!activeModel()||!S.files.court||!S.files.teams)return `<section class="card"><div class="bad">${T('run.need_cal')}</div></section>`;
+ const url=JOB&&JOB.kind==='live'&&JOB.status==='running'?`http://127.0.0.1:${l.port}/`:'';
+ return `<section class="card"><h2>${T('live.title')}</h2><div class="mu small">${T('live.hint')}</div><label>${T('live.source')}</label>${pathField('lsrc',l.source,'file',T('live.source'))}
+ <div class="grid3"><div><label>${T('live.size')}</label><input type="text" data-k="live.size" value="${esc(l.size)}"></div><div><label>${T('live.fps')}</label><input type="number" data-k="live.fps" value="${l.fps}"></div><div><label>${T('live.port')}</label><input type="number" data-k="live.port" value="${l.port}"></div></div>
+ <label style="display:flex;gap:8px;align-items:center;color:var(--fg);font-size:14px;margin-top:10px"><input type="checkbox" data-k="live.realtime" ${l.realtime?'checked':''}> ${T('live.realtime')}</label>
+ <div class="row" style="margin-top:12px"><button class="b p" id="blive" ${url?'disabled':''}>${T('live.start')}</button><button class="b" id="bstop" ${url?'':'disabled'}>${T('live.stop')}</button></div>
+ ${url?`<h3>${T('live.url')}</h3><a href="${url}" target="_blank">${url}</a> · <a href="${url}?floor=1&debug=1" target="_blank">test</a><div class="mu small" style="margin-top:6px">${T('live.obs')}</div>`:''}</section>${numbersBlock(false)}`;}
+function bindLive(){if(!activeModel()||!S.files.court||!S.files.teams)return;bindInputs();bindNumbers(false);bindBrowse((id,p)=>{P().live.source=p;save();});$('lsrc').onchange=e=>{P().live.source=e.target.value;save();};
+ $('blive').onclick=()=>{const l=P().live,c=P().colors;runJob('live',{...common(),source:l.source,size:l.size,fps:l.fps,port:l.port,realtime:l.realtime,draw_home:c.draw_home,draw_away:c.draw_away,ref_color:c.ref_color},()=>render());setTimeout(render,400);};
+ $('bstop').onclick=()=>{if(JOB)api('/api/job/'+JOB.id+'/cancel',{});};}
+function renderEval(){const outs=(S.files.out||[]).filter(x=>x.name.endsWith('.jsonl'));
+ return `<section class="card"><h2>${T('eval.title')}</h2><label>${T('eval.file')}</label><select id="evf">${outs.map(x=>`<option value="${esc(x.path)}">${esc(x.name)}</option>`).join('')}</select><div style="margin-top:10px"><button class="b p" id="bev" ${outs.length?'':'disabled'}>${T('eval.btn')}</button></div></section>`;}
+function bindEval(){const b=$('bev');if(b)b.onclick=()=>runJob('stats',{file:$('evf').value});}
+function render(){if(!INIT)return;const R={setup:[renderSetup,bindSetup],video:[renderVideo,bindVideo],calib:[renderCalib,bindCalib],run:[renderRun,bindRun],live:[renderLive,bindLive],eval:[renderEval,bindEval]}[step];
+ $('panel').innerHTML=(INIT.ort_error?`<div class="banner">${esc(INIT.ort_error)}</div>`:'')+R[0]();R[1]();}
+
+// ---------- jobs + log
+function log(t){const el=$('log');el.textContent+=t+'\n';el.scrollTop=el.scrollHeight;}
+async function runJob(kind,params,onDone,onFail){if(JOB&&JOB.status==='running'&&kind!=='live'){log('… '+T('status.running'));return;}
+ const r=await api('/api/job/start',{dir:S.dir,kind,params});if(!r.ok){log(T('status.error',{m:r.error}));if(onFail)onFail();return;}
+ JOB={id:r.id,kind,status:'running',from:0};$('log').textContent='';$('cancel').style.display='';setJst();poll(onDone,onFail);}
+function setJst(){const s=JOB?JOB.status:'idle';$('jst').textContent=T('status.'+(s==='cancelled'?'failed':s));$('jst').className=s==='done'?'ok':s==='failed'||s==='cancelled'?'bad':'mu';}
+async function poll(onDone,onFail){const j=JOB;if(!j)return;const r=await api('/api/job/'+j.id+'?from=0');if(!r.ok){log(r.error);return;}
+ const el=$('log'),atEnd=el.scrollTop+el.clientHeight>=el.scrollHeight-8;el.textContent=r.lines.map(l=>l.t).join('\n');if(atEnd)el.scrollTop=el.scrollHeight;
+ j.status=r.status;setJst();
+ if(r.status==='running'){setTimeout(()=>poll(onDone,onFail),700);return;}
+ $('cancel').style.display='none';await refresh();if(r.status==='done'){if(onDone)onDone();}else if(onFail)onFail();}
+$('cancel').onclick=()=>{if(JOB)api('/api/job/'+JOB.id+'/cancel',{});queue=null;};
+
+(async()=>{INIT=await api('/api/init');if(!INIT.ok){document.body.textContent='error';return;}
+ $('dir').value=INIT.default_dir;chrome();await openProject(INIT.default_dir);})();
+</script></body></html>

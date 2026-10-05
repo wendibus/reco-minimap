@@ -1,0 +1,112 @@
+#![cfg(feature = "tools")]
+use std::path::PathBuf;
+
+use reco_minimap::tools::calib::{CalPoint, CourtCalib};
+use reco_minimap::tools::models::{import, inspect, sha256_hex, Sha};
+
+fn tmp(name: &str) -> PathBuf {
+    let p = std::env::temp_dir().join(format!("reco_minimap_test_{name}_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&p);
+    std::fs::create_dir_all(&p).unwrap();
+    p
+}
+
+fn make_export(dir: &PathBuf, sport: &str, tamper: bool) {
+    std::fs::create_dir_all(dir).unwrap();
+    std::fs::write(dir.join("rfdetr-small.onnx"), b"not a real model, just bytes").unwrap();
+    let sha = sha256_hex(&dir.join("rfdetr-small.onnx")).unwrap();
+    let sha = if tamper { "0".repeat(64) } else { sha };
+    std::fs::write(dir.join("runtime.json"), format!(r#"{{"schemaVersion":1,"modelId":"club-{sport}","artifact":{{"file":"rfdetr-small.onnx","sha256":"{sha}"}},"inputSize":512,"classes":["ball","player","goalkeeper","referee","ignore"],"sport":"{sport}"}}"#)).unwrap();
+    std::fs::write(dir.join("model-card.json"), format!(r#"{{"name":"club-{sport}","sport":"{sport}","artifacts":[{{"file":"rfdetr-small.onnx","sha256":"{sha}"}}]}}"#)).unwrap();
+}
+
+#[test]
+fn import_reco_trainer_export_keeps_sport_classes_and_checksum() {
+    let root = tmp("import");
+    let src = root.join("export");
+    make_export(&src, "football", false);
+    let models = root.join("project").join("models");
+    let m = import(&src, &models).unwrap();
+    assert_eq!(m.sport.as_deref(), Some("football"));
+    assert_eq!(m.classes, vec!["ball", "player", "goalkeeper", "referee", "ignore"]);
+    assert_eq!(m.sha, Sha::Ok);
+    assert!(m.onnx.exists() && m.dir.starts_with(&models));
+    // importing the same export again must not overwrite the first copy
+    let m2 = import(&src, &models).unwrap();
+    assert_ne!(m.dir, m2.dir);
+    assert_eq!(reco_minimap::tools::models::list(&models).len(), 2);
+}
+
+#[test]
+fn damaged_weights_are_rejected() {
+    let root = tmp("bad");
+    let src = root.join("export");
+    make_export(&src, "basketball", true);
+    assert_eq!(inspect(&src).unwrap().sha, Sha::Bad);
+    let err = import(&src, &root.join("models")).unwrap_err();
+    assert!(err.contains("Prüfsumme"), "{err}");
+    assert!(!root.join("models").exists() || std::fs::read_dir(root.join("models")).unwrap().count() == 0);
+}
+
+#[test]
+fn bare_onnx_gets_a_runtime_json() {
+    let root = tmp("bare");
+    let f = root.join("my model.onnx");
+    std::fs::write(&f, b"bytes").unwrap();
+    let m = import(&f, &root.join("models")).unwrap();
+    assert!(m.dir.join("runtime.json").exists());
+    assert_eq!(m.classes, vec!["ball", "player", "referee", "ignore"]);
+    assert_eq!(m.sha, Sha::None);
+    assert!(inspect(&root.join("nothing")).is_err());
+}
+
+#[test]
+fn court_json_roundtrip_keeps_sport_and_old_files_still_load() {
+    let root = tmp("court");
+    let c = CourtCalib {
+        pano_w: 1920,
+        pano_h: 1080,
+        sport: "custom".into(),
+        field_m: (30.0, 16.0),
+        team_size: 6,
+        referees: 1,
+        points: (0..4).map(|i| CalPoint { name: format!("p{i}"), pano: reco_minimap::geom::Vec2::new(i as f32 * 0.2, 0.3 + 0.1 * (i % 2) as f32), court: reco_minimap::geom::Vec2::new(i as f32 * 5.0, 3.0 * (i % 2) as f32) }).collect(),
+        rms_m: 0.1,
+    };
+    let p = root.join("court.json");
+    c.save(&p.to_string_lossy(), "x.mp4").unwrap();
+    let l = CourtCalib::load(&p.to_string_lossy()).unwrap();
+    let prof = l.profile();
+    assert_eq!((prof.field.length, prof.field.width, prof.team_size, prof.referees), (30.0, 16.0, 6, 1));
+    // a version-1 file (before sports existed) means basketball
+    let old = r#"{"version":1,"pano_w":1920,"pano_h":1080,"rms_m":0.04,"points":[
+      {"name":"a","pano":[0.1,0.3],"court":[0,0]},{"name":"b","pano":[0.9,0.3],"court":[28,0]},
+      {"name":"c","pano":[0.95,0.8],"court":[28,15]},{"name":"d","pano":[0.05,0.8],"court":[0,15]}]}"#;
+    let op = root.join("old.json");
+    std::fs::write(&op, old).unwrap();
+    let ol = CourtCalib::load(&op.to_string_lossy()).unwrap();
+    assert_eq!(ol.sport, "basketball");
+    assert_eq!((ol.profile().team_size, ol.profile().field.length), (5, 28.0));
+}
+
+#[test]
+fn localize_finds_the_number_on_a_shirt() {
+    use reco_minimap::tools::ocr::localize;
+    // 60x40 red shirt crop with a white 12x14 block (the "number") off-centre, plus noise-free background
+    let (w, h) = (60usize, 40usize);
+    let mut rgb = vec![0u8; w * h * 3];
+    for i in 0..w * h {
+        rgb[i * 3..i * 3 + 3].copy_from_slice(&[200, 30, 30]);
+    }
+    for y in 10..24 {
+        for x in 30..42 {
+            rgb[(y * w + x) * 3..(y * w + x) * 3 + 3].copy_from_slice(&[255, 255, 255]);
+        }
+    }
+    let c = localize(w, h, &rgb);
+    assert!(c.w >= 12 && c.w <= 24 && c.h >= 14 && c.h <= 30, "crop {}x{}", c.w, c.h);
+    // plain shirt without any marking: the whole crop comes back unchanged
+    let plain = vec![200u8; w * h * 3];
+    let c = localize(w, h, &plain);
+    assert_eq!((c.w, c.h), (w, h));
+}

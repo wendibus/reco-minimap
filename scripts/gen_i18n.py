@@ -1,0 +1,244 @@
+#!/usr/bin/env python3
+"""Erzeugt src/tools/i18n.js aus der Tabelle unten (jeder Schluessel hat alle vier Sprachen).
+Aufruf:  python3 scripts/gen_i18n.py   (im Projektordner)"""
+import json, os, re, sys
+
+LANGS = ["de", "en", "fr", "es"]
+T = {}
+def add(key, de, en, fr, es): T[key] = dict(de=de, en=en, fr=fr, es=es)
+
+add("lang.name", "Deutsch", "English", "Français", "Español")
+add("app.tagline", "Minimap aus einem Panoramavideo", "Minimap from a panorama video", "Minimap à partir d'une vidéo panoramique", "Minimapa a partir de un vídeo panorámico")
+add("lang.label", "Sprache", "Language", "Langue", "Idioma")
+add("project.folder", "Projektordner", "Project folder", "Dossier du projet", "Carpeta del proyecto")
+add("project.open", "Öffnen", "Open", "Ouvrir", "Abrir")
+add("project.hint", "Hier liegen Modelle, Kalibrierung, Farben und Ergebnisse.", "Models, calibration, colours and results are stored here.", "Modèles, calibrage, couleurs et résultats sont stockés ici.", "Aquí se guardan modelos, calibración, colores y resultados.")
+add("step.setup", "1 · Sportart & Modell", "1 · Sport & model", "1 · Sport et modèle", "1 · Deporte y modelo")
+add("step.video", "2 · Video", "2 · Video", "2 · Vidéo", "2 · Vídeo")
+add("step.calib", "3 · Kalibrierung", "3 · Calibration", "3 · Calibrage", "3 · Calibración")
+add("step.run", "4 · Verarbeiten", "4 · Process", "4 · Traitement", "4 · Procesar")
+add("step.live", "5 · Live", "5 · Live", "5 · Direct", "5 · En vivo")
+add("step.eval", "6 · Auswertung", "6 · Evaluation", "6 · Évaluation", "6 · Evaluación")
+add("btn.browse", "Durchsuchen …", "Browse …", "Parcourir …", "Examinar …")
+add("btn.save", "Speichern", "Save", "Enregistrer", "Guardar")
+add("btn.cancel", "Abbrechen", "Cancel", "Annuler", "Cancelar")
+add("btn.reveal", "Im Ordner zeigen", "Show in folder", "Afficher dans le dossier", "Mostrar en la carpeta")
+add("status.idle", "bereit", "ready", "prêt", "listo")
+add("status.running", "läuft …", "running …", "en cours …", "en curso …")
+add("status.done", "fertig", "done", "terminé", "terminado")
+add("status.failed", "fehlgeschlagen", "failed", "échec", "falló")
+add("status.error", "Fehler: {m}", "Error: {m}", "Erreur : {m}", "Error: {m}")
+add("log.title", "Protokoll", "Log", "Journal", "Registro")
+add("log.note", "Die Protokollzeilen kommen vom Programm und sind auf Deutsch.", "Log lines come from the engine and are in German.", "Les lignes du journal viennent du programme et sont en allemand.", "Las líneas del registro vienen del programa y están en alemán.")
+
+add("sport.label", "Sportart", "Sport", "Sport", "Deporte")
+add("sport.basketball", "Basketball", "Basketball", "Basket-ball", "Baloncesto")
+add("sport.football", "Fußball", "Football (soccer)", "Football", "Fútbol")
+add("sport.futsal", "Futsal", "Futsal", "Futsal", "Fútbol sala")
+add("sport.handball", "Handball", "Handball", "Handball", "Balonmano")
+add("sport.volleyball", "Volleyball", "Volleyball", "Volley-ball", "Voleibol")
+add("sport.rugby", "Rugby", "Rugby", "Rugby", "Rugby")
+add("sport.lacrosse", "Lacrosse", "Lacrosse", "Crosse (lacrosse)", "Lacrosse")
+add("sport.american_football", "American Football", "American football", "Football américain", "Fútbol americano")
+add("sport.hockey", "Hockey (Feld)", "Hockey (field)", "Hockey (sur gazon)", "Hockey (hierba)")
+add("sport.custom", "Andere Sportart (Rechteckfeld)", "Other sport (rectangular field)", "Autre sport (terrain rectangulaire)", "Otro deporte (campo rectangular)")
+add("sport.custom_hint", "Für Sportarten ohne eigenes Profil: Rechteckfeld mit Mittellinie und Mittelkreis.", "For sports without a profile: a rectangular field with halfway line and centre circle.", "Pour les sports sans profil : terrain rectangulaire avec ligne médiane et rond central.", "Para deportes sin perfil: campo rectangular con línea central y círculo central.")
+add("sport.length", "Länge (m)", "Length (m)", "Longueur (m)", "Largo (m)")
+add("sport.width", "Breite (m)", "Width (m)", "Largeur (m)", "Ancho (m)")
+add("sport.team", "Spieler je Team", "Players per team", "Joueurs par équipe", "Jugadores por equipo")
+add("sport.refs", "Schiedsrichter (max.)", "Referees (max.)", "Arbitres (max.)", "Árbitros (máx.)")
+add("sport.note", "Standardmaße. Weicht dein Feld ab, werden die Ecken bei der Kalibrierung darauf skaliert.", "Standard dimensions. If your field differs, the corners are scaled to it during calibration.", "Dimensions standard. Si votre terrain diffère, les coins sont mis à l'échelle lors du calibrage.", "Medidas estándar. Si tu campo es distinto, las esquinas se escalan durante la calibración.")
+
+add("model.title", "Modell (aus Reco Trainer)", "Model (from Reco Trainer)", "Modèle (de Reco Trainer)", "Modelo (de Reco Trainer)")
+add("model.import", "Modell importieren", "Import model", "Importer un modèle", "Importar modelo")
+add("model.import_hint", "Wähle den von Reco Trainer exportierten Ordner (mit runtime.json und der .onnx-Datei) oder direkt eine .onnx-Datei.", "Choose the folder exported by Reco Trainer (with runtime.json and the .onnx file) or an .onnx file directly.", "Choisissez le dossier exporté par Reco Trainer (avec runtime.json et le fichier .onnx) ou directement un fichier .onnx.", "Elige la carpeta exportada por Reco Trainer (con runtime.json y el archivo .onnx) o directamente un archivo .onnx.")
+add("model.path", "Pfad zum Modell", "Path to the model", "Chemin du modèle", "Ruta del modelo")
+add("model.none", "Noch kein Modell importiert.", "No model imported yet.", "Aucun modèle importé.", "Aún no hay ningún modelo importado.")
+add("model.sport", "Sportart im Modell", "Sport in the model", "Sport du modèle", "Deporte del modelo")
+add("model.classes", "Klassen", "Classes", "Classes", "Clases")
+add("model.input", "Eingabegröße", "Input size", "Taille d'entrée", "Tamaño de entrada")
+add("model.sha_ok", "Prüfsumme stimmt", "checksum OK", "somme de contrôle correcte", "suma de verificación correcta")
+add("model.sha_bad", "Prüfsumme stimmt NICHT", "checksum does NOT match", "somme de contrôle INCORRECTE", "la suma de verificación NO coincide")
+add("model.sha_none", "keine Prüfsumme vorhanden", "no checksum available", "pas de somme de contrôle", "sin suma de verificación")
+add("model.use", "Verwenden", "Use", "Utiliser", "Usar")
+add("model.active", "aktiv", "active", "actif", "activo")
+add("model.test", "Modell am Video prüfen", "Check model on the video", "Tester le modèle sur la vidéo", "Probar el modelo con el vídeo")
+add("model.test_hint", "Lässt das Modell auf ein paar Bildern des Videos laufen und zeigt Spieler pro Bild, Ballerkennung und Tempo (Ergebnis im Protokoll unten). Braucht ein gewähltes Video (Schritt 2).", "Runs the model on a few frames of the video and reports players per frame, ball detections and speed (result in the log below). Needs a video chosen in step 2.", "Exécute le modèle sur quelques images de la vidéo et indique joueurs par image, détection du ballon et vitesse (résultat dans le journal en bas). Nécessite une vidéo choisie à l'étape 2.", "Ejecuta el modelo en unos fotogramas del vídeo e indica jugadores por fotograma, detección del balón y velocidad (resultado en el registro de abajo). Necesita un vídeo elegido en el paso 2.")
+add("model.mismatch", "Das Modell ist für „{m}“ trainiert, gewählt ist „{s}“.", "The model was trained for “{m}”, but “{s}” is selected.", "Le modèle est entraîné pour « {m} », mais « {s} » est sélectionné.", "El modelo se entrenó para «{m}», pero está seleccionado «{s}».")
+add("model.need_path", "Bitte zuerst einen Ordner oder eine .onnx-Datei wählen.", "Please choose a folder or an .onnx file first.", "Veuillez d'abord choisir un dossier ou un fichier .onnx.", "Elige primero una carpeta o un archivo .onnx.")
+add("model.import_folder", "Ordner wählen und importieren …", "Choose folder and import …", "Choisir un dossier et importer …", "Elegir carpeta e importar …")
+add("model.import_file", ".onnx-Datei wählen und importieren …", "Choose .onnx file and import …", "Choisir un fichier .onnx et importer …", "Elegir archivo .onnx e importar …")
+add("model.import_path", "Pfad importieren", "Import path", "Importer le chemin", "Importar ruta")
+add("model.imported", "Importiert: {id}", "Imported: {id}", "Importé : {id}", "Importado: {id}")
+
+add("video.title", "Video", "Video", "Vidéo", "Vídeo")
+add("video.path", "Panoramavideo (gestitcht, ganzes Bild)", "Panorama video (stitched, full frame)", "Vidéo panoramique (assemblée, image complète)", "Vídeo panorámico (unido, imagen completa)")
+add("video.hint", "Das ganze Panorama – nicht der KI-Bildausschnitt.", "The whole panorama – not the AI-cropped view.", "Le panorama complet – pas le cadrage de l'IA.", "El panorama completo, no el recorte de la IA.")
+add("video.info", "{w}×{h}, {fps} Bilder/s, {d}", "{w}×{h}, {fps} fps, {d}", "{w}×{h}, {fps} i/s, {d}", "{w}×{h}, {fps} fps, {d}")
+add("video.err", "Video konnte nicht gelesen werden.", "The video could not be read.", "Impossible de lire la vidéo.", "No se pudo leer el vídeo.")
+
+add("cal.title", "Kalibrierung", "Calibration", "Calibrage", "Calibración")
+add("cal.field", "Spielfeld kalibrieren", "Calibrate the field", "Calibrer le terrain", "Calibrar el campo")
+add("cal.field_hint", "Feldpunkte im Bild anklicken (öffnet eine Seite im Browser).", "Click field points in the image (opens a page in your browser).", "Cliquez sur des points du terrain dans l'image (ouvre une page dans le navigateur).", "Haz clic en puntos del campo en la imagen (abre una página en el navegador).")
+add("cal.time", "Zeitpunkt im Video (s)", "Moment in the video (s)", "Instant dans la vidéo (s)", "Momento del vídeo (s)")
+add("cal.field_btn", "Kalibrierung starten", "Start calibration", "Lancer le calibrage", "Iniciar calibración")
+add("cal.field_state", "{n} Punkte, Fehler {rms} m", "{n} points, error {rms} m", "{n} points, erreur {rms} m", "{n} puntos, error {rms} m")
+add("cal.field_none", "Noch nicht kalibriert.", "Not calibrated yet.", "Pas encore calibré.", "Aún sin calibrar.")
+add("cal.scales", "Spielergrößen messen", "Measure player sizes", "Mesurer la taille des joueurs", "Medir el tamaño de los jugadores")
+add("cal.scales_hint", "Misst, wie groß Spieler je Bildzeile sind, damit jede Entfernung im passenden Maßstab erkannt wird.", "Measures how large players appear at each image row so every distance is detected at a suitable scale.", "Mesure la taille des joueurs selon la ligne de l'image pour détecter chaque distance à la bonne échelle.", "Mide qué tan grandes se ven los jugadores en cada fila de la imagen para detectar cada distancia a la escala adecuada.")
+add("cal.scales_btn", "Messen", "Measure", "Mesurer", "Medir")
+add("cal.scales_state", "gemessen ({n} Messpunkte)", "measured ({n} samples)", "mesuré ({n} échantillons)", "medido ({n} muestras)")
+add("cal.scales_none", "Noch nicht gemessen.", "Not measured yet.", "Pas encore mesuré.", "Aún sin medir.")
+add("cal.colors", "Trikotfarben", "Shirt colours", "Couleurs des maillots", "Colores de las camisetas")
+add("cal.colors_hint", "Wird aus dem Video ermittelt. Du kannst die Farben auch von Hand setzen und Heim/Gast tauschen (die Erkennungsfarbe ist die im Video sichtbare, oft etwas dunkler als das echte Trikot).", "Detected from the video. You can also set the colours by hand and swap home/away (the detection colour is the one seen in the video, often a bit darker than the real shirt).", "Détecté à partir de la vidéo. Vous pouvez aussi définir les couleurs à la main et inverser domicile/extérieur (la couleur de détection est celle visible dans la vidéo, souvent un peu plus sombre que le vrai maillot).", "Se detecta a partir del vídeo. También puedes fijar los colores a mano e intercambiar local/visitante (el color de detección es el que se ve en el vídeo, a menudo algo más oscuro que la camiseta real).")
+add("cal.colors_btn", "Farben ermitteln", "Detect colours", "Détecter les couleurs", "Detectar colores")
+add("cal.home", "Heim (Erkennung)", "Home (detection)", "Domicile (détection)", "Local (detección)")
+add("cal.away", "Gast (Erkennung)", "Away (detection)", "Extérieur (détection)", "Visitante (detección)")
+add("cal.draw_home", "Heim (Darstellung)", "Home (display)", "Domicile (affichage)", "Local (visualización)")
+add("cal.draw_away", "Gast (Darstellung)", "Away (display)", "Extérieur (affichage)", "Visitante (visualización)")
+add("cal.referee", "Schiedsrichter-Farbe", "Referee colour", "Couleur des arbitres", "Color de los árbitros")
+add("cal.swap", "Tauschen", "Swap", "Inverser", "Intercambiar")
+add("cal.need_setup", "Wähle zuerst Modell und Video.", "Choose a model and a video first.", "Choisissez d'abord un modèle et une vidéo.", "Elige primero un modelo y un vídeo.")
+
+add("run.title", "Verarbeiten", "Process", "Traitement", "Procesar")
+add("run.segments", "Abschnitte", "Segments", "Segments", "Segmentos")
+add("run.add", "Abschnitt hinzufügen", "Add segment", "Ajouter un segment", "Añadir segmento")
+add("run.name", "Name", "Name", "Nom", "Nombre")
+add("run.start", "Start (s)", "Start (s)", "Début (s)", "Inicio (s)")
+add("run.duration", "Dauer (s)", "Duration (s)", "Durée (s)", "Duración (s)")
+add("run.whole", "ganzes Video", "whole video", "vidéo entière", "vídeo completo")
+add("run.every", "Erkennung bei jedem N-ten Bild", "Detect on every Nth frame", "Détecter toutes les N images", "Detectar cada N fotogramas")
+add("run.every_hint", "Höher = schneller. Dazwischen wird die Bewegung interpoliert.", "Higher = faster. Movement is interpolated in between.", "Plus élevé = plus rapide. Le mouvement est interpolé entre-temps.", "Más alto = más rápido. El movimiento se interpola entre medias.")
+add("run.outputs", "Ausgaben", "Outputs", "Sorties", "Salidas")
+add("run.out_minimap", "Minimap-Video", "Minimap video", "Vidéo de la minimap", "Vídeo del minimapa")
+add("run.out_alpha", "Overlay mit Transparenz (.mov)", "Overlay with transparency (.mov)", "Overlay avec transparence (.mov)", "Superposición con transparencia (.mov)")
+add("run.out_pip", "Panorama mit Boxen und Minimap (zur Kontrolle)", "Panorama with boxes and minimap (for checking)", "Panorama avec cadres et minimap (contrôle)", "Panorama con recuadros y minimapa (para comprobar)")
+add("run.out_json", "Daten (.jsonl)", "Data (.jsonl)", "Données (.jsonl)", "Datos (.jsonl)")
+add("run.alpha_bg", "Dunkle Unterlage im Overlay (0–1)", "Dark backing in the overlay (0–1)", "Fond sombre de l'overlay (0–1)", "Fondo oscuro de la superposición (0–1)")
+add("run.min_alpha", "Deckkraft nicht erkannter Spieler (0–1)", "Opacity of undetected players (0–1)", "Opacité des joueurs non détectés (0–1)", "Opacidad de jugadores no detectados (0–1)")
+add("run.ep", "Rechner", "Compute", "Calcul", "Cálculo")
+add("run.ep_auto", "automatisch", "automatic", "automatique", "automático")
+add("run.start_btn", "Starten", "Start", "Démarrer", "Iniciar")
+add("run.stop_btn", "Abbrechen", "Cancel", "Annuler", "Cancelar")
+add("run.output_dir", "Ergebnisse liegen in", "Results are in", "Les résultats sont dans", "Los resultados están en")
+add("run.need_cal", "Zuerst kalibrieren und Farben ermitteln (Schritt 3).", "Calibrate and detect colours first (step 3).", "Calibrez et détectez d'abord les couleurs (étape 3).", "Primero calibra y detecta los colores (paso 3).")
+add("run.queue", "Abschnitt {i} von {n}: {name}", "Segment {i} of {n}: {name}", "Segment {i} sur {n} : {name}", "Segmento {i} de {n}: {name}")
+
+add("run.numbers", "Trikotnummern lesen und anzeigen", "Read and show jersey numbers", "Lire et afficher les numéros de maillot", "Leer y mostrar los dorsales")
+add("run.numbers_hint", "Erkennt auch Wechsel: Die Nummer eines Platzes ändert sich, oder ein Spieler verlässt das Feld und jemand kommt am Rand. Braucht Spieler ab etwa 80 px Höhe im Bild.", "Also detects substitutions: the number of a slot changes, or a player leaves the field and someone enters at the edge. Needs players about 80 px tall or more in the image.", "Détecte aussi les remplacements : le numéro d'une place change, ou un joueur quitte le terrain et quelqu'un entre sur le bord. Nécessite des joueurs d'environ 80 px de haut ou plus.", "También detecta cambios: cambia el dorsal de un puesto, o un jugador sale del campo y alguien entra por el borde. Necesita jugadores de unos 80 px de alto o más.")
+add("run.hires", "Höher aufgelöstes Panorama für die Nummern (optional)", "Higher-resolution panorama for the numbers (optional)", "Panorama en plus haute résolution pour les numéros (facultatif)", "Panorama de mayor resolución para los dorsales (opcional)")
+add("run.hires_hint", "Dasselbe Panorama in größerer Auflösung mit gleicher Zeitachse. Die Erkennung läuft weiter im kleineren Video.", "The same panorama in a larger size on the same timeline. Detection still runs on the smaller video.", "Le même panorama en plus grande taille sur la même ligne de temps. La détection continue sur la vidéo plus petite.", "El mismo panorama en mayor tamaño y con la misma línea de tiempo. La detección sigue en el vídeo más pequeño.")
+add("run.roster_home", "Kader Heim (Nummern, mit Komma)", "Home squad (numbers, comma separated)", "Effectif domicile (numéros, séparés par des virgules)", "Plantilla local (dorsales, separados por comas)")
+add("run.roster_away", "Kader Gast (Nummern, mit Komma)", "Away squad (numbers, comma separated)", "Effectif extérieur (numéros, séparés par des virgules)", "Plantilla visitante (dorsales, separados por comas)")
+add("run.roster_hint", "Mit Kader wählt die Erkennung nur unter diesen Nummern – deutlich zuverlässiger.", "With a squad the reader only chooses among these numbers – much more reliable.", "Avec un effectif, la lecture ne choisit que parmi ces numéros – bien plus fiable.", "Con plantilla, la lectura solo elige entre estos dorsales: es mucho más fiable.")
+add("run.ocr_ok", "Nummern-Modell vorhanden", "Number model installed", "Modèle de numéros installé", "Modelo de dorsales instalado")
+add("run.ocr_missing", "Das Nummern-Modell fehlt (einmalig laden, ca. 11 MB, Apache-2.0).", "The number model is missing (download once, about 11 MB, Apache-2.0).", "Le modèle de numéros manque (à télécharger une fois, environ 11 Mo, Apache-2.0).", "Falta el modelo de dorsales (descargar una vez, unos 11 MB, Apache-2.0).")
+add("run.ocr_fetch", "Modell laden", "Download model", "Télécharger le modèle", "Descargar modelo")
+add("team.home", "Heim", "Home", "Domicile", "Local")
+add("team.away", "Gast", "Away", "Extérieur", "Visitante")
+add("evt.sub_confirmed", "Wechsel {team}: {out} → {in}", "Substitution {team}: {out} → {in}", "Remplacement {team} : {out} → {in}", "Cambio {team}: {out} → {in}")
+add("evt.sub_possible", "Möglicher Wechsel {team}: {out} verlässt das Feld", "Possible substitution {team}: {out} leaves the field", "Remplacement possible {team} : {out} quitte le terrain", "Posible cambio {team}: {out} sale del campo")
+add("run.scenes", "Spielsituationen erkennen (Einwurf, Freiwurf, Anstoß, Elfmeter, Ecke, 7 Meter, 2er/3er …)", "Detect game situations (throw-in, free throw, kick-off, penalty, corner, 7 m, 2/3-pointers …)", "Détecter les situations de jeu (touche, lancer franc, coup d'envoi, penalty, corner, 7 m, 2/3 points …)", "Detectar situaciones de juego (saque de banda, tiro libre, saque inicial, penalti, córner, 7 m, tiros de 2/3 …)")
+add("run.scenes_hint", "Erkennt Aufstellungen bei Spielunterbrechungen (Spieler stehen an typischen Stellen und bewegen sich kaum) sowie Wurfversuche im Basketball. Welche Situationen es je Sportart gibt, steht in docs/SZENARIEN.de.md.", "Recognises the formations at stoppages (players standing still in typical places) and basketball shot attempts. Which situations exist per sport is listed in docs/SCENARIOS.md.", "Reconnaît les formations lors des arrêts de jeu (joueurs immobiles à des endroits typiques) et les tentatives de tir au basket. Les situations par sport sont listées dans docs/SCENARIOS.md.", "Reconoce las formaciones en las paradas (jugadores quietos en lugares típicos) y los intentos de tiro en baloncesto. Las situaciones por deporte están en docs/SCENARIOS.md.")
+add("scene.tip_off", "Sprungball / Startball", "Tip-off", "Entre-deux", "Salto inicial")
+add("scene.kickoff", "Anstoß", "Kick-off", "Coup d'envoi", "Saque inicial")
+add("scene.throw_off", "Anwurf", "Throw-off", "Remise en jeu initiale", "Saque inicial")
+add("scene.free_throw", "Freiwurf", "Free throw", "Lancer franc", "Tiro libre")
+add("scene.throw_in", "Einwurf", "Throw-in", "Touche", "Saque de banda")
+add("scene.inbound", "Einwurf (Inbound)", "Inbound pass", "Remise en jeu", "Saque de banda")
+add("scene.corner", "Ecke", "Corner", "Corner", "Córner")
+add("scene.penalty", "Elfmeter / Strafstoß", "Penalty", "Penalty", "Penalti")
+add("scene.seven_meter", "7-Meter", "7 m throw", "Jet de 7 m", "Lanzamiento de 7 m")
+add("scene.shot2", "Wurfversuch 2 Punkte", "2-point attempt", "Tir à 2 points", "Intento de 2 puntos")
+add("scene.shot3", "Wurfversuch 3 Punkte", "3-point attempt", "Tir à 3 points", "Intento de 3 puntos")
+add("scene.borderline", "(knapp an der Linie)", "(close to the line)", "(près de la ligne)", "(cerca de la línea)")
+add("scene.line", "{scene} {team}", "{scene} {team}", "{scene} {team}", "{scene} {team}")
+add("live.title", "Live", "Live", "Direct", "En vivo")
+add("live.hint", "Browser-Overlay für OBS und Datenstrom für andere Programme.", "Browser overlay for OBS and a data stream for other programs.", "Overlay navigateur pour OBS et flux de données pour d'autres programmes.", "Superposición de navegador para OBS y flujo de datos para otros programas.")
+add("live.source", "Quelle (Datei, srt://, rtmp://, udp://)", "Source (file, srt://, rtmp://, udp://)", "Source (fichier, srt://, rtmp://, udp://)", "Fuente (archivo, srt://, rtmp://, udp://)")
+add("live.realtime", "Datei in Echtzeit abspielen (Test)", "Play file in real time (test)", "Lire le fichier en temps réel (test)", "Reproducir el archivo en tiempo real (prueba)")
+add("live.size", "Größe (z. B. 1920x1080)", "Size (e.g. 1920x1080)", "Taille (p. ex. 1920x1080)", "Tamaño (p. ej. 1920x1080)")
+add("live.fps", "Bilder/s", "Frames/s", "Images/s", "Fotogramas/s")
+add("live.port", "Port", "Port", "Port", "Puerto")
+add("live.start", "Live starten", "Start live", "Démarrer le direct", "Iniciar en vivo")
+add("live.stop", "Stoppen", "Stop", "Arrêter", "Detener")
+add("live.url", "Overlay-Adresse", "Overlay address", "Adresse de l'overlay", "Dirección de la superposición")
+add("live.obs", "OBS: Quelle „Browser“ hinzufügen, diese Adresse einfügen, Breite 1400, Höhe 800. Der Hintergrund bleibt transparent.", "OBS: add a “Browser” source, paste this address, width 1400, height 800. The background stays transparent.", "OBS : ajoutez une source « Navigateur », collez cette adresse, largeur 1400, hauteur 800. L'arrière-plan reste transparent.", "OBS: añade una fuente «Navegador», pega esta dirección, ancho 1400, alto 800. El fondo permanece transparente.")
+
+add("eval.title", "Auswertung", "Evaluation", "Évaluation", "Evaluación")
+add("eval.file", "Datendatei (.jsonl)", "Data file (.jsonl)", "Fichier de données (.jsonl)", "Archivo de datos (.jsonl)")
+add("eval.btn", "Auswerten", "Evaluate", "Évaluer", "Evaluar")
+
+add("zone1.basketball", "Zone", "Key", "Raquette", "Zona")
+add("zone1.football", "Strafraum", "Penalty area", "Surface de réparation", "Área grande")
+add("zone2.football", "Torraum", "Goal area", "Surface de but", "Área pequeña")
+add("zone1.futsal", "Strafraum", "Penalty area", "Surface de réparation", "Área de penalti")
+add("zone1.handball", "Torraum (6 m)", "Goal area (6 m)", "Surface de but (6 m)", "Área de portería (6 m)")
+add("zone1.hockey", "Schusskreis", "Shooting circle", "Cercle de tir", "Círculo de tiro")
+add("zone1.default", "Zone 1", "Zone 1", "Zone 1", "Zona 1")
+add("zone2.default", "Zone 2", "Zone 2", "Zone 2", "Zona 2")
+
+add("lm.corner_fl", "Ecke links / hinten (weit)", "Corner left / far", "Coin gauche / loin", "Esquina izquierda / lejos")
+add("lm.corner_fr", "Ecke rechts / hinten (weit)", "Corner right / far", "Coin droit / loin", "Esquina derecha / lejos")
+add("lm.corner_nr", "Ecke rechts / vorn (nah)", "Corner right / near", "Coin droit / proche", "Esquina derecha / cerca")
+add("lm.corner_nl", "Ecke links / vorn (nah)", "Corner left / near", "Coin gauche / proche", "Esquina izquierda / cerca")
+add("lm.mid_far", "Mittellinie / hinten (Seitenlinie)", "Halfway line / far (sideline)", "Ligne médiane / loin (touche)", "Línea central / lejos (banda)")
+add("lm.mid_near", "Mittellinie / vorn (Seitenlinie)", "Halfway line / near (sideline)", "Ligne médiane / proche (touche)", "Línea central / cerca (banda)")
+add("lm.center", "Mittelpunkt", "Centre spot", "Point central", "Punto central")
+for n in ("1", "2"):
+    for side, sde, sen, sfr, ses in (("l", "links", "left", "gauche", "izquierda"), ("r", "rechts", "right", "droite", "derecha")):
+        for pos, pde, pen, pfr, pes in (("far", "hinten", "far", "loin", "lejos"), ("near", "vorn", "near", "proche", "cerca")):
+            add(f"lm.z{n}_{side}_{pos}_base", f"{{z}} {sde}: Grundlinie {pde}", f"{{z}} {sen}: end line, {pen}", f"{{z}} {sfr} : ligne de fond, {pfr}", f"{{z}} {ses}: línea de fondo, {pes}")
+            add(f"lm.z{n}_{side}_{pos}_inner", f"{{z}} {sde}: Innenecke {pde}", f"{{z}} {sen}: inner corner, {pen}", f"{{z}} {sfr} : coin intérieur, {pfr}", f"{{z}} {ses}: esquina interior, {pes}")
+add("lm.spot_l", "Punkt links (Strafstoß-/Strafwurfpunkt)", "Spot left (penalty mark)", "Point gauche (point de penalty)", "Punto izquierdo (punto de penalti)")
+add("lm.spot_r", "Punkt rechts (Strafstoß-/Strafwurfpunkt)", "Spot right (penalty mark)", "Point droit (point de penalty)", "Punto derecho (punto de penalti)")
+for side, sde, sen, sfr, ses in (("l", "links", "left", "gauche", "izquierda"), ("r", "rechts", "right", "droite", "derecha")):
+    for pos, pde, pen, pfr, pes in (("far", "hinten", "far", "loin", "lejos"), ("near", "vorn", "near", "proche", "cerca")):
+        add(f"lm.line_{side}_{pos}", f"Linie {sde} / {pde} (Seitenlinie)", f"Line {sen} / {pen} (sideline)", f"Ligne {sfr} / {pfr} (touche)", f"Línea {ses} / {pes} (banda)")
+
+for side, sde, sen, sfr, ses in (("l", "links", "left", "gauche", "izquierda"), ("r", "rechts", "right", "droite", "derecha")):
+    for pos, pde, pen, pfr, pes in (("far", "hinten", "far", "loin", "lejos"), ("near", "vorn", "near", "proche", "cerca")):
+        add(f"lm.line2_{side}_{pos}", f"Linie 2 {sde} / {pde} (Seitenlinie)", f"Line 2 {sen} / {pen} (sideline)", f"Ligne 2 {sfr} / {pfr} (touche)", f"Línea 2 {ses} / {pes} (banda)")
+
+add("calp.title", "Feld-Kalibrierung", "Field calibration", "Calibrage du terrain", "Calibración del campo")
+add("calp.intro", "Klicke die Punkte der Reihe nach im Bild an. Nicht sichtbare Punkte mit der Leertaste überspringen. Mindestens 4, besser 8 oder mehr, über das ganze Feld verteilt. Mausrad = Zoom, Ziehen = Verschieben, Rücktaste = letzten Punkt entfernen, F = ganzes Bild.", "Click the points in the image one after another. Skip points you cannot see with the space bar. At least 4, better 8 or more, spread over the whole field. Mouse wheel = zoom, drag = pan, backspace = remove last point, F = fit image.", "Cliquez sur les points dans l'image l'un après l'autre. Passez ceux que vous ne voyez pas avec la barre d'espace. Au moins 4, idéalement 8 ou plus, répartis sur tout le terrain. Molette = zoom, glisser = déplacer, retour arrière = supprimer le dernier point, F = image entière.", "Haz clic en los puntos de la imagen uno tras otro. Salta los que no veas con la barra espaciadora. Al menos 4, mejor 8 o más, repartidos por todo el campo. Rueda = zoom, arrastrar = mover, retroceso = quitar el último punto, F = imagen completa.")
+add("calp.sides", "„hinten“ = Seitenlinie weiter weg von der Kamera, „vorn“ = nah an der Kamera, „links/rechts“ wie im Bild.", "“far” = the sideline further from the camera, “near” = close to the camera, “left/right” as seen in the image.", "« loin » = la touche la plus éloignée de la caméra, « proche » = près de la caméra, « gauche/droite » comme sur l'image.", "«lejos» = la banda más alejada de la cámara, «cerca» = próxima a la cámara, «izquierda/derecha» como se ve en la imagen.")
+add("calp.none", "Noch keine Punkte.", "No points yet.", "Aucun point pour l'instant.", "Aún no hay puntos.")
+add("calp.need", "{n} Punkt(e) – noch {m} bis zur ersten Berechnung.", "{n} point(s) – {m} more for the first calculation.", "{n} point(s) – encore {m} pour le premier calcul.", "{n} punto(s): faltan {m} para el primer cálculo.")
+add("calp.rms", "Fehler (RMS)", "Error (RMS)", "Erreur (RMS)", "Error (RMS)")
+add("calp.points", "{n} Punkte", "{n} points", "{n} points", "{n} puntos")
+add("calp.more", "besser 8 oder mehr Punkte", "better 8 or more points", "idéalement 8 points ou plus", "mejor 8 o más puntos")
+add("calp.high", "Fehler hoch: Punkte prüfen oder weitere ergänzen", "Error is high: check the points or add more", "Erreur élevée : vérifiez les points ou ajoutez-en", "Error alto: revisa los puntos o añade más")
+add("calp.undo", "Letzten entfernen", "Remove last", "Supprimer le dernier", "Quitar el último")
+add("calp.skip", "Überspringen", "Skip", "Passer", "Saltar")
+add("calp.save", "Speichern", "Save", "Enregistrer", "Guardar")
+add("calp.saved", "Gespeichert", "Saved", "Enregistré", "Guardado")
+add("calp.saved_hint", "Fehler {rms} m. Du kannst das Fenster schließen.", "Error {rms} m. You can close this window.", "Erreur {rms} m. Vous pouvez fermer cette fenêtre.", "Error {rms} m. Puedes cerrar esta ventana.")
+add("calp.privacy", "Das Bild verlässt deinen Rechner nicht (lokaler Server auf 127.0.0.1).", "The image never leaves your computer (local server on 127.0.0.1).", "L'image ne quitte pas votre ordinateur (serveur local sur 127.0.0.1).", "La imagen no sale de tu ordenador (servidor local en 127.0.0.1).")
+add("calp.scaled", "Bei abweichenden Feldmaßen werden die Ecken auf {l}×{w} m skaliert – Innenpunkte nur klicken, wenn das Feld normgerecht ist.", "If your field has other dimensions, the corners are scaled to {l}×{w} m – only click inner points if the field is standard.", "Si le terrain a d'autres dimensions, les coins sont mis à l'échelle {l}×{w} m – ne cliquez les points intérieurs que si le terrain est aux normes.", "Si tu campo tiene otras medidas, las esquinas se escalan a {l}×{w} m; haz clic en los puntos interiores solo si el campo es reglamentario.")
+
+# --- consistency checks
+for k, d in T.items():
+    assert set(d) == set(LANGS), k
+    ph = [set(re.findall(r"\{(\w+)\}", d[l])) for l in LANGS]
+    assert all(p == ph[0] for p in ph), f"placeholder mismatch in {k}: {ph}"
+
+out = "// Erzeugt von scripts/gen_i18n.py - nicht von Hand bearbeiten.\n"
+out += "const I18N = " + json.dumps({l: {k: v[l] for k, v in T.items()} for l in LANGS}, ensure_ascii=False, indent=1) + ";\n"
+out += r"""
+let LANG = (() => { const q = new URLSearchParams(location.search).get('lang'); const s = (typeof localStorage !== 'undefined') ? localStorage.getItem('lang') : null; const n = (navigator.language || 'de').slice(0, 2); return [q, s, n].find(x => x && I18N[x]) || 'de'; })();
+function setLang(l) { if (I18N[l]) { LANG = l; try { localStorage.setItem('lang', l); } catch (e) {} } }
+function T(key, vars) {
+  let s = (I18N[LANG] && I18N[LANG][key]); if (s === undefined) s = I18N.en[key]; if (s === undefined) return key;
+  if (vars) for (const k in vars) s = s.split('{' + k + '}').join(vars[k]);
+  return s;
+}
+function landmarkLabel(key, sport) {
+  let s = T('lm.' + key);
+  if (s.includes('{z}')) { const zn = key.startsWith('z2') ? 'zone2.' : 'zone1.'; const zk = zn + sport; s = s.split('{z}').join(I18N.en[zk] !== undefined ? T(zk) : T(zn + 'default')); }
+  return s;
+}
+"""
+dst = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "tools", "i18n.js")
+open(dst, "w", encoding="utf-8").write(out)
+print("geschrieben:", os.path.normpath(dst), len(T), "Schluessel x", len(LANGS), "Sprachen")

@@ -2,7 +2,8 @@
 //! Output can go to OBS (`reco-obs`), a PiP via FFmpeg, or a PNG/PPM.
 
 use crate::ball::BallState;
-use crate::geom::{Vec2, COURT_LENGTH, COURT_WIDTH};
+use crate::geom::Vec2;
+use crate::sport::SportProfile;
 use crate::team::Team;
 use crate::{AgentOut, FrameState};
 
@@ -20,6 +21,11 @@ pub struct Theme {
     pub ball: Rgb,
     pub holder_ring: Rgb,
     pub background_alpha: u8,
+    /// Lower bound for the opacity of dots whose player is currently not detected (coasting).
+    /// A low value turns a white shirt into a grey dot on the dark floor.
+    pub min_alpha: f32,
+    /// Draw jersey numbers on the dots (and make the dots a bit larger so two digits fit).
+    pub show_numbers: bool,
 }
 
 impl Default for Theme {
@@ -35,6 +41,8 @@ impl Default for Theme {
             ball: [255, 140, 0],
             holder_ring: [255, 140, 0],
             background_alpha: 255,
+            min_alpha: 0.8,
+            show_numbers: false,
         }
     }
 }
@@ -110,82 +118,117 @@ impl Canvas {
     }
 }
 
+/// 5x7 pixel digits (rows top to bottom, 5 bits each).
+const FONT: [[u8; 7]; 10] = [
+    [0b01110, 0b10001, 0b10011, 0b10101, 0b11001, 0b10001, 0b01110],
+    [0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110],
+    [0b01110, 0b10001, 0b00001, 0b00010, 0b00100, 0b01000, 0b11111],
+    [0b11110, 0b00001, 0b00001, 0b01110, 0b00001, 0b00001, 0b11110],
+    [0b00010, 0b00110, 0b01010, 0b10010, 0b11111, 0b00010, 0b00010],
+    [0b11111, 0b10000, 0b11110, 0b00001, 0b00001, 0b10001, 0b01110],
+    [0b00110, 0b01000, 0b10000, 0b11110, 0b10001, 0b10001, 0b01110],
+    [0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000],
+    [0b01110, 0b10001, 0b10001, 0b01110, 0b10001, 0b10001, 0b01110],
+    [0b01110, 0b10001, 0b10001, 0b01111, 0b00001, 0b00010, 0b01100],
+];
+
+impl Canvas {
+    /// Draw a 0-99 number centred at (`cx`,`cy`), `height` px tall, anti-aliased.
+    pub fn number(&mut self, cx: f32, cy: f32, n: u8, height: f32, color: Rgb) {
+        let digits: Vec<usize> = n.to_string().bytes().map(|b| (b - b'0') as usize).collect();
+        let units_w = (digits.len() * 5 + digits.len().saturating_sub(1)) as f32; // 1 column gap
+        let sc = height / 7.0;
+        let (w, x0, y0) = (units_w * sc, cx - units_w * sc / 2.0, cy - height / 2.0);
+        let sub = 3usize; // 3x3 samples per pixel
+        for py in (y0.floor().max(0.0) as usize)..=((y0 + height).ceil() as usize).min(self.h.saturating_sub(1)) {
+            for px in (x0.floor().max(0.0) as usize)..=((x0 + w).ceil() as usize).min(self.w.saturating_sub(1)) {
+                let mut hit = 0usize;
+                for sy in 0..sub {
+                    for sx in 0..sub {
+                        let u = ((px as f32 + (sx as f32 + 0.5) / sub as f32) - x0) / sc; // glyph units
+                        let v = ((py as f32 + (sy as f32 + 0.5) / sub as f32) - y0) / sc;
+                        if u < 0.0 || v < 0.0 || v >= 7.0 {
+                            continue;
+                        }
+                        let cell = (u / 6.0).floor() as usize; // 5 columns + 1 gap per digit
+                        let col = u - cell as f32 * 6.0;
+                        if cell < digits.len() && col < 5.0 && (FONT[digits[cell]][v as usize] >> (4 - col as usize)) & 1 == 1 {
+                            hit += 1;
+                        }
+                    }
+                }
+                if hit > 0 {
+                    self.blend(px, py, color, hit as f32 / (sub * sub) as f32);
+                }
+            }
+        }
+    }
+}
+
 pub struct Renderer {
     pub theme: Theme,
+    pub profile: SportProfile,
 }
 
 impl Renderer {
+    /// Basketball court (the original look).
     pub fn new(theme: Theme) -> Self {
-        Self { theme }
+        Self { theme, profile: SportProfile::basketball() }
+    }
+
+    pub fn with_profile(theme: Theme, profile: SportProfile) -> Self {
+        Self { theme, profile }
+    }
+
+    /// Marker scale: dots, lines and padding grow on bigger fields so they stay visible.
+    fn k(&self) -> f32 {
+        (self.profile.field.length / 28.0).sqrt().max(0.8)
+    }
+
+    /// A pixels-per-metre value that gives a ~900 px wide picture for this field.
+    pub fn default_px_per_m(profile: &SportProfile) -> f32 {
+        let k = (profile.field.length / 28.0).sqrt().max(0.8);
+        900.0 / (profile.field.length + 3.0 * k)
     }
 
     pub fn size(&self) -> (usize, usize) {
-        let t = &self.theme;
-        (((COURT_LENGTH + 2.0 * t.pad_m) * t.px_per_m).round() as usize, ((COURT_WIDTH + 2.0 * t.pad_m) * t.px_per_m).round() as usize)
+        let (t, f, k) = (&self.theme, &self.profile.field, self.k());
+        (((f.length + 2.0 * t.pad_m * k) * t.px_per_m).round() as usize, ((f.width + 2.0 * t.pad_m * k) * t.px_per_m).round() as usize)
     }
 
     fn px(&self, p: Vec2) -> (f32, f32) {
-        let t = &self.theme;
-        ((p.x + t.pad_m) * t.px_per_m, (p.y + t.pad_m) * t.px_per_m)
-    }
-
-    fn poly(&self, c: &mut Canvas, pts: &[Vec2], th: f32) {
-        for w in pts.windows(2) {
-            c.line(self.px(w[0]), self.px(w[1]), th, self.theme.lines, 1.0);
-        }
-    }
-
-    fn arc(&self, centre: Vec2, r: f32, a0: f32, a1: f32) -> Vec<Vec2> {
-        let n = 48;
-        (0..=n)
-            .map(|i| {
-                let a = a0 + (a1 - a0) * i as f32 / n as f32;
-                Vec2::new(centre.x + r * a.cos(), centre.y + r * a.sin())
-            })
-            .collect()
+        let (t, k) = (&self.theme, self.k());
+        ((p.x + t.pad_m * k) * t.px_per_m, (p.y + t.pad_m * k) * t.px_per_m)
     }
 
     pub fn draw_court(&self, c: &mut Canvas) {
-        let th = (0.08 * self.theme.px_per_m).max(1.5);
-        let (l, w) = (COURT_LENGTH, COURT_WIDTH);
-        let rect = |x0: f32, y0: f32, x1: f32, y1: f32| vec![Vec2::new(x0, y0), Vec2::new(x1, y0), Vec2::new(x1, y1), Vec2::new(x0, y1), Vec2::new(x0, y0)];
-        self.poly(c, &rect(0.0, 0.0, l, w), th);
-        self.poly(c, &[Vec2::new(l / 2.0, 0.0), Vec2::new(l / 2.0, w)], th);
-        self.poly(c, &self.arc(Vec2::new(l / 2.0, w / 2.0), 1.8, 0.0, std::f32::consts::TAU), th);
-        let (key_len, key_w, ft_r, basket, tp_r, tp_side) = (5.8f32, 4.9f32, 1.8f32, 1.575f32, 6.75f32, 0.9f32);
-        for &left in &[true, false] {
-            let s = if left { 1.0 } else { -1.0 };
-            let bx = if left { 0.0 } else { l };
-            let at = |d: f32| bx + s * d;
-            self.poly(c, &rect(at(0.0), (w - key_w) / 2.0, at(key_len), (w + key_w) / 2.0), th);
-            let ft = Vec2::new(at(key_len), w / 2.0);
-            let (a0, a1) = if left { (-std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_2) } else { (std::f32::consts::FRAC_PI_2, 3.0 * std::f32::consts::FRAC_PI_2) };
-            self.poly(c, &self.arc(ft, ft_r, a0, a1), th);
-            let bk = Vec2::new(at(basket), w / 2.0);
-            let (x, y) = self.px(bk);
-            c.disc(x, y, 0.23 * self.theme.px_per_m, 0.23 * self.theme.px_per_m - th, self.theme.lines, 1.0);
-            // three-point line: straight sections 0.9 m from the sidelines + arc
-            let dy = w / 2.0 - tp_side;
-            let ang = (dy / tp_r).clamp(-1.0, 1.0).asin();
-            let ex = tp_r * ang.cos();
-            let (p0, p1) = (Vec2::new(at(0.0), tp_side), Vec2::new(at(basket + ex), tp_side));
-            let (q0, q1) = (Vec2::new(at(0.0), w - tp_side), Vec2::new(at(basket + ex), w - tp_side));
-            self.poly(c, &[p0, p1], th);
-            self.poly(c, &[q0, q1], th);
-            let (b0, b1) = if left { (-ang, ang) } else { (std::f32::consts::PI - ang, std::f32::consts::PI + ang) };
-            self.poly(c, &self.arc(bk, tp_r, b0, b1), th);
+        let th = (0.08 * self.k() * self.theme.px_per_m).max(1.5);
+        for pl in &self.profile.lines {
+            for w in pl.windows(2) {
+                c.line(self.px(w[0]), self.px(w[1]), th, self.theme.lines, 1.0);
+            }
         }
     }
 
     fn agent(&self, c: &mut Canvas, a: &AgentOut, holder: bool) {
         let t = &self.theme;
         let (x, y) = self.px(a.pos);
-        let r = 0.45 * t.px_per_m;
-        let (fill, edge) = if a.referee { (t.referee, [235u8, 235, 235]) } else if a.team == Team::Home { (t.home, [15u8, 15, 15]) } else { (t.away, [15u8, 15, 15]) };
-        c.disc(x, y, r + 1.5, 0.0, edge, a.alpha * 0.9);
-        c.disc(x, y, r, 0.0, fill, a.alpha);
+        let r = 0.45 * self.k() * t.px_per_m * if t.show_numbers { 1.35 } else { 1.0 };
+        let fill = if a.referee { t.referee } else if a.team == Team::Home { t.home } else { t.away };
+        // outline contrasts with the fill so dark shirts stay visible on the dark floor
+        let lum = 0.2126 * fill[0] as f32 + 0.7152 * fill[1] as f32 + 0.0722 * fill[2] as f32;
+        let edge = if lum < 90.0 { [235u8, 235, 235] } else { [15u8, 15, 15] };
+        let alpha = a.alpha.max(t.min_alpha).min(1.0);
+        c.disc(x, y, r + 1.5, 0.0, edge, alpha * 0.9);
+        c.disc(x, y, r, 0.0, fill, alpha);
+        if t.show_numbers {
+            if let Some(n) = a.jersey {
+                let ink = if lum < 140.0 { [255u8, 255, 255] } else { [10u8, 10, 10] };
+                c.number(x, y, n, (r * 1.05).max(7.0), ink);
+            }
+        }
         if holder {
-            c.disc(x, y, r * 1.75, r * 1.75 - (0.13 * t.px_per_m).max(2.0), t.holder_ring, 1.0);
+            c.disc(x, y, r * 1.75, r * 1.75 - (0.13 * self.k() * t.px_per_m).max(2.0), t.holder_ring, 1.0);
         }
     }
 
@@ -201,7 +244,7 @@ impl Renderer {
         if matches!(s.ball.state, BallState::InFlight | BallState::Loose) {
             if let Some(p) = s.ball.pos {
                 let (x, y) = self.px(p);
-                let r = 0.20 * self.theme.px_per_m;
+                let r = 0.20 * self.k() * self.theme.px_per_m;
                 if s.ball.state == BallState::InFlight {
                     c.disc(x + r * 0.5, y + r * 0.9, r * 0.9, 0.0, [0, 0, 0], 0.25); // soft shadow
                 }

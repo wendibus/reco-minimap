@@ -90,3 +90,14 @@ pub fn kmeans(samples: &[[u8; 3]], k: usize) -> Vec<Cluster> {
 pub fn lab_dist(a: [u8; 3], b: [u8; 3]) -> f32 {
     d2(rgb_to_lab(a), rgb_to_lab(b)).sqrt()
 }
+
+/// Split the shirt-colour samples into two teams (2-means in Lab, so a team that appears in two
+/// lighting variants stays one group). Returns the two groups (largest first) and their Lab distance.
+pub fn pick_teams(samples: &[[u8; 3]]) -> Option<(Cluster, Cluster, f32)> {
+    let c = kmeans(samples, 2);
+    if c.len() < 2 {
+        return None;
+    }
+    let d = lab_dist(c[0].rgb, c[1].rgb);
+    Some((c[0].clone(), c[1].clone(), d))
+}

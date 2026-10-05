@@ -227,3 +227,368 @@ fn renders_and_exports_ppm() {
     assert!(ppm.len() > c.w * c.h * 3);
     std::fs::write(std::env::temp_dir().join("minimap_test.ppm"), ppm).unwrap();
 }
+
+#[test]
+fn letterboxed_tile_maps_back() {
+    // 400x200 tile letterboxed into a square: content spans y in [0.25, 0.75] of the input
+    let t = Tile { x: 100, y: 50, w: 400, h: 200 };
+    let d = Det::new(Class::Player, 0.9, 0.5, 0.5, 0.25, 0.25); // centre of the input
+    let m = tile_to_pano(&d, &t, 1000, 500);
+    assert!((m.cx - 0.3).abs() < 1e-5 && (m.cy - 0.3).abs() < 1e-5, "{m:?}"); // tile centre (300,150)
+    assert!((m.w - 0.1).abs() < 1e-5, "{m:?}"); // 0.25*400px/1000
+    assert!((m.h - 0.2).abs() < 1e-5, "{m:?}"); // 0.25 of input = 100 source px / 500
+}
+
+#[test]
+fn black_unmatched_players_become_referees() {
+    let (proj, to_pano) = projector();
+    let mut mm = Minimap::new(Config::new(HOME, AWAY), Box::new(proj));
+    let (home, away, refs) = lineup();
+    let mut s = None;
+    for k in 0..10 {
+        let mut d = frame_dets(&to_pano, &home, &away, &[], &[]);
+        // the model labels referees as "player"; torso colour is black
+        for r in &refs {
+            d.push(player_det(&to_pano, *r, Class::Player, Some([12, 12, 14])));
+        }
+        s = Some(mm.process(k as f64 * 0.04, &d));
+    }
+    let s = s.unwrap();
+    assert_eq!(s.referees.len(), 2, "referees from colour");
+    assert_eq!(s.players.len(), 10);
+}
+
+#[test]
+fn far_false_positive_ball_does_not_steal_tracking() {
+    let (proj, to_pano) = projector();
+    let mut mm = Minimap::new(Config::new(HOME, AWAY), Box::new(proj));
+    let (home, away, refs) = lineup();
+    let mut t = 0.0;
+    let mut last = None;
+    for k in 0..20 {
+        let mut d = frame_dets(&to_pano, &home, &away, &refs, &[]);
+        let f = to_pano.apply(Vec2::new(3.0, 12.0)).unwrap(); // true loose ball, low confidence
+        d.push(Det::new(Class::Ball, 0.45, f.x, f.y - 0.004, 0.004, 0.007));
+        if k >= 10 {
+            let g = to_pano.apply(Vec2::new(24.0, 2.0)).unwrap(); // stronger false positive far away
+            d.push(Det::new(Class::Ball, 0.8, g.x, g.y - 0.004, 0.004, 0.007));
+        }
+        last = Some(mm.process(t, &d));
+        t += 0.04;
+    }
+    let p = last.unwrap().ball.pos.expect("ball position");
+    assert!(p.dist(Vec2::new(3.0, 12.0)) < 2.0, "ball jumped to {p:?}");
+}
+
+#[cfg(feature = "tools")]
+#[test]
+fn scales_fit_and_auto_plan() {
+    use reco_minimap::tools::scales::{plan_auto, Scales};
+    // synthetic perspective: h = 10 + 0.06*y with noise and a few outliers
+    let mut pts = Vec::new();
+    for i in 0..200 {
+        let y = 300.0 + (i as f32) * 3.0;
+        let noise = ((i * 37 % 11) as f32 - 5.0) * 0.4;
+        pts.push((y, 10.0 + 0.06 * y + noise));
+    }
+    pts.push((400.0, 90.0));
+    pts.push((800.0, 5.0));
+    let sc = Scales::fit(&pts, 300.0, 900.0, 28.0).unwrap();
+    assert!((sc.b - 0.06).abs() < 0.005 && (sc.a - 10.0).abs() < 2.0, "{sc:?}");
+    assert!(sc.tile_at(850.0) > sc.tile_at(350.0)); // near players -> larger tile (more downscale)
+    let tiles = plan_auto(&sc, 1920, 1080, 0.25);
+    assert!(!tiles.is_empty() && tiles.len() < 29);
+    assert!(tiles.iter().all(|t| t.x + t.w <= 1920 && t.y + t.h <= 1080 && t.w > 0 && t.h > 0));
+    assert!(tiles.iter().map(|t| t.y + t.h).max().unwrap() >= 880); // reaches the near sideline
+    let sides: Vec<u32> = tiles.iter().map(|t| t.w.max(t.h)).collect();
+    assert!(sides.iter().max() > sides.iter().min(), "expected several scales: {sides:?}");
+}
+
+#[test]
+fn black_referee_next_to_dark_navy_team_needs_ref_color() {
+    let navy = [47u8, 53, 78];
+    let (proj, to_pano) = projector();
+    let mut cfg = Config::new(HOME, navy);
+    cfg.referee_rgb = Some([10, 10, 12]);
+    let mut mm = Minimap::new(cfg, Box::new(proj));
+    let (home, away, refs) = lineup();
+    let mut s = None;
+    for k in 0..10 {
+        let mut d = Vec::new();
+        for p in &home {
+            d.push(player_det(&to_pano, *p, Class::Player, Some(HOME)));
+        }
+        for p in &away {
+            d.push(player_det(&to_pano, *p, Class::Player, Some(navy)));
+        }
+        for r in &refs {
+            d.push(player_det(&to_pano, *r, Class::Player, Some([14, 14, 16]))); // labelled "player" by the model
+        }
+        s = Some(mm.process(k as f64 * 0.04, &d));
+    }
+    let s = s.unwrap();
+    assert_eq!(s.referees.len(), 2);
+    assert_eq!(s.players.iter().filter(|p| p.team == Team::Away).count(), 5);
+}
+
+#[test]
+fn ball_held_is_detected_at_low_processing_rate() {
+    // only every 8th video frame is processed (0.32 s apart)
+    let (proj, to_pano) = projector();
+    let mut mm = Minimap::new(Config::new(HOME, AWAY), Box::new(proj));
+    let (home, away, refs) = lineup();
+    let mut s = None;
+    for k in 0..6 {
+        let mut d = frame_dets(&to_pano, &home, &away, &refs, &[]);
+        let f = to_pano.apply(home[2]).unwrap();
+        d.push(Det::new(Class::Ball, 0.7, f.x, f.y - 0.05, 0.004, 0.007));
+        s = Some(mm.process(k as f64 * 0.32, &d));
+    }
+    assert!(matches!(s.unwrap().ball.state, BallState::Held { .. }));
+}
+
+#[test]
+fn frame_state_interpolation() {
+    use reco_minimap::ball::BallOut;
+    use reco_minimap::tracker::TrackState;
+    let ag = |id: u32, x: f32, a: f32| AgentOut { id, referee: false, team: Team::Home, pos: Vec2::new(x, 5.0), vel: Vec2::new(1.0, 0.0), state: TrackState::Visible, alpha: a, jersey: None };
+    let s0 = FrameState { t: 1.0, players: vec![ag(1, 2.0, 1.0), ag(2, 10.0, 1.0)], referees: vec![], ball: BallOut { state: BallState::Loose, pos: Some(Vec2::new(0.0, 0.0)), vel: None }, events: vec![] };
+    let s1 = FrameState { t: 2.0, players: vec![ag(1, 4.0, 0.4), ag(3, 7.0, 1.0)], referees: vec![], ball: BallOut { state: BallState::InFlight, pos: Some(Vec2::new(4.0, 2.0)), vel: Some(Vec2::new(5.0, 0.0)) }, events: vec![] };
+    let m = s0.lerp(&s1, 0.5);
+    assert!((m.t - 1.5).abs() < 1e-9);
+    let p1 = m.players.iter().find(|p| p.id == 1).unwrap();
+    assert!((p1.pos.x - 3.0).abs() < 1e-5 && (p1.alpha - 0.7).abs() < 1e-5);
+    assert!(m.players.iter().any(|p| p.id == 3), "new agent appears");
+    assert!(!m.players.iter().any(|p| p.id == 2), "vanished agent dropped");
+    assert_eq!(m.ball.pos.unwrap(), Vec2::new(2.0, 1.0));
+    assert_eq!(s0.lerp(&s1, 0.0).ball.state, BallState::Loose);
+    assert_eq!(s0.lerp(&s1, 1.0).ball.state, BallState::InFlight);
+}
+
+#[test]
+fn extrapolation_moves_with_velocity_and_stays_in_court() {
+    use reco_minimap::ball::BallOut;
+    use reco_minimap::tracker::TrackState;
+    let ag = |id: u32, x: f32, vx: f32| AgentOut { id, referee: false, team: Team::Home, pos: Vec2::new(x, 7.0), vel: Vec2::new(vx, 0.0), state: TrackState::Visible, alpha: 1.0, jersey: None };
+    let s = FrameState { t: 10.0, players: vec![ag(1, 5.0, 4.0), ag(2, 27.5, 8.0)], referees: vec![], ball: BallOut { state: BallState::Loose, pos: Some(Vec2::new(5.0, 5.0)), vel: Some(Vec2::new(2.0, 0.0)) }, events: vec![] };
+    let e = s.extrapolate(0.4);
+    let p1 = e.players[0].pos;
+    // damped displacement: tau*(1-exp(-dt/tau))*v = 0.8*(1-exp(-0.5))*4
+    assert!((p1.x - (5.0 + 0.8 * (1.0 - (-0.5f32).exp()) * 4.0)).abs() < 1e-4, "{p1:?}");
+    assert!(e.players[1].pos.x <= 29.0 + 1e-4, "must stay in the court margin");
+    assert!(e.ball.pos.unwrap().x > 5.0);
+    assert!((e.t - 10.4).abs() < 1e-6);
+    let still = s.extrapolate(0.0);
+    assert_eq!(still.players[0].pos, s.players[0].pos);
+    assert!(s.extrapolate(99.0).players[0].pos.x < 5.0 + 0.8 * 4.0 + 1e-3, "horizon is capped and velocity decays");
+}
+
+#[test]
+fn sport_profiles_are_consistent() {
+    use reco_minimap::sport::{SportProfile, BUILTIN_IDS};
+    for id in BUILTIN_IDS {
+        let p = SportProfile::builtin(id).unwrap_or_else(|| panic!("{id}"));
+        let (l, w) = (p.field.length, p.field.width);
+        assert!(l > w && w > 1.0, "{id}");
+        for pl in &p.lines {
+            assert!(pl.len() >= 2, "{id} polyline");
+            for q in pl {
+                assert!(q.x >= -0.01 && q.x <= l + 0.01 && q.y >= -0.01 && q.y <= w + 0.01, "{id}: line point {q:?} outside {l}x{w}");
+            }
+        }
+        let mut keys = std::collections::HashSet::new();
+        for m in &p.landmarks {
+            assert!(m.x >= 0.0 && m.x <= l && m.y >= 0.0 && m.y <= w, "{id}: landmark {} outside", m.key);
+            assert!(keys.insert(m.key.clone()), "{id}: duplicate landmark key {}", m.key);
+        }
+        assert!(p.landmarks.len() >= 7 && p.team_size >= 1, "{id}");
+        assert!(p.densified_lines(1.0).iter().all(|pl| pl.len() >= 2));
+    }
+    // spot-check known standard dimensions
+    let f = SportProfile::football();
+    assert_eq!((f.field.length, f.field.width, f.team_size), (105.0, 68.0, 11));
+    assert!(f.landmarks.iter().any(|m| m.key == "z1_l_far_inner" && (m.x - 16.5).abs() < 1e-4 && (m.y - 13.84).abs() < 1e-4));
+    assert_eq!(SportProfile::basketball().field, reco_minimap::geom::Field::basketball());
+    assert!(SportProfile::builtin("curling").is_none());
+}
+
+#[cfg(feature = "tools")]
+#[test]
+fn team_colours_survive_two_lighting_variants() {
+    use reco_minimap::tools::colors::{lab_dist, pick_teams};
+    // real case: the dark team showed up as two lighting variants, the other team as grey
+    let mut samples = Vec::new();
+    samples.extend(std::iter::repeat([0x4a, 0x3f, 0x50]).take(34)); // dark, shadowed
+    samples.extend(std::iter::repeat([0x3c, 0x4f, 0x80]).take(14)); // dark, lit
+    samples.extend(std::iter::repeat([0x74, 0x7a, 0x88]).take(27)); // grey
+    let (a, b, d) = pick_teams(&samples).expect("two teams");
+    assert!(d > 15.0, "distance {d}");
+    let dark = |c: [u8; 3]| lab_dist(c, [0x4a, 0x3f, 0x50]) < 20.0 || lab_dist(c, [0x3c, 0x4f, 0x80]) < 20.0;
+    let grey = |c: [u8; 3]| lab_dist(c, [0x74, 0x7a, 0x88]) < 8.0;
+    assert!((dark(a.rgb) && grey(b.rgb)) || (dark(b.rgb) && grey(a.rgb)), "{:?} {:?}", a.rgb, b.rgb);
+    assert_eq!(a.count + b.count, 75);
+    assert_eq!(a.count.max(b.count), 48); // dark variants stay together
+}
+
+// ---- jersey numbers: CTC decoding
+
+/// Build a CTC output (blank + digits per step) that spells `digits` with some blank steps and noise.
+fn ctc_probs(digits: &[u8], strength: f32) -> (Vec<f32>, usize) {
+    use reco_minimap::jersey::DIGIT_CLASSES;
+    let mut steps: Vec<usize> = vec![0];
+    for (i, d) in digits.iter().enumerate() {
+        if i > 0 && digits[i - 1] == *d {
+            steps.push(0); // repeated digits need a blank in between
+        }
+        steps.push(*d as usize + 1);
+        steps.push(*d as usize + 1);
+        steps.push(0);
+    }
+    let t = steps.len();
+    let mut p = vec![0f32; t * DIGIT_CLASSES];
+    for (s, c) in steps.iter().enumerate() {
+        for k in 0..DIGIT_CLASSES {
+            p[s * DIGIT_CLASSES + k] = (1.0 - strength) / (DIGIT_CLASSES as f32 - 1.0);
+        }
+        p[s * DIGIT_CLASSES + c] = strength;
+    }
+    (p, t)
+}
+
+#[test]
+fn ctc_greedy_and_roster_decoding() {
+    use reco_minimap::jersey::*;
+    for n in [7u8, 10, 23, 11, 99, 0, 5] {
+        let digits: Vec<u8> = n.to_string().bytes().map(|b| b - b'0').collect();
+        let (p, t) = ctc_probs(&digits, 0.9);
+        let (s, c) = ctc_greedy(&p, t);
+        assert_eq!(parse_number(&s), Some(n), "greedy {n}: {s}");
+        assert!(c > 0.85);
+        let roster = [4u8, 5, 7, 10, 11, 23, 0, 99, 17];
+        let (r, post) = ctc_roster(&p, t, &roster).unwrap();
+        assert_eq!(r, n);
+        assert!(post > 0.9, "posterior {post}");
+    }
+    // a confusable pair: with a roster the uncertain reading is pulled to the number that exists
+    let (mut p, t) = ctc_probs(&[1, 7], 0.55);
+    for s in 0..t { // make the second digit a coin flip between 7 and 1
+        let base = s * reco_minimap::jersey::DIGIT_CLASSES;
+        if p[base + 8] > 0.5 { p[base + 8] = 0.40; p[base + 2] = 0.40; }
+    }
+    let (r, _) = ctc_roster(&p, t, &[17u8, 4, 5]).unwrap();
+    assert_eq!(r, 17);
+    assert_eq!(parse_number("007"), None);
+    assert_eq!(parse_number("07"), Some(7));
+    assert_eq!(parse_number(""), None);
+    assert_eq!(parse_roster("4, 5;7  10,10 x 23"), vec![4, 5, 7, 10, 23]);
+    assert!(ctc_roster(&p, t, &[]).is_none());
+}
+
+
+// ---- substitutions via numbers
+
+fn digits_probs(n: u8) -> (Vec<f32>, usize) {
+    let d: Vec<u8> = n.to_string().bytes().map(|b| b - b'0').collect();
+    ctc_probs(&d, 0.92)
+}
+
+fn home_tracks_at(mm: &Minimap, x: f32) -> Option<u32> {
+    mm.tracker().tracks().iter().filter(|t| t.team == Team::Home).min_by(|a, b| a.pos.dist(Vec2::new(x, 0.0)).partial_cmp(&b.pos.dist(Vec2::new(x, 0.0))).unwrap()).map(|t| t.id)
+}
+
+#[test]
+fn number_changes_and_reentries_are_reported_as_substitutions() {
+    use reco_minimap::SubKind;
+    let (proj, to_pano) = projector();
+    let mut cfg = Config::new(HOME, AWAY);
+    cfg.roster_home = vec![4, 5, 7, 9, 10, 12, 13, 15];
+    let mut mm = Minimap::new(cfg, Box::new(proj));
+    let (home, away, refs) = lineup();
+    let mut t = 0.0;
+    let mut events = Vec::new();
+    // 8 s of play, player 0 (home) is read as #7 several times
+    for k in 0..80 {
+        let st = mm.process(t, &frame_dets(&to_pano, &home, &away, &refs, &[]));
+        events.extend(st.events);
+        if k % 4 == 0 {
+            let id = mm.tracker().tracks().iter().filter(|x| x.team == Team::Home).min_by(|a, b| a.pos.dist(home[0]).partial_cmp(&b.pos.dist(home[0])).unwrap()).unwrap().id;
+            let (p, n) = digits_probs(7);
+            mm.add_number_probs(id, &p, n);
+        }
+        t += 0.1;
+    }
+    let slot = mm.tracker().tracks().iter().filter(|x| x.team == Team::Home).min_by(|a, b| a.pos.dist(home[0]).partial_cmp(&b.pos.dist(home[0])).unwrap()).unwrap().id;
+    let st = mm.process(t, &frame_dets(&to_pano, &home, &away, &refs, &[]));
+    let shown = st.players.iter().find(|p| p.id == slot).unwrap().jersey;
+    assert_eq!(shown, Some(7), "number confirmed after repeated reads");
+    assert!(events.is_empty(), "a first confirmation is not a substitution: {events:?}");
+
+    // the player walks off the court at the sideline (out of the field) for 4 s ...
+    let mut off = home.clone();
+    off[0] = Vec2::new(home[0].x, -5.0);
+    for _ in 0..40 {
+        let st = mm.process(t, &frame_dets(&to_pano, &off, &away, &refs, &[0]));
+        events.extend(st.events);
+        t += 0.1;
+    }
+    // ... and somebody enters at the same sideline
+    let mut incoming = home.clone();
+    incoming[0] = Vec2::new(home[0].x + 1.0, 0.4);
+    for _ in 0..10 {
+        let st = mm.process(t, &frame_dets(&to_pano, &incoming, &away, &refs, &[]));
+        events.extend(st.events);
+        t += 0.1;
+    }
+    let possible: Vec<_> = events.iter().filter(|e| e.kind == SubKind::Possible).collect();
+    assert_eq!(possible.len(), 1, "one possible substitution: {events:?}");
+    assert_eq!(possible[0].out_number, Some(7));
+
+    // evidence for #12 arrives -> confirmed substitution 7 -> 12 on the same slot
+    for k in 0..30 {
+        let st = mm.process(t, &frame_dets(&to_pano, &incoming, &away, &refs, &[]));
+        events.extend(st.events);
+        if k % 3 == 0 {
+            let id = home_tracks_at(&mm, 0.0).unwrap();
+            let id = mm.tracker().tracks().iter().filter(|x| x.team == Team::Home).min_by(|a, b| a.pos.dist(incoming[0]).partial_cmp(&b.pos.dist(incoming[0])).unwrap()).map(|x| x.id).unwrap_or(id);
+            let (p, n) = digits_probs(12);
+            mm.add_number_probs(id, &p, n);
+        }
+        t += 0.1;
+    }
+    let confirmed: Vec<_> = events.iter().filter(|e| e.kind == SubKind::Confirmed).collect();
+    assert_eq!(confirmed.len(), 1, "{events:?}");
+    assert_eq!((confirmed[0].out_number, confirmed[0].in_number), (Some(7), Some(12)));
+    assert_eq!(mm.events_log().len(), events.len());
+}
+
+#[test]
+fn same_number_after_leaving_is_not_a_confirmed_substitution() {
+    use reco_minimap::SubKind;
+    let (proj, to_pano) = projector();
+    let mut cfg = Config::new(HOME, AWAY);
+    cfg.roster_home = vec![7, 12];
+    let mut mm = Minimap::new(cfg, Box::new(proj));
+    let (home, away, refs) = lineup();
+    let mut t = 0.0;
+    let id_of = |mm: &Minimap, p: Vec2| mm.tracker().tracks().iter().filter(|x| x.team == Team::Home).min_by(|a, b| a.pos.dist(p).partial_cmp(&b.pos.dist(p)).unwrap()).unwrap().id;
+    for k in 0..60 {
+        mm.process(t, &frame_dets(&to_pano, &home, &away, &refs, &[]));
+        if k % 3 == 0 { let (p, n) = digits_probs(7); let id = id_of(&mm, home[0]); mm.add_number_probs(id, &p, n); }
+        t += 0.1;
+    }
+    let mut off = home.clone();
+    off[0] = Vec2::new(home[0].x, -5.0);
+    let mut events = Vec::new();
+    for _ in 0..40 { events.extend(mm.process(t, &frame_dets(&to_pano, &off, &away, &refs, &[0])).events); t += 0.1; }
+    let mut back = home.clone();
+    back[0] = Vec2::new(home[0].x + 1.0, 0.4);
+    for k in 0..40 {
+        events.extend(mm.process(t, &frame_dets(&to_pano, &back, &away, &refs, &[])).events);
+        if k % 3 == 0 { let (p, n) = digits_probs(7); let id = id_of(&mm, back[0]); mm.add_number_probs(id, &p, n); }
+        t += 0.1;
+    }
+    assert!(events.iter().any(|e| e.kind == SubKind::Possible), "a leave/re-enter at the sideline is flagged as possible: {events:?}");
+    assert!(events.iter().all(|e| e.kind == SubKind::Possible), "same number must never be confirmed as a swap: {events:?}");
+    let slot = id_of(&mm, back[0]);
+    assert_eq!(mm.tracker().tracks().iter().find(|x| x.id == slot).unwrap().confirmed, Some(7));
+}

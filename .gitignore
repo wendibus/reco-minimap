@@ -1,0 +1,9 @@
+/target
+Cargo.lock.bak
+*.mp4
+*.mov
+*.jsonl
+court.json
+teams.json
+check/
+.DS_Store

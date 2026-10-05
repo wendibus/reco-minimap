@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><title>reco-minimap · Court-Kalibrierung</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{color-scheme:dark;--bg:#14171c;--panel:#1c2027;--line:#2c323c;--fg:#e6e9ee;--mut:#8b94a3;--acc:#ff8c00;--ok:#4cd964;--bad:#ff5a5a}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:14px/1.4 -apple-system,system-ui,sans-serif}
+#app{display:grid;grid-template-columns:1fr 340px;height:100%}
+#stage{position:relative;overflow:hidden;cursor:crosshair}
+canvas#cv{position:absolute;inset:0;width:100%;height:100%}
+canvas#loupe{position:absolute;right:12px;top:12px;width:168px;height:168px;border:2px solid var(--acc);border-radius:8px;background:#000;pointer-events:none}
+aside{background:var(--panel);border-left:1px solid var(--line);padding:14px;overflow:auto;display:flex;flex-direction:column;gap:10px}
+h1{font-size:15px;margin:0}p{margin:0;color:var(--mut)}
+.row{display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:center;padding:6px 8px;border-radius:6px;cursor:pointer;border:1px solid transparent}
+.row:hover{background:#242a33}.row.cur{border-color:var(--acc);background:#2a2216}
+.num{width:22px;height:22px;border-radius:50%;background:#2c323c;display:grid;place-items:center;font-size:12px}
+.row.done .num{background:var(--ok);color:#000}
+.res{font-variant-numeric:tabular-nums;color:var(--mut);font-size:12px}
+button{background:#2c323c;color:var(--fg);border:1px solid #3a4250;border-radius:6px;padding:7px 10px;cursor:pointer}
+button.primary{background:var(--acc);color:#000;border-color:var(--acc);font-weight:600}
+button:disabled{opacity:.4;cursor:default}
+#q{padding:8px 10px;border-radius:6px;background:#242a33}
+.good{color:var(--ok)}.warn{color:var(--bad)}
+kbd{background:#2c323c;border-radius:4px;padding:0 5px;font-size:12px}
+</style></head><body>
+<div id="app">
+ <div id="stage"><canvas id="cv"></canvas><canvas id="loupe" width="168" height="168"></canvas></div>
+ <aside>
+  <h1>Court-Kalibrierung</h1>
+  <p>Klicke die Punkte der Reihe nach im Bild an. Nicht sichtbare Punkte mit <kbd>Leertaste</kbd> überspringen. Mindestens 4, besser 8+ und über das ganze Feld verteilt. Mausrad = Zoom, Ziehen = Verschieben, <kbd>⌫</kbd> = letzten Punkt entfernen, <kbd>F</kbd> = ganzes Bild.</p>
+  <p>„hinten“ = Seitenlinie weiter weg von der Kamera, „vorn“ = nah an der Kamera, „links/rechts“ wie im Bild.</p>
+  <div id="q">Noch keine Punkte.</div>
+  <div id="list"></div>
+  <div style="display:flex;gap:8px"><button id="undo">Letzten entfernen</button><button id="skip">Überspringen</button></div>
+  <button class="primary" id="save" disabled>Speichern</button>
+  <p id="msg"></p>
+  <p style="font-size:12px">Hinweis: Das Bild verlässt deinen Rechner nicht (lokaler Server auf 127.0.0.1). Bei kleineren Hallen werden die Ecken auf 28×15 m skaliert – Zonenpunkte nur klicken, wenn das Feld normgerecht ist.</p>
+ </aside>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+let info,img=new Image(),pts={},cur=0,scale=1,ox=0,oy=0,overlay=[],resid={},rms=null,mouse={x:0,y:0,in:false};
+const cv=$('cv'),ctx=cv.getContext('2d'),lp=$('loupe'),lctx=lp.getContext('2d');
+async function init(){info=await (await fetch('/api/info')).json();img.onload=()=>{resize();build();draw();};img.src='/frame.png';}
+function resize(){cv.width=cv.clientWidth;cv.height=cv.clientHeight;fit();}
+function fit(){scale=Math.min(cv.width/img.width,cv.height/img.height);ox=(cv.width-img.width*scale)/2;oy=(cv.height-img.height*scale)/2;draw();}
+addEventListener('resize',()=>{resize()});
+function build(){const l=$('list');l.innerHTML='';info.landmarks.forEach((m,i)=>{const d=document.createElement('div');d.className='row';d.id='r'+i;d.innerHTML=`<span class="num">${i+1}</span><span>${m.name}</span><span class="res" id="s${i}">–</span>`;d.onclick=()=>{cur=i;refresh();};l.appendChild(d);});refresh();}
+function refresh(){info.landmarks.forEach((m,i)=>{const r=$('r'+i);r.className='row'+(pts[i]?' done':'')+(i===cur?' cur':'');$('s'+i).textContent=pts[i]?(resid[i]!==undefined?resid[i].toFixed(2)+' m':'✓'):'–';});
+ const n=Object.keys(pts).length;$('save').disabled=n<4;
+ let t=n<4?`${n} Punkt(e) – noch ${4-n} bis zur ersten Berechnung.`:(rms===null?'…':`Fehler (RMS): <b class="${rms<0.5?'good':rms<0.9?'':'warn'}">${rms.toFixed(2)} m</b> – ${n} Punkte`+(n<8?' · besser 8+ Punkte':'')+(rms>=0.9?' · Fehler hoch: Punkte prüfen oder weitere ergänzen':''));
+ $('q').innerHTML=t;draw();}
+function toImg(x,y){return[(x-ox)/scale,(y-oy)/scale];}
+function nextFree(){for(let k=1;k<=info.landmarks.length;k++){const j=(cur+k)%info.landmarks.length;if(!pts[j])return j;}return cur;}
+async function solve(){const arr=Object.entries(pts).map(([i,p])=>({id:+i,u:p.u/img.width,v:p.v/img.height}));
+ if(arr.length<4){overlay=[];resid={};rms=null;refresh();return;}
+ const r=await (await fetch('/api/solve',{method:'POST',body:JSON.stringify({points:arr})})).json();
+ if(r.ok){overlay=r.overlay;resid={};r.residuals.forEach(e=>resid[e.id]=e.m);rms=r.rms;}else{overlay=[];rms=null;}refresh();}
+function place(ix,iy){pts[cur]={u:ix,v:iy};cur=nextFree();refresh();solve();}
+$('undo').onclick=undo;$('skip').onclick=()=>{cur=(cur+1)%info.landmarks.length;refresh();};
+function undo(){const k=Object.keys(pts).map(Number);if(!k.length)return;const last=Math.max(...k.filter(x=>true));delete pts[last];cur=last;resid={};refresh();solve();}
+addEventListener('keydown',e=>{if(e.key==='Backspace'){e.preventDefault();undo();}else if(e.key===' '){e.preventDefault();cur=(cur+1)%info.landmarks.length;refresh();}else if(e.key==='f'||e.key==='F'){fit();}});
+let drag=null;
+cv.addEventListener('mousedown',e=>{drag={x:e.offsetX,y:e.offsetY,ox,oy,moved:false};});
+addEventListener('mouseup',e=>{if(drag&&!drag.moved&&e.target===cv){const[ix,iy]=toImg(drag.x,drag.y);if(ix>=0&&iy>=0&&ix<img.width&&iy<img.height)place(ix,iy);}drag=null;});
+cv.addEventListener('mousemove',e=>{mouse={x:e.offsetX,y:e.offsetY,in:true};if(drag){const dx=e.offsetX-drag.x,dy=e.offsetY-drag.y;if(Math.hypot(dx,dy)>4)drag.moved=true;if(drag.moved){ox=drag.ox+dx;oy=drag.oy+dy;}}draw();});
+cv.addEventListener('mouseleave',()=>{mouse.in=false;draw();});
+cv.addEventListener('wheel',e=>{e.preventDefault();const f=e.deltaY<0?1.2:1/1.2;const mx=e.offsetX,my=e.offsetY;ox=mx-(mx-ox)*f;oy=my-(my-oy)*f;scale*=f;draw();},{passive:false});
+function draw(){ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.height);if(!img.width)return;
+ ctx.setTransform(scale,0,0,scale,ox,oy);ctx.imageSmoothingEnabled=scale<1;ctx.drawImage(img,0,0);
+ ctx.strokeStyle='#7CFC00';ctx.lineWidth=2/scale;overlay.forEach(pl=>{ctx.beginPath();pl.forEach(([u,v],k)=>{const x=u*img.width,y=v*img.height;k?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.stroke();});
+ ctx.setTransform(1,0,0,1,0,0);
+ Object.entries(pts).forEach(([i,p])=>{const x=ox+p.u*scale,y=oy+p.v*scale;ctx.strokeStyle='#ff8c00';ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y,7,0,7);ctx.moveTo(x-12,y);ctx.lineTo(x+12,y);ctx.moveTo(x,y-12);ctx.lineTo(x,y+12);ctx.stroke();ctx.fillStyle='#ff8c00';ctx.font='bold 12px sans-serif';ctx.fillText(+i+1,x+9,y-9);});
+ lctx.clearRect(0,0,168,168);if(mouse.in){const[ix,iy]=toImg(mouse.x,mouse.y);lctx.imageSmoothingEnabled=false;lctx.drawImage(img,ix-21,iy-21,42,42,0,0,168,168);lctx.strokeStyle='#ff8c00';lctx.lineWidth=1;lctx.beginPath();lctx.moveTo(84,0);lctx.lineTo(84,168);lctx.moveTo(0,84);lctx.lineTo(168,84);lctx.stroke();}}
+$('save').onclick=async()=>{const arr=Object.entries(pts).map(([i,p])=>({id:+i,u:p.u/img.width,v:p.v/img.height}));
+ const r=await (await fetch('/api/save',{method:'POST',body:JSON.stringify({points:arr})})).json();
+ $('msg').innerHTML=r.ok?`<span class="good">Gespeichert:</span> ${r.path}<br>Fehler ${r.rms.toFixed(2)} m. Du kannst das Fenster schließen.`:`<span class="warn">${r.error}</span>`;};
+init();
+</script></body></html>

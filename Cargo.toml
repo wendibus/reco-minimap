@@ -1,0 +1,24 @@
+[package]
+name = "reco-minimap"
+version = "0.1.0"
+# Beim Einhängen in den reco-Workspace: edition/rust-version/license per `.workspace = true`.
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "Top-down court minimap (players, referees, ball) from a Reco panorama: RF-DETR decoding, court projection, plausible tracking."
+publish = false
+
+[features]
+default = []
+# Command-line programs (calibrate / selfcheck / colors / run). Needs ffmpeg + ffprobe
+# on PATH and an ONNX Runtime shared library (ORT_DYLIB_PATH).
+tools = ["dep:ort", "dep:serde_json"]
+coreml = ["tools", "ort/coreml"]
+
+[dependencies]
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "load-dynamic", "api-24"], optional = true }
+serde_json = { version = "1", optional = true }
+
+[[bin]]
+name = "reco-minimap"
+path = "src/bin/reco-minimap.rs"
+required-features = ["tools"]

@@ -40,6 +40,7 @@ reco-minimap – Minimap (Court, Spieler, Schiris, Ball) aus einem Reco-Panorama
   reco-minimap fetch-ocr                                            OCR-Modell für Trikotnummern laden (ca. 11 MB, Apache-2.0)
   reco-minimap ocr-bench <manifest.tsv> [--roster 4,5,7]            Zahlenleser an Ausschnitt-Bildern messen (Zeile: Pfad<TAB>Nummer<TAB>Gruppe)
   reco-minimap stats     <states.jsonl>            Zahlen-Report zu einem run-Ergebnis (Slots, Sprünge, Ball)
+  reco-minimap review-identities <states.jsonl> --annotations review.json --out reviewed.jsonl
   reco-minimap colors    <video> --model <ordner|.onnx> [--court court.json] [--home-hint #rrggbb] [--out teams.json]
   reco-minimap run       <video> --model <ordner|.onnx> --court court.json (--teams teams.json | --home #hex --away #hex)
                          [--minimap out.mp4] [--alpha out.mov] [--pip out.mp4] [--json out.jsonl]
@@ -245,6 +246,12 @@ fn main() {
         "selfcheck" => cmd_selfcheck(&o, &input),
         "scales" => cmd_scales(&o, &input),
         "stats" => cmd_stats(&o, &input),
+        "review-identities" => {
+            let annotations = o.s("annotations").unwrap_or_else(|| fail("--annotations fehlt"));
+            let output = o.s("out").unwrap_or_else(|| fail("--out fehlt"));
+            let n = reco_minimap::tools::review::run(std::path::Path::new(&input), std::path::Path::new(annotations), std::path::Path::new(output)).unwrap_or_else(|e| fail(e));
+            println!("{n} Frames geprüft: {output} (Original unverändert)");
+        }
         "import-model" => cmd_import_model(&o, &input),
         "ocr-bench" => cmd_ocr_bench(&o, &input),
         "colors" => cmd_colors(&o, &input),

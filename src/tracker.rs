@@ -122,6 +122,9 @@ pub enum TrackerEvent {
 
 #[derive(Clone, Debug)]
 pub struct Track {
+    /// Increments whenever this reusable slot is re-acquired after being lost.
+    /// `(id, segment)` identifies a continuous tracklet, not a person.
+    pub segment: u32,
     pub id: u32,
     pub referee: bool,
     pub team: Team,
@@ -136,7 +139,7 @@ pub struct Track {
     pub conf: f32,
     reacq_until: f64,
     pub jersey: JerseyVotes,
-    /// Number this slot is considered to carry (sticky: evidence fades, the number stays until someone else's evidence wins).
+    /// Number candidate for this continuous segment; cleared on re-acquisition.
     pub confirmed: Option<u8>,
     /// The confirmed number at the moment the slot was last re-taken.
     pub number_before: Option<u8>,
@@ -286,7 +289,11 @@ impl Tracker {
             let ev = TrackerEvent::Retaken { id: tr.id, team: tr.team, last_pos: Vec2::new(tr.kx.p, tr.ky.p), new_pos: o.pos, unseen };
             tr.number_before = tr.confirmed;
             tr.retaken_at = Some(t);
-            tr.jersey.soften(0.3);
+            tr.segment += 1;
+            // A reused slot is not evidence that the same person returned.
+            // Keep the old number only for later substitution comparison.
+            tr.jersey.clear();
+            tr.confirmed = None;
             self.events.push(ev);
         }
         let tr = &mut self.tracks[ti];
@@ -311,6 +318,7 @@ impl Tracker {
     fn spawn(&mut self, o: &Obs, t: f64) {
         let var = self.cfg.meas_std * self.cfg.meas_std;
         let tr = Track {
+            segment: 0,
             id: self.next_id,
             referee: o.referee,
             team: if o.referee { Team::Unknown } else { o.team },

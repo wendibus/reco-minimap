@@ -1040,7 +1040,9 @@ fn ball_json(s: &FrameState) -> serde_json::Value {
 
 fn state_json_with(s: &FrameState, scenes: &[SceneEvent]) -> serde_json::Value {
     let agent = |a: &reco_minimap::AgentOut| {
-        serde_json::json!({"id": a.id, "team": match a.team { Team::Home => "home", Team::Away => "away", Team::Unknown => "none" },
+        serde_json::json!({"id": a.id, "segment": a.segment,
+            "identity": {"status": a.identity.status.key(), "player": a.identity.player.map(|p| serde_json::json!({"team": match p.team { Team::Home => "home", Team::Away => "away", Team::Unknown => "none" }, "number": p.number}))},
+            "team": match a.team { Team::Home => "home", Team::Away => "away", Team::Unknown => "none" },
             "x": (a.pos.x * 100.0).round() / 100.0, "y": (a.pos.y * 100.0).round() / 100.0, "vx": (a.vel.x * 100.0).round() / 100.0, "vy": (a.vel.y * 100.0).round() / 100.0, "state": format!("{:?}", a.state).to_lowercase(), "alpha": (a.alpha * 100.0).round() / 100.0, "jersey": a.jersey})
     };
     serde_json::json!({"t": (s.t * 1000.0).round() / 1000.0, "players": s.players.iter().map(agent).collect::<Vec<_>>(), "referees": s.referees.iter().map(agent).collect::<Vec<_>>(), "ball": ball_json(s),

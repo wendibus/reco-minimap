@@ -11,6 +11,7 @@
 pub mod ball;
 pub mod detect;
 pub mod geom;
+pub mod identity;
 pub mod jersey;
 pub mod render;
 pub mod scenes;
@@ -29,6 +30,9 @@ use tracker::{BBox, Obs, Track, TrackState, Tracker, TrackerCfg, TrackerEvent};
 
 #[derive(Clone, Copy, Debug)]
 pub struct AgentOut {
+    /// Tracking-slot generation; pair with `id`, never use the slot as a person ID.
+    pub segment: u32,
+    pub identity: identity::IdentityAssignment,
     pub id: u32,
     pub referee: bool,
     pub team: Team,
@@ -45,7 +49,8 @@ pub struct AgentOut {
 pub enum SubKind {
     /// A player left and someone entered at the sideline, numbers not (yet) known.
     Possible,
-    /// The number carried by a slot changed (or differs from the one before a re-entry).
+    /// Fresh number evidence differs from the number before a re-entry.
+    /// This is still a heuristic, not a manually verified substitution.
     Confirmed,
 }
 
@@ -73,7 +78,9 @@ pub struct FrameState {
 fn lerp_agents(a: &[AgentOut], b: &[AgentOut], k: f32) -> Vec<AgentOut> {
     b.iter()
         .map(|nb| match a.iter().find(|x| x.id == nb.id) {
-            Some(na) => AgentOut { pos: na.pos.lerp(nb.pos, k), alpha: na.alpha + (nb.alpha - na.alpha) * k, ..*nb },
+            Some(na) if na.segment == nb.segment => AgentOut { pos: na.pos.lerp(nb.pos, k), alpha: na.alpha + (nb.alpha - na.alpha) * k, ..if k < 0.5 { *na } else { *nb } },
+            // Never animate a path between two occupants of a reused slot.
+            Some(na) => if k < 0.5 { *na } else { *nb },
             None => *nb,
         })
         .collect()
@@ -281,6 +288,7 @@ impl Minimap {
             let out = self.agent_out(tr, t);
             if tr.referee { referees.push(out) } else { players.push(out) }
         }
+        identity::assign(&mut players);
         FrameState { t, players, referees, ball, events }
     }
 
@@ -324,7 +332,9 @@ impl Minimap {
                         }
                     }
                 }
-                Some(old) => ev.push(SubEvent { t, team: tr.team, slot: tr.id, out_number: Some(old), in_number: Some(best), kind: SubKind::Confirmed }),
+                // A better OCR reading during an uninterrupted track can simply
+                // correct a mistaken number. It is not evidence of substitution.
+                Some(_) => {},
             }
             tr.confirmed = Some(best);
             tr.number_before = None;
@@ -346,6 +356,8 @@ impl Minimap {
             _ => (1.0 - 0.65 * unseen / (self.cfg.tracker.lost_after + 1.0)).clamp(0.35, 1.0),
         };
         AgentOut {
+            segment: tr.segment,
+            identity: identity::IdentityAssignment::default(),
             id: tr.id,
             referee: tr.referee,
             team: tr.team,

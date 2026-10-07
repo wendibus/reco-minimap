@@ -384,7 +384,7 @@ fn ball_held_is_detected_at_low_processing_rate() {
 fn frame_state_interpolation() {
     use reco_minimap::ball::BallOut;
     use reco_minimap::tracker::TrackState;
-    let ag = |id: u32, x: f32, a: f32| AgentOut { id, referee: false, team: Team::Home, pos: Vec2::new(x, 5.0), vel: Vec2::new(1.0, 0.0), state: TrackState::Visible, alpha: a, jersey: None };
+    let ag = |id: u32, x: f32, a: f32| AgentOut { segment: 0, identity: Default::default(), id, referee: false, team: Team::Home, pos: Vec2::new(x, 5.0), vel: Vec2::new(1.0, 0.0), state: TrackState::Visible, alpha: a, jersey: None };
     let s0 = FrameState { t: 1.0, players: vec![ag(1, 2.0, 1.0), ag(2, 10.0, 1.0)], referees: vec![], ball: BallOut { state: BallState::Loose, pos: Some(Vec2::new(0.0, 0.0)), vel: None }, events: vec![] };
     let s1 = FrameState { t: 2.0, players: vec![ag(1, 4.0, 0.4), ag(3, 7.0, 1.0)], referees: vec![], ball: BallOut { state: BallState::InFlight, pos: Some(Vec2::new(4.0, 2.0)), vel: Some(Vec2::new(5.0, 0.0)) }, events: vec![] };
     let m = s0.lerp(&s1, 0.5);
@@ -402,7 +402,7 @@ fn frame_state_interpolation() {
 fn extrapolation_moves_with_velocity_and_stays_in_court() {
     use reco_minimap::ball::BallOut;
     use reco_minimap::tracker::TrackState;
-    let ag = |id: u32, x: f32, vx: f32| AgentOut { id, referee: false, team: Team::Home, pos: Vec2::new(x, 7.0), vel: Vec2::new(vx, 0.0), state: TrackState::Visible, alpha: 1.0, jersey: None };
+    let ag = |id: u32, x: f32, vx: f32| AgentOut { segment: 0, identity: Default::default(), id, referee: false, team: Team::Home, pos: Vec2::new(x, 7.0), vel: Vec2::new(vx, 0.0), state: TrackState::Visible, alpha: 1.0, jersey: None };
     let s = FrameState { t: 10.0, players: vec![ag(1, 5.0, 4.0), ag(2, 27.5, 8.0)], referees: vec![], ball: BallOut { state: BallState::Loose, pos: Some(Vec2::new(5.0, 5.0)), vel: Some(Vec2::new(2.0, 0.0)) }, events: vec![] };
     let e = s.extrapolate(0.4);
     let p1 = e.players[0].pos;
@@ -576,6 +576,13 @@ fn number_changes_and_reentries_are_reported_as_substitutions() {
     assert_eq!(possible.len(), 1, "one possible substitution: {events:?}");
     assert_eq!(possible[0].out_number, Some(7));
 
+    // Re-acquisition must not silently identify the incoming person as #7.
+    let st = mm.process(t, &frame_dets(&to_pano, &incoming, &away, &refs, &[]));
+    let occupant = st.players.iter().find(|p| p.id == slot).unwrap();
+    assert_eq!(occupant.segment, 1);
+    assert_eq!(occupant.jersey, None);
+    assert_eq!(occupant.identity.status, reco_minimap::identity::IdentityStatus::Unknown);
+
     // evidence for #12 arrives -> confirmed substitution 7 -> 12 on the same slot
     for k in 0..30 {
         let st = mm.process(t, &frame_dets(&to_pano, &incoming, &away, &refs, &[]));
@@ -624,4 +631,21 @@ fn same_number_after_leaving_is_not_a_confirmed_substitution() {
     assert!(events.iter().all(|e| e.kind == SubKind::Possible), "same number must never be confirmed as a swap: {events:?}");
     let slot = id_of(&mm, back[0]);
     assert_eq!(mm.tracker().tracks().iter().find(|x| x.id == slot).unwrap().confirmed, Some(7));
+}
+
+#[test]
+fn correcting_ocr_on_a_continuous_track_is_not_a_substitution() {
+    let (proj, to_pano) = projector();
+    let mut mm = Minimap::new(Config::new(HOME, AWAY), Box::new(proj));
+    let (home, away, refs) = lineup();
+    let ds = frame_dets(&to_pano, &home, &away, &refs, &[]);
+    for k in 0..120 {
+        let s = mm.process(k as f64 * 0.1, &ds);
+        assert!(s.events.is_empty(), "OCR corrections alone must not emit substitutions");
+        let id = mm.tracker().tracks().iter().find(|p| p.team == Team::Home).unwrap().id;
+        mm.add_jersey_reading(id, if k < 20 { 7 } else { 12 }, 0.95);
+    }
+    let track = mm.tracker().tracks().iter().find(|p| p.team == Team::Home).unwrap();
+    assert_eq!(track.segment, 0);
+    assert_eq!(track.confirmed, Some(12));
 }

@@ -298,9 +298,9 @@ Common options (see `reco-minimap --help` for all):
 }
 ```
 
-* `id` is a **slot**, stable while the slot exists. `state` is `visible`, `occluded` or `lost` (position then is an estimate).
+* `id` is a **slot**, not a person. Pair it with `segment` to identify a continuous tracking section. `identity.status` is `unknown`, `candidate` or `conflict`; `identity.player` contains a provisional `{team, number}` key or `null`. `state` is `visible`, `occluded` or `lost` (position then is an estimate).
 * `ball.state`: `held` (with `holder`), `flight`, `loose`, `unknown`.
-* `events.kind`: `confirmed` (number changed) or `possible` (leave and re-enter at the edge).
+* `events.kind`: `confirmed` (fresh number differs after re-entry; still a heuristic) or `possible` (leave and re-enter at the edge). An OCR correction without re-entry no longer emits a substitution.
 * Live records additionally carry `age_ms` (time from camera frame to result).
 
 ## Project folder
@@ -387,3 +387,9 @@ field geometry. Unsupported sports no longer inherit throw-in events or hand
 possession; unseen hand possession expires after a configurable timeout (1.5 s
 by default). See [architecture and migration notes (German)](docs/ARCHITECTURE.de.md)
 for implemented boundaries, compatibility and the remaining roadmap.
+
+Identity output now separates reusable tracking slots (`id`), continuous segments
+(`segment`) and provisional team/number candidates (`identity`). Re-acquired slots
+require fresh OCR evidence; duplicate teammate numbers are reported as conflicts
+instead of being displayed as certain identities. These are candidates, not full
+person re-identification. See the migration notes above for Rust API additions.

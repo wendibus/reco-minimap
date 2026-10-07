@@ -1,11 +1,13 @@
 //! Sport profiles: field size, line markings, team sizes and calibration landmarks.
 //!
-//! Everything downstream (tracker limits, minimap drawing, calibration points, live overlay)
-//! is driven by a [`SportProfile`], so a new sport only needs a new profile. Built-ins cover
+//! Geometry consumers (tracker limits, minimap drawing, calibration points, live overlay)
+//! are driven by a [`SportProfile`]. Interpretation is selected separately in [`rules`];
+//! adding a field profile does not automatically implement game understanding. Built-ins cover
 //! the common standard fields; [`SportProfile::custom_rect`] makes a plain rectangle for any
 //! other sport. Dimensions are the usual international standards; real halls often differ.
 
 use crate::geom::{Field, Vec2};
+pub mod rules;
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
 #[derive(Clone, Debug)]

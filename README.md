@@ -398,4 +398,7 @@ Offline roster names and segment/time-scoped manual corrections are available vi
 `review-identities states.jsonl --annotations review.json --out reviewed.jsonl`.
 The source stays unchanged and is verified by SHA-256. See
 [identity review instructions (German)](docs/IDENTITY_REVIEW.de.md). This currently
-updates JSONL only, not the browser UI or rendered videos.
+updates JSONL without re-rendering videos. The **Review** link in the browser UI
+now opens a local video/map player, event navigation and roster/correction editor.
+It exports the same annotation document for the CLI; see the instructions above
+for browser limits, time alignment and saving your edits.

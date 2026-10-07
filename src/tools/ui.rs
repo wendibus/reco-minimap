@@ -360,6 +360,12 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
     let b: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
     match (method.as_str(), path.as_str()) {
         ("GET", "/") => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("ui.html").as_bytes()),
+        ("GET", "/review") => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("review.html").as_bytes()),
+        ("GET", "/review.js") => respond(&mut s, "200 OK", "application/javascript; charset=utf-8", include_str!("review.js").as_bytes()),
+        ("GET", "/api/review/sports") => {
+            let sports: Vec<Value> = BUILTIN_IDS.iter().filter_map(|id| SportProfile::builtin(id)).map(|p| json!({"id":p.id,"field":[p.field.length,p.field.width],"lines":p.lines.iter().map(|line| line.iter().map(|v| [v.x,v.y]).collect::<Vec<_>>()).collect::<Vec<_>>()})).collect();
+            jres(&mut s, json!({"sports":sports}));
+        }
         ("GET", "/i18n.js") => respond(&mut s, "200 OK", "application/javascript; charset=utf-8", include_str!("i18n.js").as_bytes()),
         ("GET", "/api/init") => {
             let sports: Vec<Value> = BUILTIN_IDS.iter().filter_map(|id| SportProfile::builtin(id)).map(|p| json!({"id": p.id, "field": [p.field.length, p.field.width], "team_size": p.team_size, "referees": p.referees})).collect();

@@ -57,6 +57,37 @@ nur innerhalb dieser Analyse gültig. Mannschaften sind `home` und `away`.
 - Ballbesitz, Positionen und Ereignisse bleiben unverändert. Eine Identitätskorrektur
   bestätigt insbesondere keinen automatisch erkannten Spielerwechsel.
 
-Dies ist eine sportunabhängige Offline-Grundlage. Ein grafischer Kadereditor,
-Auswahl per Klick im Video, Neurendern und Ereignisnavigation folgen separat.
+## Grafische Review-Ansicht
+
+`reco-minimap ui` starten und oben **Review** öffnen (Route `/review`).
+Video und Original-JSONL über die Dateiauswahl laden. Die Dateien bleiben im
+Browser; sie werden nicht hochgeladen. Sportart und Zeitversatz explizit prüfen.
+Die FieldMap übernimmt Linien und Maße aus den Rust-Sportprofilen. Sie skaliert
+proportional; Fenstergröße verändert keine gespeicherten Feldkoordinaten.
+
+Die gemeinsame Zeitleiste folgt der Videozeit. Ereignisse lassen sich nach Typ
+filtern und springen mit zwei Sekunden Vorlauf ins Video. Ein Klick auf einen
+Spieler **auf der Karte** pausiert das Video und wählt Platz und Abschnitt aus.
+Kader hinzufügen, Zeitraum und Spieler wählen, dann **Zuordnen**. Die Karte zeigt
+die Korrektur als Vorschau; Konflikte bleiben rot und ohne sichere Nummer.
+
+**review.json herunterladen** speichert das mit dem CLI kompatible Dokument.
+Falls der eingebettete Browser Downloads blockiert, den sichtbaren Exporttext
+kopieren und als `review.json` speichern. Bestehende Review-Dateien können wieder
+geöffnet werden; ihre Quellprüfsumme wird geprüft. Der Browser speichert Änderungen
+nicht automatisch und warnt beim Verlassen vor möglicherweise ungesicherten Daten.
+
+Grenzen dieser ersten Oberfläche: Deutsch, höchstens 64 MiB bzw. 100.000 Frames
+im Speicher, höchstens 500 Ereignistreffer gleichzeitig, Standard-Sportfelder,
+browserabhängige Videocodecs. Datenlücken über einer Sekunde zeigen keine Punkte.
+Keine automatische Ermittlung des Zeitversatzes und keine projektgebundene
+Videozuordnung. Korrektur gilt anhand der Framezeit. Kein Overlay im Panoramabild,
+kein Neurendern und keine manuelle Ereigniskorrektur. Die CLI bleibt der Weg zur
+dauerhaft korrigierten JSONL-Datei.
+
+Prüfung: `node --test scripts/review_test.js` plus Rust-Suite. Ein synthetischer
+Browser-Smoke-Test mit Testvideo und `tests/fixtures/review-demo.jsonl` prüft Laden,
+Zeitleiste, Ereignissprung, Kartenklick, Kader, Zuordnung und JSON-Exportvorschau.
+Dies ersetzt keinen Genauigkeits- oder Langzeittest mit realen Spielen.
+
 Keine neuen Modelle, Fremdcode oder Abhängigkeiten; weiterhin AGPL-3.0-only.

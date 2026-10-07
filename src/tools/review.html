@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RECO · Review</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#14171c;color:#e6e9ee;font:15px system-ui}header,main{padding:16px;max-width:1600px;margin:auto}header{display:flex;align-items:center;gap:20px}h1{font-size:22px}h2{font-size:17px}a{color:#7fb7ff}section{background:#1c2027;border:1px solid #343c48;border-radius:9px;padding:14px;margin-bottom:14px}.row{display:flex;flex-wrap:wrap;gap:12px;align-items:end}label{display:grid;gap:5px;font-size:13px}button,input,select,textarea{font:inherit;color:inherit;background:#10141a;border:1px solid #515a68;border-radius:5px;padding:7px}button{cursor:pointer}button:disabled{opacity:.4;cursor:default}button.primary{background:#ff8c00;color:#14171c}input[type=number]{width:115px}#views{display:grid;grid-template-columns:3fr 2fr;gap:14px}video{width:100%;max-height:65vh;background:black}canvas{width:100%;height:100%;min-height:260px;max-height:65vh;background:#29251d}#seek{width:100%}.columns{display:grid;grid-template-columns:1fr 1fr;gap:14px}#events,#corrections{max-height:240px;overflow:auto}#events button{display:block;margin:5px 0;width:100%;text-align:left}.note{color:#aab3c0;font-size:13px}#status{white-space:pre-wrap;color:#ffd28b}#rosterList{white-space:pre-wrap}.selected{outline:2px solid #ff8c00}@media(max-width:850px){#views,.columns{grid-template-columns:1fr}canvas{height:300px}}
+[hidden]{display:none!important}
+</style></head><body>
+<header><h1>RECO · Analyse-Review</h1><a href="/">Projekt</a><span class="note">Lokal · keine Uploads · keine neue Inferenz</span></header>
+<main>
+<section><div class="row">
+<label>1 · Video<input id="videoFile" type="file" accept="video/*"></label>
+<label>2 · Originalanalyse (.jsonl, max. 64 MiB)<input id="analysisFile" type="file" accept=".jsonl"></label>
+<label>Sport / Linien<select id="sport"></select></label>
+<label>Zeitversatz (Sek.)<input id="offset" type="number" value="0" step="0.1"></label>
+</div><p class="note">Analysezeit = Videozeit + Versatz. Sport und Zeitversatz prüfen; die JSONL-Datei enthält keine gesicherte Video- oder Sportzuordnung. Eigene Spielfeldmaße werden hier noch nicht unterstützt.</p><div id="status" role="status">Video und Analyse wählen.</div></section>
+<section><div id="views"><video id="video" controls preload="metadata"></video><canvas id="map" aria-label="FieldMap – Spieler zum Zuordnen anklicken"></canvas></div>
+<label>Gemeinsame Zeitleiste<input id="seek" type="range" min="0" max="1" value="0" step="0.01" disabled></label><output id="clock">0.00 s</output>
+<p class="note">Punkte: Heim weiß, Gast blau, Konflikt rot, Ball orange. Keine Vorhersage über Datenlücken. Spieler auf der Karte anklicken; Nummern und Positionen bleiben Erkennungsergebnisse.</p></section>
+<div class="columns"><section><h2>Kader</h2><div class="row">
+<label>Mannschaft<select id="team"><option value="home">Heim</option><option value="away">Gast</option></select></label>
+<label>Nummer<input id="number" type="number" min="0" max="99" step="1"></label><label>Name<input id="name" maxlength="100"></label><button id="addPlayer">Hinzufügen</button></div>
+<div id="rosterList"></div><h2>Spielerzuordnung</h2><p id="selected">Noch kein Spieler ausgewählt.</p>
+<div class="row"><label>Kaderspieler<select id="player"><option value="">Unbekannt</option></select></label><label>Von (Analysezeit)<input id="start" type="number" min="0" step="0.01"></label><label>Bis (exklusive)<input id="end" type="number" min="0" step="0.01"></label><button id="assign" disabled>Zuordnen</button></div>
+<p class="note">Gilt nur für den ausgewählten Tracking-Abschnitt. Das Video pausiert bei Auswahl. Korrekturen werden auf der Karte als Vorschau dargestellt.</p>
+<div id="corrections"></div><div class="row"><button id="export" class="primary" disabled>review.json herunterladen</button><label>Review wieder öffnen<input id="reviewFile" type="file" accept=".json"></label></div>
+<label id="exportFallback" hidden>Export zum Kopieren, falls der Browser den Download blockiert<textarea id="exportText" readonly rows="8"></textarea></label>
+<p class="note">Vor dem Schließen herunterladen. Originalanalyse und Video bleiben unverändert. Dauerhafte korrigierte JSONL-Ausgabe: <code>reco-minimap review-identities states.jsonl --annotations review.json --out reviewed.jsonl</code></p></section>
+<section><h2>Ereignisnavigation</h2><label>Typ<select id="eventType"><option value="">Alle</option></select></label><div id="events"></div><p class="note">Klick springt zwei Sekunden vor das Ereignis. Ereignisse sind automatische Kandidaten, keine geprüfte Spielstatistik. Maximal 500 Treffer gleichzeitig.</p></section></div>
+</main><script src="/review.js"></script></body></html>

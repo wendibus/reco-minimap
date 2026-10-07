@@ -393,3 +393,9 @@ Identity output now separates reusable tracking slots (`id`), continuous segment
 require fresh OCR evidence; duplicate teammate numbers are reported as conflicts
 instead of being displayed as certain identities. These are candidates, not full
 person re-identification. See the migration notes above for Rust API additions.
+
+Offline roster names and segment/time-scoped manual corrections are available via
+`review-identities states.jsonl --annotations review.json --out reviewed.jsonl`.
+The source stays unchanged and is verified by SHA-256. See
+[identity review instructions (German)](docs/IDENTITY_REVIEW.de.md). This currently
+updates JSONL only, not the browser UI or rendered videos.

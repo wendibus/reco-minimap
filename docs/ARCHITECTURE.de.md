@@ -63,6 +63,10 @@ erhalten; `jersey` wird bei Konflikten oder verlorenen Spielern nun `null`.
 
 ## Nächste Ausbaustufen – noch nicht implementiert
 
+Kadernamen und manuelle Zuordnungen sind inzwischen als separater Offline-JSONL-
+Review verfügbar: siehe [Anleitung](IDENTITY_REVIEW.de.md). Die folgende Liste
+bezieht sich auf die weitergehende Integration in Tracking und Oberfläche.
+
 1. Die Identitätskandidaten um Kadernamen, manuelle Zuordnung, Erscheinungsmerkmale
    und Offline-Rückverknüpfung ergänzen. Feste Team-Slots sind weiterhin vorhanden
    und keine Identitätsgarantie; unbemerkte ID-Wechsel innerhalb eines Abschnitts

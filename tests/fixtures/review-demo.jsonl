@@ -1,0 +1,4 @@
+{"t":0,"players":[{"id":1,"segment":0,"team":"home","x":14,"y":7.5,"state":"visible","jersey":null,"identity":{"status":"unknown","player":null}}],"ball":{"state":"unknown"},"events":[]}
+{"t":1,"players":[{"id":1,"segment":0,"team":"home","x":14,"y":7.5,"state":"visible","jersey":null,"identity":{"status":"unknown","player":null}}],"ball":{"state":"held","holder":1,"x":14,"y":7.5},"events":[{"t":1,"type":"sub","kind":"possible"}]}
+{"t":2,"players":[{"id":1,"segment":0,"team":"home","x":15,"y":7.5,"state":"visible","jersey":null,"identity":{"status":"unknown","player":null}}],"ball":{"state":"unknown"},"events":[]}
+{"t":3,"players":[{"id":1,"segment":0,"team":"home","x":16,"y":7.5,"state":"visible","jersey":null,"identity":{"status":"unknown","player":null}}],"ball":{"state":"unknown"},"events":[]}

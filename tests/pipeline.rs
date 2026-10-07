@@ -35,6 +35,39 @@ fn homography_roundtrip() {
     assert!((back.x - 0.5).abs() < 1e-3);
 }
 
+/// Missing ball evidence expires by video time, not by processing frame count.
+#[test]
+fn possession_policy_and_timeout_are_independent_of_sampling_rate() {
+    use reco_minimap::sport::rules::PossessionRules;
+    for dt in [0.04, 0.2] {
+        for possession in [PossessionRules::None, PossessionRules::HandControl { hidden_timeout_secs: 1.5 }] {
+            let (proj, to_pano) = projector();
+            let mut cfg = Config::new(HOME, AWAY);
+            cfg.ball.possession = possession;
+            let mut mm = Minimap::new(cfg, Box::new(proj));
+            let (home, away, refs) = lineup();
+            for k in 0..10 {
+                let mut ds = frame_dets(&to_pano, &home, &away, &refs, &[]);
+                let f = to_pano.apply(home[2]).unwrap();
+                ds.push(Det::new(Class::Ball, 0.9, f.x, f.y - 0.05, 0.004, 0.007));
+                let s = mm.process(k as f64 * dt, &ds);
+                if k == 9 {
+                    assert_eq!(matches!(s.ball.state, BallState::Held { .. }), possession != PossessionRules::None);
+                }
+            }
+            let last_seen = 9.0 * dt;
+            // The player stays visible: only the ball evidence disappears.
+            let ds = frame_dets(&to_pano, &home, &away, &refs, &[]);
+            let s = mm.process(last_seen + 1.0, &ds);
+            if possession != PossessionRules::None {
+                assert!(matches!(s.ball.state, BallState::Held { .. }));
+            }
+            let s = mm.process(last_seen + 1.6, &ds);
+            assert_eq!(s.ball.state, BallState::Unknown);
+        }
+    }
+}
+
 #[test]
 fn decoder_maps_classes_and_filters() {
     let cfg = DecodeCfg::basketball_v1();

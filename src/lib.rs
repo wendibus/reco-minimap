@@ -165,6 +165,12 @@ impl Config {
 
     /// Field, slot counts and speed limits from a sport profile.
     pub fn for_sport(p: &SportProfile, home_rgb: [u8; 3], away_rgb: [u8; 3]) -> Self {
+        Self::for_sport_with_rules(p, sport::rules::AnalysisRules::for_sport(&p.id), home_rgb, away_rgb)
+    }
+
+    /// Override interpretation independently of geometry. Pass the same rules'
+    /// `scenes` field to `SceneDetector::with_rules` when using a custom profile.
+    pub fn for_sport_with_rules(p: &SportProfile, rules: sport::rules::AnalysisRules, home_rgb: [u8; 3], away_rgb: [u8; 3]) -> Self {
         let mut tracker = TrackerCfg::default();
         tracker.field = p.field;
         tracker.vmax = p.player_vmax;
@@ -172,6 +178,7 @@ impl Config {
         tracker.max_referees = p.referees;
         let mut ball = BallCfg::default();
         ball.field = p.field;
+        ball.possession = rules.possession;
         Self {
             field: p.field, home_rgb, away_rgb, tracker, ball, roster: Vec::new(), roster_home: Vec::new(), roster_away: Vec::new(), num_min_score: 3.0, num_min_lead: 1.5, vote_decay: 0.985, sub_near_edge_m: 4.0, referee_from_color: true, referee_rgb: None, ball_margin: 3.0, ball_init_conf: 0.40, ball_reacquire_conf: 0.50, ball_max_speed: p.ball_max_speed }
     }

@@ -32,6 +32,23 @@ fn no_ball() -> BallOut {
     BallOut { state: BallState::Unknown, pos: None, vel: None }
 }
 
+#[test]
+fn unsupported_sports_do_not_inherit_throw_ins() {
+    // This boundary formation triggers basketball's inbound rule, but must not
+    // invent an inbound for volleyball or an unknown custom sport.
+    let ps = vec![p(1, H, 10.0, 0.3), p(2, H, 8.0, 3.0), p(3, A, 12.0, 3.0), p(4, A, 10.0, 5.0)];
+    for id in ["volleyball", "american_football", "custom"] {
+        let mut det = SceneDetector::new(SportProfile::builtin(id).unwrap());
+        assert!(hold(&mut det, 0.0, 4.0, &ps, no_ball()).is_empty(), "{id}");
+    }
+    let mut profile = SportProfile::basketball();
+    profile.id = "local-hall".into();
+    let mut det = SceneDetector::new(profile.clone());
+    assert!(hold(&mut det, 0.0, 4.0, &ps, no_ball()).is_empty());
+    let mut det = SceneDetector::with_rules(profile, reco_minimap::sport::rules::SceneRules::Basketball);
+    assert!(hold(&mut det, 0.0, 4.0, &ps, no_ball()).iter().any(|e| e.kind == SceneKind::ThrowIn));
+}
+
 /// Feed the same formation for `secs` seconds (5 frames per second) and collect what fires.
 fn hold(det: &mut SceneDetector, t0: f64, secs: f64, ps: &[P], ball: BallOut) -> Vec<SceneEvent> {
     let mut ev = Vec::new();

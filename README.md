@@ -62,7 +62,7 @@ panorama video ──► tiles (sized by distance) ──► RF-DETR detector (O
 * **Tiling.** A panorama is much wider than the detector's 512 px input, and players far from the camera are small. `reco-minimap scales` measures how tall players appear at each image row and `--tile auto` then cuts each band with the tile size that makes a player about 28 px tall for the model. In our tests this halved the number of tiles and gave the model players at the size it was trained on.
 * **Calibration.** You click known field points (corners, centre, penalty-area corners …) once per camera position. The program fits a homography from panorama pixels to field metres and shows the field lines over the picture so you can judge the fit; it reports the error in metres.
 * **Tracking.** Each team has a fixed number of slots (5 for basketball, 11 for football …). A hidden player keeps moving with damped velocity and cannot leave the field; a returning player re-takes his slot instead of creating a sixth dot.
-* **Ball.** States *held*, *in flight*, *loose* and *unknown*. A ball hidden in hands stays *held*; detections far from the tracked ball are ignored unless they are clearly confident.
+* **Ball.** States *held*, *in flight*, *loose* and *unknown*. For hand-control sports, a ball hidden in hands stays *held* for a configurable grace period (default 1.5 seconds), then becomes *unknown*. Other sports do not infer individual possession from body-box overlap. Detections far from the tracked ball are ignored unless they are clearly confident.
 * **Smooth video.** Detection can run on every Nth frame (`--every N`); the minimap video is still written at the full frame rate by interpolating between detections.
 
 ## Install
@@ -379,3 +379,11 @@ Layout: `src/` core library (geometry, sport profiles, detection decoding, track
 * The number-reading model is the **PP-OCRv4** recognition network from [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR), ONNX export from [RapidOCR](https://github.com/RapidAI/RapidOCR), **Apache-2.0**. It is downloaded on request, not bundled.
 * Detection models come from [Reco Trainer](https://reco.cam); check that you have the rights to the training material before sharing weights.
 * Built on [ONNX Runtime](https://onnxruntime.ai) through the [`ort`](https://github.com/pykeio/ort) crate and [ffmpeg](https://ffmpeg.org).
+
+## Architecture update
+
+Sport-specific scene and possession policies are now explicit and separate from
+field geometry. Unsupported sports no longer inherit throw-in events or hand
+possession; unseen hand possession expires after a configurable timeout (1.5 s
+by default). See [architecture and migration notes (German)](docs/ARCHITECTURE.de.md)
+for implemented boundaries, compatibility and the remaining roadmap.

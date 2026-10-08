@@ -93,23 +93,40 @@ impl Scales {
 
 /// Bands over the court; each band is tiled with the size that suits its distance.
 pub fn plan_auto(s: &Scales, frame_w: u32, frame_h: u32, overlap: f32) -> Vec<Tile> {
+    plan_auto_roi(s, frame_w, frame_h, overlap, Tile { x: 0, y: 0, w: frame_w, h: frame_h })
+}
+
+/// Cover all requested foot-position bands, including the near sideline.
+/// ROI is an explicit pixel-space search boundary, not inferred from sport rules.
+/// Keep room for bodies/airborne balls when choosing it. Invalid scales produce
+/// no tiles rather than panicking, looping forever or wrapping coordinates.
+pub fn plan_auto_roi(s: &Scales, frame_w: u32, frame_h: u32, overlap: f32, roi: Tile) -> Vec<Tile> {
     let mut tiles = Vec::new();
-    let mut y = s.y_min;
-    let mut bands = 0;
-    while y < s.y_max - 1.0 && bands < 6 {
+    if ![s.a, s.b, s.y_min, s.y_max, s.target_px, overlap].iter().all(|v| v.is_finite()) || s.target_px <= 0.0 || s.b < 0.0 || s.y_max <= s.y_min {
+        return tiles;
+    }
+    let right = roi.x.saturating_add(roi.w).min(frame_w);
+    let bottom = roi.y.saturating_add(roi.h).min(frame_h);
+    if right <= roi.x || bottom <= roi.y { return tiles; }
+    let mut y = s.y_min.max(roi.y as f32);
+    let end = s.y_max.min(bottom as f32);
+    // The old six-band cap silently omitted the lower field on steep fits.
+    // A minimum 10-pixel advance bounds the loop without truncating coverage.
+    while y < end {
         let h0 = s.height_at(y);
-        let mut y1 = if s.b > 1e-4 { (h0 * 1.25 - s.a) / s.b } else { s.y_max };
-        y1 = y1.clamp(y + 10.0, s.y_max);
-        if s.y_max - y1 < 0.05 * (s.y_max - s.y_min) {
-            y1 = s.y_max;
+        let mut y1 = if s.b > 1e-4 { (h0 * 1.25 - s.a) / s.b } else { end };
+        y1 = y1.max(y + 10.0).min(end);
+        if end - y1 < 0.05 * (end - s.y_min) {
+            y1 = end;
         }
         let side = s.tile_at((y + y1) / 2.0).round() as u32;
-        let top = (y - h0 * 1.1).max(0.0);
-        let bot = (y1 + 0.1 * h0).min(frame_h as f32);
-        let roi = Tile { x: 0, y: top as u32, w: frame_w, h: ((bot - top) as u32).max(32) };
-        tiles.extend(plan_tiles(roi, side, overlap));
+        let top = (y - h0 * 1.1).max(roi.y as f32).floor() as u32;
+        let bot = ((y1 + 0.1 * h0).ceil() as u32).min(bottom);
+        if bot > top {
+            let band = Tile { x: roi.x, y: top, w: right - roi.x, h: bot - top };
+            tiles.extend(plan_tiles(band, side, overlap));
+        }
         y = y1;
-        bands += 1;
     }
     tiles
 }

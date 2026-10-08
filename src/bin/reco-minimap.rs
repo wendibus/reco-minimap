@@ -23,7 +23,7 @@ use reco_minimap::tools::calib::{self, CourtCalib};
 use reco_minimap::tools::colors::{hex, kmeans, lab_dist, parse_hex, pick_teams};
 use reco_minimap::tools::infer::{Ep, RfDetr, Units};
 use reco_minimap::tools::live::{self, Hub};
-use reco_minimap::tools::scales::{plan_auto, Scales};
+use reco_minimap::tools::scales::{plan_auto, plan_auto_roi, Scales};
 use reco_minimap::tools::video::{self, Codec, Frame, FrameReader, FrameWriter, VideoInfo};
 use reco_minimap::{ball::BallState, Config, FrameState, Minimap};
 
@@ -153,13 +153,20 @@ fn open_info(o: &Opts, input: &str) -> VideoInfo {
 }
 
 fn plan(o: &Opts, info: &VideoInfo) -> Vec<Tile> {
-    let r: Vec<f32> = o.s("roi").map(|s| s.split(',').filter_map(|v| v.trim().parse().ok()).collect()).unwrap_or_default();
+    let r: Vec<f32> = o.s("roi").map(|s| s.split(',').map(|v| v.trim().parse::<f32>().unwrap_or_else(|_| fail("--roi: vier Zahlen x0,y0,x1,y1 erwartet"))).collect()).unwrap_or_default();
+    if o.has("roi") && (r.len() != 4 || r.iter().any(|v| !v.is_finite() || *v < 0.0 || *v > 1.0) || r[2] <= r[0] || r[3] <= r[1]) {
+        fail::<()>("--roi: 0 <= x0 < x1 <= 1 und 0 <= y0 < y1 <= 1 erforderlich");
+    }
     let (x0, y0, x1, y1) = if r.len() == 4 { (r[0], r[1], r[2], r[3]) } else { (0.0, 0.0, 1.0, 1.0) };
     let (w, h) = (info.w as f32, info.h as f32);
-    let roi = Tile { x: (x0 * w) as u32, y: (y0 * h) as u32, w: (((x1 - x0) * w) as u32).max(32), h: (((y1 - y0) * h) as u32).max(32) };
+    let x = (x0 * w).floor() as u32;
+    let y = (y0 * h).floor() as u32;
+    let roi = Tile { x, y, w: (x1 * w).ceil() as u32 - x, h: (y1 * h).ceil() as u32 - y };
     if o.s("tile") == Some("auto") {
         let sc = Scales::load(o.s("scales").unwrap_or("scales.json")).unwrap_or_else(|e| fail(e));
-        return plan_auto(&sc, info.w, info.h, o.f("overlap", 0.25) as f32);
+        let tiles = plan_auto_roi(&sc, info.w, info.h, o.f("overlap", 0.25) as f32, roi);
+        if tiles.is_empty() { fail::<()>("Keine Auto-Kacheln: scales.json und --roi prüfen"); }
+        return tiles;
     }
     let sizes: Vec<u32> = o.s("tile").unwrap_or("512").split(',').filter_map(|v| v.trim().parse().ok()).collect();
     let mut all = Vec::new();

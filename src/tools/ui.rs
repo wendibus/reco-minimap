@@ -211,6 +211,8 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
     let units = get_s(p, "units");
     let has_scales = dir.join("scales.json").exists();
     let engine = |a: &mut Vec<String>| {
+        let workers=get_s(p,"workers").parse::<usize>().unwrap_or(1).clamp(1,4);
+        pushs(a,&["--workers",&workers.to_string()]);
         a.push("--ep".into());
         a.push(if ep == "cpu" { "cpu".into() } else { "coreml".into() });
         if !units.is_empty() && units != "all" {

@@ -243,8 +243,11 @@ reco-minimap live <source> --model … --court court.json --teams teams.json \
 * Use `--host 0.0.0.0` to reach it from another computer.
 
 Opt-in `--adaptive-live` selects tiles near recent observations between full
-searches (`--sweep-secs 2`). Live OCR is throttled with `--ocr-secs 2` and skipped
-when detection already took one second. The JSON `performance` object reports
+searches (`--sweep-secs 2`). Four rotating recovery tiles per update also search
+away from known players (`--ball-search-tiles 4`, `0` disables this). Live OCR
+runs in a bounded background worker (`--ocr-secs 2`), rejecting stale/reused-track
+results. `--workers 2` enables parallel model sessions; worker count is also
+selectable in the UI. The JSON `performance` object reports
 tile counts, inference time and dropped frames; `?debug=1` displays the counters.
 This prioritizes fresh updates, **not exhaustive frame processing**. Latency is
 measured from decoded-frame arrival, not from the camera. Adaptive search can

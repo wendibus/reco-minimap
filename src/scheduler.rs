@@ -6,6 +6,25 @@
 //! inference work, not a guarantee of continuous ball visibility.
 use crate::{detect::Tile, tracker::BBox};
 
+/// Independent rotating coverage, including tiles with no tracked person.
+/// Sharing the existing model's worker pool avoids a second GPU model copy.
+#[derive(Default)]
+pub struct RecoverySweep {
+    next: usize,
+}
+impl RecoverySweep {
+    pub fn select(&mut self, total: usize, budget: usize) -> Vec<usize> {
+        if total == 0 {
+            return Vec::new();
+        }
+        let out = (0..budget.min(total))
+            .map(|i| (self.next + i) % total)
+            .collect();
+        self.next = (self.next + budget.min(total)) % total;
+        out
+    }
+}
+
 pub struct TileScheduler {
     last_full: Option<f64>,
     interval: f64,

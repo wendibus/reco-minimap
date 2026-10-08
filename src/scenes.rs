@@ -64,6 +64,12 @@ impl SceneKind {
 
 #[derive(Clone, Debug)]
 pub struct SceneEvent {
+    /// First observation of this formation, not the delayed reporting time.
+    pub started_at: f64,
+    /// Heuristic evidence, not calibrated probabilities or referee decisions.
+    pub evidence: Vec<&'static str>,
+    /// Temporal context only: does not upgrade a possible substitution.
+    pub related_substitutions: Vec<crate::SubEvent>,
     pub t: f64,
     pub kind: SceneKind,
     /// Team that takes the restart / shot (kicker, thrower, shooter).
@@ -127,6 +133,8 @@ pub struct SceneDetector {
     holder: Option<(Vec2, Team, f64)>,
     prev_state: Option<BallState>,
     pending: Option<PendingShot>,
+    recent_substitutions: Vec<crate::SubEvent>,
+    last_t: Option<f64>,
 }
 
 fn in_rect(p: Vec2, r: (f32, f32, f32, f32), pad: f32) -> bool {
@@ -142,7 +150,7 @@ impl SceneDetector {
     /// Explicit policy allows custom field dimensions without guessing rules from
     /// geometry or a display name. Unsupported sports use `SceneRules::None`.
     pub fn with_rules(profile: SportProfile, rules: SceneRules) -> Self {
-        Self { rules, profile, cfg: SceneCfg::default(), active: HashMap::new(), last_fire: HashMap::new(), holder: None, prev_state: None, pending: None }
+        Self { rules, profile, cfg: SceneCfg::default(), active: HashMap::new(), last_fire: HashMap::new(), holder: None, prev_state: None, pending: None, recent_substitutions:Vec::new(),last_t:None }
     }
 
     pub fn profile(&self) -> &SportProfile {
@@ -153,7 +161,22 @@ impl SceneDetector {
     pub fn update(&mut self, s: &FrameState) -> Vec<SceneEvent> {
         let mut out = Vec::new();
         let t = s.t;
-        let players: Vec<&AgentOut> = s.players.iter().filter(|p| p.state != TrackState::Lost).collect();
+        if !t.is_finite() { return out; }
+        // Seeking or sparse/missing input must not bridge unrelated sequences.
+        if self.last_t.map(|last|t<last || t-last>3.0).unwrap_or(false) {
+            self.active.clear(); self.last_fire.clear(); self.recent_substitutions.clear();
+            self.holder=None; self.prev_state=None; self.pending=None;
+        }
+        self.last_t=Some(t);
+        if self.rules==SceneRules::Basketball {
+            self.recent_substitutions.retain(|e|t-e.t>=0.0 && t-e.t<=30.0);
+            for e in &s.events {
+                if e.t.is_finite() && (0.0..=30.0).contains(&(t-e.t)) && !self.recent_substitutions.iter().any(|old|old.t==e.t && old.slot==e.slot && old.team==e.team) {
+                    self.recent_substitutions.push(e.clone());
+                }
+            }
+        }
+        let players: Vec<&AgentOut> = s.players.iter().filter(|p| if self.rules==SceneRules::Basketball {p.state==TrackState::Visible} else {p.state!=TrackState::Lost}).collect();
         let mut cands: Vec<Cand> = Vec::new();
         if players.len() >= 4 {
             self.patterns(s, &players, &mut cands);
@@ -171,7 +194,14 @@ impl SceneDetector {
             if !e.fired && t - e.since >= c.kind.hold() && t - last >= self.cfg.cooldown {
                 e.fired = true;
                 self.last_fire.insert(key, t);
-                out.push(SceneEvent { t, kind: c.kind, team: c.team, pos: c.pos, side: c.side, confidence: c.conf, borderline: false });
+                let mut evidence=vec!["persistent_formation"];
+                if c.kind==SceneKind::FreeThrow { evidence.extend(["shooter_at_line","rebounders_both_lane_edges","lane_centre_clear"]); }
+                if c.kind==SceneKind::FreeThrow && matches!(s.ball.state,BallState::Unknown) { evidence.push("ball_unobserved"); }
+                let related_substitutions=if self.rules==SceneRules::Basketball && c.kind==SceneKind::ThrowIn {
+                    self.recent_substitutions.iter().filter(|sub|sub.t<=t).cloned().collect::<Vec<_>>()
+                } else {Vec::new()};
+                if !related_substitutions.is_empty() { evidence.push("recent_substitution_candidate"); }
+                out.push(SceneEvent { t, started_at:e.since, evidence, related_substitutions, kind: c.kind, team: c.team, pos: c.pos, side: c.side, confidence: c.conf, borderline: false });
             }
         }
         let rearm = self.cfg.rearm_gap;

@@ -13,7 +13,7 @@ impl SceneDetector {
         match sport {
             SceneRules::Basketball => {
                 self.tip_off(players, out, 1.5, 2.5, 6);
-                self.free_throws(players, out);
+                self.free_throws(s, players, out);
             }
             SceneRules::Lacrosse => self.tip_off(players, out, 1.2, 3.0, 4),
             _ => {}
@@ -56,13 +56,14 @@ impl SceneDetector {
         let (l, w) = (self.profile.field.length, self.profile.field.width);
         let sport = self.rules;
         for p in players {
+            let ball_with = matches!(s.ball.state, BallState::Held { track } if track == p.id) || (!matches!(s.ball.state,BallState::Unknown|BallState::InFlight) && s.ball.pos.map(|b| b.dist(p.pos) <= 1.5).unwrap_or(false));
             if self.profile.field.edge_dist(p.pos) > 0.8 || !self.still(p) {
                 continue;
             }
             if players.iter().filter(|q| q.id != p.id && q.pos.dist(p.pos) <= 9.0).count() < 3 {
                 continue;
             }
-            if players.iter().any(|q| q.id != p.id && q.pos.dist(p.pos) < 1.2) {
+            if players.iter().any(|q| q.id != p.id && q.pos.dist(p.pos) < 1.2) && !(sport==SceneRules::Basketball && ball_with) {
                 continue;
             }
             let (x, y) = (p.pos.x, p.pos.y);
@@ -77,7 +78,6 @@ impl SceneDetector {
             if !ok {
                 continue;
             }
-            let ball_with = matches!(s.ball.state, BallState::Held { track } if track == p.id) || s.ball.pos.map(|b| b.dist(p.pos) <= 1.5).unwrap_or(false);
             out.push(Cand { kind: SceneKind::ThrowIn, key: (p.id % 250) as u8, team: Some(p.team), pos: p.pos, side: None, conf: if ball_with { 0.8 } else { 0.5 } });
         }
     }

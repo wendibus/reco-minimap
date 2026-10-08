@@ -881,7 +881,9 @@ fn read_numbers(nm: &mut Numbers, mm: &mut Minimap, src: &Frame, t: f64) {
 fn scene_json(e: &SceneEvent) -> serde_json::Value {
     serde_json::json!({"type": "scene", "kind": e.kind.key(), "team": match e.team { Some(Team::Home) => "home", Some(Team::Away) => "away", _ => "none" },
         "side": e.side.map(|c| c.to_string()), "x": (e.pos.x * 100.0).round() / 100.0, "y": (e.pos.y * 100.0).round() / 100.0,
-        "confidence": (e.confidence * 100.0).round() / 100.0, "borderline": e.borderline, "t": (e.t * 1000.0).round() / 1000.0})
+        "confidence": (e.confidence * 100.0).round() / 100.0, "borderline": e.borderline, "t": (e.t * 1000.0).round() / 1000.0,
+        "started_at":e.started_at,"evidence":e.evidence,"phase":if e.kind==SceneKind::FreeThrow && e.evidence.contains(&"ball_release_towards_basket") {"attempt"} else if matches!(e.kind,SceneKind::ShotTwo|SceneKind::ShotThree) {"attempt"} else {"formation"},
+        "related_substitutions":e.related_substitutions.iter().map(|sub|serde_json::json!({"t":sub.t,"slot":sub.slot,"team":match sub.team {Team::Home=>"home",Team::Away=>"away",Team::Unknown=>"unknown"},"status":match sub.kind {reco_minimap::SubKind::Possible=>"possible",reco_minimap::SubKind::Confirmed=>"confirmed"},"out_number":sub.out_number,"in_number":sub.in_number})).collect::<Vec<_>>()})
 }
 
 fn scene_name(kind: SceneKind, sport: &str) -> &'static str {
@@ -904,8 +906,14 @@ fn log_scenes(sc: &[SceneEvent], sport: &str) {
     for e in sc {
         let side = match e.side { Some('l') => " links", Some('r') => " rechts", _ => "" };
         let team = match e.team { Some(t) => format!(" ({})", team_name(t)), None => String::new() };
-        eprintln!("\n  SITUATION {}{}{} bei {}  (Sicherheit {:.2}{})", scene_name(e.kind, sport), side, team, fmt_clock(e.t), e.confidence, if e.borderline { ", knapp an der Linie" } else { "" });
+        eprintln!("\n  SITUATION {}{}{} bei {}  (Sicherheit {:.2}{})", scene_label(e, sport), side, team, fmt_clock(e.t), e.confidence, if e.borderline { ", knapp an der Linie" } else { "" });
     }
+}
+
+fn scene_label(e:&SceneEvent,sport:&str)-> &'static str {
+    if e.kind==SceneKind::FreeThrow {
+        if e.evidence.contains(&"ball_release_towards_basket") {"Freiwurfversuch"} else {"Freiwurfaufstellung"}
+    } else {scene_name(e.kind,sport)}
 }
 
 fn fmt_clock(t: f64) -> String {
@@ -1315,7 +1323,7 @@ fn cmd_run(o: &Opts, input: &str) {
     if scenes.is_some() {
         let mut counts: std::collections::BTreeMap<&str, usize> = Default::default();
         for e in &scene_log {
-            *counts.entry(scene_name(e.kind, &profile.id)).or_default() += 1;
+            *counts.entry(scene_label(e, &profile.id)).or_default() += 1;
         }
         eprintln!("Situationen: {}", if counts.is_empty() { "keine erkannt".to_string() } else { counts.iter().map(|(k, v)| format!("{k} {v}×")).collect::<Vec<_>>().join(", ") });
     }

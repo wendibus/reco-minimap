@@ -1,5 +1,9 @@
 # reco-minimap
 
+Automatic tiling now covers all calibrated depth bands instead of stopping after
+six. `--roi` also applies to `--tile auto`; invalid bounds are rejected. See
+[tiling fix and benchmark (German)](docs/TILING_FIX.de.md).
+
 **Turn a sports panorama video into a top-down minimap** – players in their shirt colours, referees, the ball, jersey numbers and substitutions – with a browser-based interface in English, German, French and Spanish.
 
 It is built to work with panoramas from [Reco](https://github.com/reco-project/video-stitcher) (two cameras stitched into one wide picture) and with detection models trained in **Reco Trainer**, but it works on any full-field panorama video plus an RF-DETR ONNX model with the same output layout.

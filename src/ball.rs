@@ -45,11 +45,17 @@ pub struct BallCfg {
     pub flight_speed: f32,
     pub coast_secs: f32,
     pub smooth_tau: f32,
+    /// A free ball that stays within `park_radius` metres for this long is a parked one (spare ball
+    /// at the bench, ball rack, a false positive on something round) and is ignored from then on.
+    pub park_secs: f32,
+    pub park_radius: f32,
+    /// A parked spot is forgotten when nothing was detected there for this long.
+    pub park_forget_secs: f32,
 }
 
 impl Default for BallCfg {
     fn default() -> Self {
-        Self { field: Field::basketball(), hold_expand: 0.15, hold_frames: 2, release_frames: 2, flight_frames: 2, flight_speed: 3.0, coast_secs: 0.7, smooth_tau: 0.06 }
+        Self { field: Field::basketball(), hold_expand: 0.15, hold_frames: 2, release_frames: 2, flight_frames: 2, flight_speed: 3.0, coast_secs: 0.7, smooth_tau: 0.06, park_secs: 3.0, park_radius: 0.6, park_forget_secs: 10.0 }
     }
 }
 
@@ -75,6 +81,10 @@ pub struct BallTracker {
     fast_count: u32,
     slow_since: Option<f64>,
     slow_count: u32,
+    /// Where the free ball has been resting, and since when.
+    anchor: Option<(Vec2, f64)>,
+    /// Parked spots: position and when a detection was last seen there.
+    parked: Vec<(Vec2, f64)>,
 }
 
 fn contains(b: &BBox, x: f32, y: f32, expand: f32) -> bool {
@@ -84,7 +94,7 @@ fn contains(b: &BBox, x: f32, y: f32, expand: f32) -> bool {
 
 impl BallTracker {
     pub fn new(cfg: BallCfg) -> Self {
-        Self { cfg, state: BallState::Unknown, pos: Vec2::default(), vel: Vec2::default(), have_pos: false, last_seen: f64::NEG_INFINITY, last_t: None, cand: None, release_count: 0, fast_count: 0, slow_since: None, slow_count: 0 }
+        Self { cfg, state: BallState::Unknown, pos: Vec2::default(), vel: Vec2::default(), have_pos: false, last_seen: f64::NEG_INFINITY, last_t: None, cand: None, release_count: 0, fast_count: 0, slow_since: None, slow_count: 0, anchor: None, parked: Vec::new() }
     }
 
     /// Where the ball should be now (for gating false positives); `None` if not seen recently.
@@ -95,6 +105,18 @@ impl BallTracker {
     /// Seconds since the ball was last accepted (infinite if never).
     pub fn age(&self, t: f64) -> f32 {
         if self.have_pos { (t - self.last_seen) as f32 } else { f32::INFINITY }
+    }
+
+    /// True if `court` is a parked spot (see [`BallCfg::park_secs`]); such a detection is not the game ball.
+    /// Call for every ball candidate of the frame: it also keeps the spot alive while something is seen there.
+    pub fn is_parked(&mut self, t: f64, court: Vec2) -> bool {
+        let r = self.cfg.park_radius * 1.5;
+        let mut hit = false;
+        for s in self.parked.iter_mut().filter(|s| s.0.dist(court) <= r) {
+            s.1 = t;
+            hit = true;
+        }
+        hit
     }
 
     pub fn state(&self) -> BallState {
@@ -112,7 +134,9 @@ impl BallTracker {
         if let Some(o) = obs {
             if self.have_pos {
                 let a = 1.0 - (-dt / self.cfg.smooth_tau).exp();
-                let np = self.pos.lerp(o.court, a);
+                // clamp before measuring the step: a detection beyond the clamp margin would otherwise
+                // pull the position out and back every frame and read as a constant speed
+                let np = self.cfg.field.clamp(self.pos.lerp(o.court, a), 1.5);
                 let inst = (np - self.pos) * (1.0 / dt);
                 self.vel = self.vel.lerp(inst, 0.4);
                 self.pos = np;
@@ -227,6 +251,29 @@ impl BallTracker {
                     self.state = BallState::Unknown;
                 }
             }
+        }
+
+        // a free ball that does not move is not the game ball
+        let forget = self.cfg.park_forget_secs as f64;
+        self.parked.retain(|s| t - s.1 <= forget);
+        match (self.state, obs) {
+            (BallState::InFlight | BallState::Loose, Some(_)) => match self.anchor {
+                Some((a, since)) if a.dist(self.pos) <= self.cfg.park_radius => {
+                    if (t - since) as f32 >= self.cfg.park_secs {
+                        if self.parked.len() < 16 {
+                            self.parked.push((a, t));
+                        }
+                        self.state = BallState::Unknown;
+                        self.have_pos = false;
+                        self.vel = Vec2::default();
+                        self.anchor = None;
+                        self.fast_count = 0;
+                    }
+                }
+                _ => self.anchor = Some((self.pos, t)),
+            },
+            (BallState::InFlight | BallState::Loose, None) => {}
+            _ => self.anchor = None,
         }
 
         // holder gone -> unknown

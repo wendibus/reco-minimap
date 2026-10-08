@@ -648,3 +648,40 @@ fn auto_plan_reaches_the_near_sideline_and_follows_the_field() {
         assert!(masked.iter().any(|t| x >= t.x as f32 && x <= (t.x + t.w) as f32 && y <= (t.y + t.h) as f32 && y - h >= t.y as f32), "floor point ({x:.0},{y:.0}) not covered");
     }
 }
+
+#[test]
+fn resting_ball_beside_the_court_is_parked_and_the_game_ball_takes_over() {
+    let (proj, to_pano) = projector();
+    let mut mm = Minimap::new(Config::new(HOME, AWAY), Box::new(proj));
+    let (home, away, refs) = lineup();
+    let ball = |p: Vec2, conf: f32| {
+        let f = to_pano.apply(p).unwrap();
+        Det::new(Class::Ball, conf, f.x, f.y - 0.004, 0.004, 0.007)
+    };
+    let spare = Vec2::new(14.0, 17.4); // 2.4 m outside the near sideline: inside the ball margin, beyond the clamp
+    let (mut t, dt) = (0.0, 1.0 / 6.0);
+    let mut flight = 0;
+    let mut s = None;
+    for _ in 0..36 {
+        let mut d = frame_dets(&to_pano, &home, &away, &refs, &[]);
+        d.push(ball(spare, 0.6));
+        let st = mm.process(t, &d);
+        flight += (st.ball.state == BallState::InFlight) as u32;
+        s = Some(st);
+        t += dt;
+    }
+    assert_eq!(flight, 0, "a resting ball must never read as flying");
+    assert_eq!(s.unwrap().ball.state, BallState::Unknown, "after 3 s at rest it is parked");
+
+    // the game ball appears elsewhere with modest confidence while the spare one is still detected
+    let mut s = None;
+    for k in 0..6 {
+        let mut d = frame_dets(&to_pano, &home, &away, &refs, &[]);
+        d.push(ball(spare, 0.6));
+        d.push(ball(Vec2::new(20.0 - k as f32 * 0.3, 3.0), 0.45));
+        s = Some(mm.process(t, &d));
+        t += dt;
+    }
+    let p = s.unwrap().ball.pos.expect("game ball tracked");
+    assert!(p.dist(Vec2::new(18.5, 3.0)) < 1.5, "ball at {p:?}");
+}

@@ -11,6 +11,7 @@
 use serde_json::{json, Value};
 
 use crate::detect::{plan_tiles, Tile};
+use crate::geom::{Field, Homography, Vec2};
 
 #[derive(Clone, Debug)]
 pub struct Scales {
@@ -93,10 +94,39 @@ impl Scales {
 
 /// Bands over the court; each band is tiled with the size that suits its distance.
 pub fn plan_auto(s: &Scales, frame_w: u32, frame_h: u32, overlap: f32) -> Vec<Tile> {
+    plan_bands(s, frame_w, frame_h, overlap, None)
+}
+
+/// Like [`plan_auto`], but each band only spans the part of the panorama where the field is.
+/// `floor_px`: floor points of the field (grown by the margin in which detections are still used)
+/// in panorama pixels, see [`floor_points`]. The far bands use small tiles, so not tiling the
+/// stands left and right of the field saves most there.
+pub fn plan_auto_field(s: &Scales, frame_w: u32, frame_h: u32, overlap: f32, floor_px: &[(f32, f32)]) -> Vec<Tile> {
+    plan_bands(s, frame_w, frame_h, overlap, Some(floor_px))
+}
+
+/// Floor points of `field` grown by `margin_m`, on a 0.25 m grid, as panorama pixels.
+pub fn floor_points(court_to_pano: &Homography, field: &Field, margin_m: f32, frame_w: u32, frame_h: u32) -> Vec<(f32, f32)> {
+    let step = 0.25f32;
+    let (nx, ny) = (((field.length + 2.0 * margin_m) / step).ceil() as usize, ((field.width + 2.0 * margin_m) / step).ceil() as usize);
+    let mut out = Vec::with_capacity((nx + 1) * (ny + 1));
+    for j in 0..=ny {
+        for i in 0..=nx {
+            let c = Vec2::new((-margin_m + i as f32 * step).min(field.length + margin_m), (-margin_m + j as f32 * step).min(field.width + margin_m));
+            if let Some(p) = court_to_pano.apply(c) {
+                out.push((p.x * frame_w as f32, p.y * frame_h as f32));
+            }
+        }
+    }
+    out
+}
+
+fn plan_bands(s: &Scales, frame_w: u32, frame_h: u32, overlap: f32, floor_px: Option<&[(f32, f32)]>) -> Vec<Tile> {
     let mut tiles = Vec::new();
     let mut y = s.y_min;
     let mut bands = 0;
-    while y < s.y_max - 1.0 && bands < 6 {
+    // every band covers a 25 % growth in player height; the count is only bounded against a degenerate fit
+    while y < s.y_max - 1.0 && bands < 32 {
         let h0 = s.height_at(y);
         let mut y1 = if s.b > 1e-4 { (h0 * 1.25 - s.a) / s.b } else { s.y_max };
         y1 = y1.clamp(y + 10.0, s.y_max);
@@ -106,10 +136,33 @@ pub fn plan_auto(s: &Scales, frame_w: u32, frame_h: u32, overlap: f32) -> Vec<Ti
         let side = s.tile_at((y + y1) / 2.0).round() as u32;
         let top = (y - h0 * 1.1).max(0.0);
         let bot = (y1 + 0.1 * h0).min(frame_h as f32);
-        let roi = Tile { x: 0, y: top as u32, w: frame_w, h: ((bot - top) as u32).max(32) };
-        tiles.extend(plan_tiles(roi, side, overlap));
+        let (band_y, band_y1) = (y, y1);
         y = y1;
         bands += 1;
+        let (mut x0, mut x1) = (0.0f32, frame_w as f32);
+        if let Some(pts) = floor_px {
+            // feet in this band stand between these columns; a body is at most about half its height wide
+            let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
+            // the first band also serves whoever stands above the measured rows (far corners of the margin)
+            let from = if bands == 1 { f32::NEG_INFINITY } else { band_y };
+            for p in pts.iter().filter(|p| p.1 >= from && p.1 <= band_y1) {
+                lo = lo.min(p.0);
+                hi = hi.max(p.0);
+            }
+            if lo > hi {
+                continue; // no field in these rows
+            }
+            let pad = 0.5 * s.height_at(band_y1) + 8.0;
+            (x0, x1) = ((lo - pad).max(0.0), (hi + pad).min(frame_w as f32));
+            // a region narrower than the tile would be magnified beyond the intended scale
+            let want = (side.min(frame_w)) as f32;
+            if x1 - x0 < want {
+                let c = ((x0 + x1) / 2.0).clamp(want / 2.0, frame_w as f32 - want / 2.0);
+                (x0, x1) = (c - want / 2.0, c + want / 2.0);
+            }
+        }
+        let roi = Tile { x: x0 as u32, y: top as u32, w: ((x1 - x0).ceil() as u32).min(frame_w - x0 as u32), h: ((bot - top) as u32).max(32) };
+        tiles.extend(plan_tiles(roi, side, overlap));
     }
     tiles
 }

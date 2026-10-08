@@ -266,7 +266,7 @@ Common options (see `reco-minimap --help` for all):
 | `--ep coreml\|cpu`, `--units all\|gpu\|ane\|cpu` | Execution provider (on M-series `all` ≈ `gpu`; the Neural Engine did not help for this model) |
 | `--scenes` | Recognise game situations (throw-in, free throw, kick-off, penalty, corner, 7 m, 2/3-point attempts …) |
 | `--numbers --roster-home … --roster-away … --hires …` | Read jersey numbers and detect substitutions |
-| `--thr-player 0.35 --thr-ball 0.30 --thr-ref 0.50` | Detection thresholds |
+| `--thr-player 0.60 --thr-ball 0.30 --thr-ref 0.50` | Detection thresholds (defaults shown) |
 | `--roi x0,y0,x1,y1` | Search only a band of the panorama (fractions) |
 | `--minimap f.mp4 --alpha f.mov --pip f.mp4 --json f.jsonl` | Outputs of `run` (`--alpha-bg 0.6` adds a dark backing) |
 | `--draw-home #fff --draw-away #2f6bff --ref-color #000` | Display colours, referee shirt colour |

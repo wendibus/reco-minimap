@@ -7,7 +7,7 @@ use ort::session::Session;
 use ort::value::TensorRef;
 
 use super::video::Frame;
-use crate::detect::{decode_rfdetr, nms, tile_to_pano, BoxFormat, Class, DecodeCfg, Det, Tile};
+use crate::detect::{decode_rfdetr, merge_tiles, BoxFormat, Class, DecodeCfg, Det, Tile};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Ep {
@@ -190,15 +190,13 @@ impl RfDetr {
         });
         self.t_infer += t1.elapsed();
 
-        let mut all = Vec::new();
+        let mut per_tile = Vec::new();
         for r in results {
             for (i, dets) in r? {
-                for d in dets {
-                    all.push(tile_to_pano(&d, &tiles[i], frame.w as u32, frame.h as u32));
-                }
+                per_tile.push((tiles[i], dets));
             }
         }
-        Ok(nms(all, 0.5))
+        Ok(merge_tiles(&per_tile, frame.w as u32, frame.h as u32, 0.5))
     }
 }
 

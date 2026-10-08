@@ -45,7 +45,30 @@ fn err(s: &mut TcpStream, msg: impl std::fmt::Display) {
     jres(s, json!({"ok": false, "error": msg.to_string()}));
 }
 
-fn read_request(s: &mut TcpStream) -> Option<(String, String, String, String)> {
+/// The interface can write files and start jobs, so only the page it serves itself may call it.
+/// `Host` must be this machine by loopback name (a foreign name resolving to 127.0.0.1 is DNS
+/// rebinding), and a browser's `Origin`, when sent, must be that same host (anything else is another
+/// web page posting to us). Requests without `Origin` come from non-browser clients such as curl.
+pub fn request_allowed(host: Option<&str>, origin: Option<&str>) -> bool {
+    let host = match host {
+        Some(h) => h.trim(),
+        None => return false,
+    };
+    let name = if host.starts_with('[') { host.split(']').next().unwrap_or("") } else { host.split(':').next().unwrap_or("") };
+    if !matches!(name.to_ascii_lowercase().as_str(), "127.0.0.1" | "localhost" | "[::1") {
+        return false;
+    }
+    match origin {
+        Some(o) => o.trim().strip_prefix("http://").map(|o| o.eq_ignore_ascii_case(host)).unwrap_or(false),
+        None => true,
+    }
+}
+
+fn header<'a>(head: &'a str, name: &str) -> Option<&'a str> {
+    head.lines().skip(1).find_map(|l| l.split_once(':').filter(|(k, _)| k.trim().eq_ignore_ascii_case(name)).map(|(_, v)| v.trim()))
+}
+
+fn read_request(s: &mut TcpStream) -> Option<(String, String, String, String, String)> {
     let _ = s.set_read_timeout(Some(Duration::from_secs(10)));
     let mut buf = Vec::new();
     let mut tmp = [0u8; 8192];
@@ -78,7 +101,7 @@ fn read_request(s: &mut TcpStream) -> Option<(String, String, String, String)> {
         }
     }
     let body = String::from_utf8_lossy(&buf[header_end.min(buf.len())..]).to_string();
-    Some((method, path, query, body))
+    Some((method, path, query, body, head))
 }
 
 fn qparam(query: &str, key: &str) -> Option<String> {
@@ -353,10 +376,13 @@ fn start_job(ui: &Arc<Ui>, dir: &Path, kind: &str, params: &Value) -> Result<u64
 // ---------------------------------------------------------------- routes
 
 fn handle(mut s: TcpStream, ui: Arc<Ui>) {
-    let (method, path, query, body) = match read_request(&mut s) {
+    let (method, path, query, body, head) = match read_request(&mut s) {
         Some(r) => r,
         None => return,
     };
+    if !request_allowed(header(&head, "host"), header(&head, "origin")) {
+        return respond(&mut s, "403 Forbidden", "text/plain", b"forbidden");
+    }
     let b: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
     match (method.as_str(), path.as_str()) {
         ("GET", "/") => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("ui.html").as_bytes()),

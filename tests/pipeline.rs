@@ -592,3 +592,59 @@ fn same_number_after_leaving_is_not_a_confirmed_substitution() {
     let slot = id_of(&mm, back[0]);
     assert_eq!(mm.tracker().tracks().iter().find(|x| x.id == slot).unwrap().confirmed, Some(7));
 }
+
+#[test]
+fn merge_tiles_drops_boxes_cut_by_a_tile_edge() {
+    use reco_minimap::detect::merge_tiles;
+    let (pw, ph) = (2048u32, 512u32);
+    let (left, right) = (Tile { x: 0, y: 0, w: 512, h: 512 }, Tile { x: 384, y: 0, w: 512, h: 512 });
+    // a player 40 px wide and 100 px tall at pano x 490..530: the left tile ends at 512 and sees only 22 px of him
+    let cut = Det::new(Class::Player, 0.9, 501.0 / 512.0, 0.5, 22.0 / 512.0, 100.0 / 512.0);
+    let whole = Det::new(Class::Player, 0.7, (510.0 - 384.0) / 512.0, 0.5, 40.0 / 512.0, 100.0 / 512.0);
+    let out = merge_tiles(&[(left, vec![cut]), (right, vec![whole])], pw, ph, 0.5);
+    assert_eq!(out.len(), 1, "{out:?}");
+    assert!((out[0].w * pw as f32 - 40.0).abs() < 0.5, "the complete box wins although it is less confident");
+
+    // nobody saw him whole: the cut box is kept
+    assert_eq!(merge_tiles(&[(left, vec![cut]), (right, vec![])], pw, ph, 0.5).len(), 1);
+
+    // a box at the panorama border is not "cut": the left tile's left edge is the image edge
+    let at_border = Det::new(Class::Player, 0.9, 10.0 / 512.0, 0.5, 20.0 / 512.0, 100.0 / 512.0);
+    let inner = Det::new(Class::Player, 0.8, 30.0 / 512.0, 0.5, 60.0 / 512.0, 110.0 / 512.0);
+    assert_eq!(merge_tiles(&[(left, vec![at_border, inner])], pw, ph, 0.5).len(), 2);
+
+    // the same person as player and as referee: one detection, the more confident class
+    let p = Det::new(Class::Player, 0.8, 0.5, 0.5, 0.08, 0.2);
+    let r = Det::new(Class::Referee, 0.6, 0.501, 0.5, 0.08, 0.2);
+    let out = merge_tiles(&[(left, vec![p, r])], pw, ph, 0.5);
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].class, Class::Player);
+    // a ball in front of a player is untouched
+    let b = Det::new(Class::Ball, 0.5, 0.5, 0.5, 0.02, 0.02);
+    assert_eq!(merge_tiles(&[(left, vec![p, b])], pw, ph, 0.5).len(), 2);
+}
+
+#[test]
+fn auto_plan_reaches_the_near_sideline_and_follows_the_field() {
+    use reco_minimap::tools::scales::{floor_points, plan_auto, plan_auto_field, Scales};
+    // a steep fit from a real 2560x1440 panorama: player height grows 4.9x from the far to the near sideline
+    let sc = Scales { a: -201.33, b: 0.3489, y_min: 665.4, y_max: 1007.0, target_px: 28.0, n: 98 };
+    let full = plan_auto(&sc, 2560, 1440, 0.25);
+    assert!(full.iter().map(|t| t.y + t.h).max().unwrap() >= 1007, "the bands must not stop before y_max");
+
+    // field corners of that panorama (far side narrow, near side wide)
+    let court = [Vec2::new(0.0, 0.0), Vec2::new(28.0, 0.0), Vec2::new(28.0, 15.0), Vec2::new(0.0, 15.0)];
+    let pano = [Vec2::new(979.0 / 2560.0, 695.0 / 1440.0), Vec2::new(1560.0 / 2560.0, 728.0 / 1440.0), Vec2::new(2059.0 / 2560.0, 984.0 / 1440.0), Vec2::new(414.0 / 2560.0, 908.0 / 1440.0)];
+    let to_pano = Homography::from_points(&court, &pano).unwrap();
+    let field = reco_minimap::geom::Field::basketball();
+    let floor = floor_points(&to_pano, &field, 3.0, 2560, 1440);
+    let masked = plan_auto_field(&sc, 2560, 1440, 0.25, &floor);
+    assert!(masked.len() < full.len(), "{} vs {}", masked.len(), full.len());
+    assert!(masked.iter().all(|t| t.x + t.w <= 2560 && t.y + t.h <= 1440));
+    // every floor point with feet in the measured rows is still inside some tile, with room for the body above
+    // (checked for the 1 m margin players are tracked in; the outermost pixels of the 3 m ball margin may be given up)
+    for &(x, y) in floor_points(&to_pano, &field, 1.0, 2560, 1440).iter().filter(|p| p.1 >= sc.y_min && p.1 <= sc.y_max && p.0 >= 0.0 && p.0 <= 2560.0) {
+        let h = sc.height_at(y);
+        assert!(masked.iter().any(|t| x >= t.x as f32 && x <= (t.x + t.w) as f32 && y <= (t.y + t.h) as f32 && y - h >= t.y as f32), "floor point ({x:.0},{y:.0}) not covered");
+    }
+}

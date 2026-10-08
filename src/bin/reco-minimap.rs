@@ -67,6 +67,9 @@ live-Optionen:
                       wachsende Datei (Reco schreibt noch):   live file:live.mkv --in-args '-follow 1' --size ...
                       OBS Virtual Camera / Capture-Karte (macOS): live 'OBS Virtual Camera' --in-args '-f avfoundation -framerate 25' --size ...
   --realtime        Datei in Echtzeit abspielen (zum Testen ohne Live-Quelle), mit --start S ab Sekunde S
+  --adaptive-live   Live: gezielte Kacheln zwischen vollständigen Suchläufen (experimentell)
+  --sweep-secs S    Vollsuche spätestens nach S Sekunden Eingangszeit (Standard 2)
+  --ocr-secs S      Live: Mindestabstand der OCR-Aufrufe (Standard 2)
   Browser-Parameter: ?floor=1 dunkler Boden zum Testen, ?lead=0.2 weiter vorhersagen, ?minalpha=1, ?debug=1
 
 Trikotnummern (run/live; erst `fetch-ocr`):
@@ -980,7 +983,10 @@ fn cmd_live(o: &Opts, input: &str) {
     eprintln!("  Zum Testen im Browser: http://{addr}/?floor=1&debug=1      Daten: http://{addr}/state.json\n");
 
     let mut jsonl = o.s("json").map(|p| std::io::BufWriter::new(std::fs::File::create(p).unwrap_or_else(|e| fail(format!("{p}: {e}")))));
-    let reader = FrameReader::open_with(input, &info, o.f("start", 0.0), None, 1, true, o.has("realtime"), &o.s("in-args").map(|a| a.split_whitespace().map(|x| x.to_string()).collect::<Vec<_>>()).unwrap_or_default()).unwrap_or_else(|e| fail(e));
+    let reader = FrameReader::open_with(input, &info, o.f("start", 0.0), o.s("duration").and_then(|v|v.parse().ok()), 1, true, o.has("realtime"), &o.s("in-args").map(|a| a.split_whitespace().map(|x| x.to_string()).collect::<Vec<_>>()).unwrap_or_default()).unwrap_or_else(|e| fail(e));
+    // Set the clock before the producer starts, so its first arrival never
+    // precedes the origin. Queue capacity remains exactly one newest frame.
+    let t0 = Instant::now();
     let latest = Arc::new(Latest { slot: Default::default(), cv: Default::default(), eof: Default::default(), dropped: Default::default() });
     {
         let latest = latest.clone();
@@ -998,7 +1004,14 @@ fn cmd_live(o: &Opts, input: &str) {
         });
     }
 
-    let t0 = Instant::now();
+    let mut scheduler = reco_minimap::scheduler::TileScheduler::new(o.f("sweep-secs",2.0));
+    let mut ball_boxes: Vec<reco_minimap::tracker::BBox> = Vec::new();
+    let mut ball_seen = f64::NEG_INFINITY;
+    let mut person_boxes: Vec<reco_minimap::tracker::BBox> = Vec::new();
+    let mut persons_seen = f64::NEG_INFINITY;
+    let mut last_ocr = f64::NEG_INFINITY;
+    let ocr_interval = o.f("ocr-secs",2.0);
+    if !ocr_interval.is_finite() || ocr_interval < 0.0 { fail::<()>("--ocr-secs muss endlich und >= 0 sein"); }
     let (mut n, mut last_report, mut sum_age) = (0u64, Instant::now(), 0f32);
     loop {
         let (arrival, mut frame) = {
@@ -1015,13 +1028,31 @@ fn cmd_live(o: &Opts, input: &str) {
             }
         };
         let t = arrival.duration_since(t0).as_secs_f64();
-        let mut dets = model.detect(&frame, &tiles).unwrap_or_else(|e| fail(e));
+        // Search around ALL detections, including unknown teams and people not
+        // assigned a tracker slot. Identity uncertainty must not hide a player
+        // from the next detector pass.
+        let mut targets = if t-persons_seen <= 1.0 { person_boxes.clone() } else { Vec::new() };
+        if t-ball_seen <= 0.5 { targets.extend_from_slice(&ball_boxes); }
+        let (indices,full_sweep) = if o.has("adaptive-live") { scheduler.select(t,&tiles,info.w,info.h,&targets) } else { ((0..tiles.len()).collect(),true) };
+        let selected: Vec<_> = indices.iter().map(|&i|tiles[i]).collect();
+        let inference_start = Instant::now();
+        let mut dets = model.detect(&frame, &selected).unwrap_or_else(|e| fail(e));
+        let inference_ms = inference_start.elapsed().as_secs_f64()*1000.0;
+        person_boxes = dets.iter().filter(|d|d.class!=Class::Ball).map(|d|reco_minimap::tracker::BBox{cx:d.cx,cy:d.cy,w:d.w,h:d.h}).collect();
+        if !person_boxes.is_empty() { persons_seen=t; }
+        ball_boxes = dets.iter().filter(|d|d.class==Class::Ball).map(|d|reco_minimap::tracker::BBox{cx:d.cx,cy:d.cy,w:d.w,h:d.h}).collect();
+        if !ball_boxes.is_empty() { ball_seen=t; }
         for d in dets.iter_mut().filter(|d| d.class == Class::Player) {
             d.color = frame.torso_color(d);
         }
         let state = mm.process(t, &dets);
         if let Some(nm) = numbers.as_mut() {
-            read_numbers(nm, &mut mm, &frame, t);
+            // OCR is optional enrichment, not a prerequisite for publishing a
+            // fresh map. Skip it when inference already consumed one second.
+            if t-last_ocr >= ocr_interval && arrival.elapsed().as_secs_f64()<1.0 {
+                read_numbers(nm, &mut mm, &frame, t);
+                last_ocr=t;
+            }
         }
         log_events(&state.events);
         let sc = scenes.as_mut().map(|d| d.update(&state)).unwrap_or_default();
@@ -1030,6 +1061,8 @@ fn cmd_live(o: &Opts, input: &str) {
         let age_ms = arrival.elapsed().as_secs_f64() * 1000.0;
         let mut v = state_json_with(&state, &sc);
         v["age_ms"] = serde_json::json!((age_ms * 10.0).round() / 10.0);
+        v["performance"] = serde_json::json!({"tiles":selected.len(),"total_tiles":tiles.len(),"full_sweep":full_sweep,"inference_ms":inference_ms,"dropped_frames":latest.dropped.load(Ordering::Relaxed),"queue_capacity":1,"age_scope":"decoded_frame_to_result",
+            "detected_players":dets.iter().filter(|d|d.class==Class::Player).count(),"detected_balls":ball_boxes.len()});
         let line = v.to_string();
         if let Some(j) = jsonl.as_mut() {
             let _ = writeln!(j, "{line}");

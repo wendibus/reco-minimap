@@ -296,6 +296,9 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
                 if p["realtime"].as_bool() == Some(true) {
                     pushs(&mut a, &["--realtime"]);
                 }
+                if p["adaptive"].as_bool() == Some(true) {
+                    pushs(&mut a, &["--adaptive-live"]);
+                }
             }
         }
         "fetch_ocr" => pushs(&mut a, &["fetch-ocr"]),

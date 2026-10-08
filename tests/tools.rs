@@ -110,3 +110,20 @@ fn localize_finds_the_number_on_a_shirt() {
     let c = localize(w, h, &plain);
     assert_eq!((c.w, c.h), (w, h));
 }
+
+#[test]
+fn ui_only_accepts_its_own_page() {
+    use reco_minimap::tools::ui::request_allowed;
+    assert!(request_allowed(Some("127.0.0.1:8788"), None)); // curl, scripts
+    assert!(request_allowed(Some("127.0.0.1:8788"), Some("http://127.0.0.1:8788")));
+    assert!(request_allowed(Some("localhost:8788"), Some("http://localhost:8788")));
+    assert!(request_allowed(Some("[::1]:8788"), None));
+    // another web page posting to the local server
+    assert!(!request_allowed(Some("127.0.0.1:8788"), Some("https://example.com")));
+    assert!(!request_allowed(Some("127.0.0.1:8788"), Some("http://127.0.0.1:9999")));
+    assert!(!request_allowed(Some("127.0.0.1:8788"), Some("null")));
+    // DNS rebinding: a foreign name that resolves to this machine
+    assert!(!request_allowed(Some("evil.example:8788"), Some("http://evil.example:8788")));
+    assert!(!request_allowed(Some("127.0.0.1.evil.example"), None));
+    assert!(!request_allowed(None, None));
+}

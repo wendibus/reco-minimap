@@ -207,6 +207,50 @@ pub fn tile_to_pano(d: &Det, t: &Tile, pano_w: u32, pano_h: u32) -> Det {
     }
 }
 
+/// True if the (panorama-normalized) box `d` ends at an edge of `t` that is not also an edge of the
+/// panorama: the object most likely continues outside the tile and the box is only a part of it.
+fn cut_by_tile(d: &Det, t: &Tile, pano_w: u32, pano_h: u32) -> bool {
+    let (fw, fh) = (pano_w as f32, pano_h as f32);
+    let (x0, x1) = ((d.cx - d.w / 2.0) * fw, (d.cx + d.w / 2.0) * fw);
+    let (y0, y1) = ((d.cy - d.h / 2.0) * fh, (d.cy + d.h / 2.0) * fh);
+    let eps = (t.w.max(t.h) as f32 * 0.006).max(1.5); // ~3 px of the 512 px model input
+    let (tx0, ty0, tx1, ty1) = (t.x as f32, t.y as f32, (t.x + t.w) as f32, (t.y + t.h) as f32);
+    (t.x > 0 && x0 <= tx0 + eps) || (t.x + t.w < pano_w && x1 >= tx1 - eps) || (t.y > 0 && y0 <= ty0 + eps) || (t.y + t.h < pano_h && y1 >= ty1 - eps)
+}
+
+/// Merge the detections of overlapping tiles (tile-normalized, one list per tile) into panorama
+/// detections. A player cut by a tile edge yields a partial box whose IoU with the full box from
+/// the neighbouring tile is too low for NMS, and whose bottom edge is not the foot point. Such a
+/// cut box is dropped when a complete box of the same class covers most of it; if no tile saw the
+/// object whole, the cut box is kept (better a rough position than none). A box found as both
+/// player and referee keeps the more confident class.
+pub fn merge_tiles(per_tile: &[(Tile, Vec<Det>)], pano_w: u32, pano_h: u32, iou_thr: f32) -> Vec<Det> {
+    let mut all: Vec<(Det, bool)> = Vec::new();
+    for (t, dets) in per_tile {
+        for d in dets {
+            let m = tile_to_pano(d, t, pano_w, pano_h);
+            all.push((m, cut_by_tile(&m, t, pano_w, pano_h)));
+        }
+    }
+    // share of `a`'s area that lies inside `b`
+    let covered = |a: &Det, b: &Det| {
+        let iw = ((a.cx + a.w / 2.0).min(b.cx + b.w / 2.0) - (a.cx - a.w / 2.0).max(b.cx - b.w / 2.0)).max(0.0);
+        let ih = ((a.cy + a.h / 2.0).min(b.cy + b.h / 2.0) - (a.cy - a.h / 2.0).max(b.cy - b.h / 2.0)).max(0.0);
+        if a.w * a.h <= 0.0 { 0.0 } else { iw * ih / (a.w * a.h) }
+    };
+    let whole: Vec<Det> = all.iter().filter(|x| !x.1).map(|x| x.0).collect();
+    let kept: Vec<Det> = all.iter().filter(|(d, cut)| !cut || !whole.iter().any(|k| k.class == d.class && covered(d, k) >= 0.6)).map(|x| x.0).collect();
+    let mut out: Vec<Det> = Vec::new();
+    for d in nms(kept, iou_thr) {
+        let person = |c: Class| c != Class::Ball;
+        if person(d.class) && out.iter().any(|k| person(k.class) && k.class != d.class && k.iou(&d) >= 0.7) {
+            continue; // `nms` returns by descending confidence, so the kept one is the stronger class
+        }
+        out.push(d);
+    }
+    out
+}
+
 /// `rf-detr-imagenet-v1` preprocessing: RGB `u8` (already resized to the
 /// model input) -> planar CHW `f32`, `(x/255 - mean) / std` (ImageNet stats).
 /// ASSUMPTION: verify against the trainer's export before trusting results.

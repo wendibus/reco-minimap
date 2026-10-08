@@ -23,7 +23,7 @@ use reco_minimap::tools::calib::{self, CourtCalib};
 use reco_minimap::tools::colors::{hex, kmeans, lab_dist, parse_hex, pick_teams};
 use reco_minimap::tools::infer::{Ep, RfDetr, Units};
 use reco_minimap::tools::live::{self, Hub};
-use reco_minimap::tools::scales::{plan_auto, Scales};
+use reco_minimap::tools::scales::{floor_points, plan_auto, plan_auto_field, Scales};
 use reco_minimap::tools::video::{self, Codec, Frame, FrameReader, FrameWriter, VideoInfo};
 use reco_minimap::{ball::BallState, Config, FrameState, Minimap};
 
@@ -81,6 +81,7 @@ Spielsituationen (run/live):
 
 run-Optionen:
   --ref-color #hex  Schiri-Trikotfarbe (z.B. #000000 oder gelb): erkennt Schiris über die Farbe, auch wenn das Modell sie nicht findet
+  --no-field-mask   bei --tile auto die volle Bildbreite kacheln (Standard: mit --court nur dort, wo das Feld liegt)
   --no-smooth       --minimap/--alpha nur mit der Erkennungsrate schreiben (Standard: volle Bildrate durch Interpolation bei --every N)
   --alpha-bg 0.0    Deckkraft der dunklen Unterlage im --alpha-Overlay (0 = transparent, 0.6 = gut lesbar auf hellem Video)
   --min-alpha 0.8   Deckkraft von Punkten, deren Spieler gerade nicht erkannt wird (0.35 = stark verblasst; verblasst Weiß wird grau)
@@ -158,7 +159,15 @@ fn plan(o: &Opts, info: &VideoInfo) -> Vec<Tile> {
     let roi = Tile { x: (x0 * w) as u32, y: (y0 * h) as u32, w: (((x1 - x0) * w) as u32).max(32), h: (((y1 - y0) * h) as u32).max(32) };
     if o.s("tile") == Some("auto") {
         let sc = Scales::load(o.s("scales").unwrap_or("scales.json")).unwrap_or_else(|e| fail(e));
-        return plan_auto(&sc, info.w, info.h, o.f("overlap", 0.25) as f32);
+        let overlap = o.f("overlap", 0.25) as f32;
+        // with a calibration at hand, only tile where the field is (ball detections are used up to 3 m outside)
+        if let Some(c) = o.s("court").filter(|_| !o.has("no-field-mask")) {
+            let (cal, profile) = load_court(c);
+            if let Some(inv) = cal.projector().and_then(|p| p.pano_to_court.inverse()) {
+                return plan_auto_field(&sc, info.w, info.h, overlap, &floor_points(&inv, &profile.field, 3.0, info.w, info.h));
+            }
+        }
+        return plan_auto(&sc, info.w, info.h, overlap);
     }
     let sizes: Vec<u32> = o.s("tile").unwrap_or("512").split(',').filter_map(|v| v.trim().parse().ok()).collect();
     let mut all = Vec::new();

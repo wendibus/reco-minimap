@@ -240,6 +240,8 @@ impl Minimap {
                 }
             }
         }
+        // spare balls and round things that never move are not the game ball
+        balls.retain(|(_, court)| !self.ball.is_parked(t, *court));
         // ball with hysteresis: follow the tracked ball with low confidence, but need a
         // clearly confident detection to start or to jump somewhere else
         let reference = self.ball.reference(t);

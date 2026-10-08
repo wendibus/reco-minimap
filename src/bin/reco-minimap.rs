@@ -134,6 +134,27 @@ fn fail<T>(msg: impl std::fmt::Display) -> T {
     std::process::exit(1)
 }
 
+/// Wall-clock duration, not a time of day: hours intentionally exceed 24.
+/// Round estimates to seconds before splitting so minute carries stay correct.
+fn duration_hms(seconds: f64) -> String {
+    if !seconds.is_finite() { return "unbekannt".into(); }
+    let total = seconds.max(0.0).round() as u64;
+    format!("{:02}:{:02}:{:02}", total / 3600, (total / 60) % 60, total % 60)
+}
+
+#[cfg(test)]
+mod duration_tests {
+    use super::duration_hms;
+    #[test]
+    fn duration_handles_boundaries_and_long_runs() {
+        for (seconds, expected) in [(0.0,"00:00:00"),(-1.0,"00:00:00"),(59.6,"00:01:00"),(3599.6,"01:00:00"),(33250.0,"09:14:10"),(170304.0,"47:18:24"),(360001.0,"100:00:01")] {
+            assert_eq!(duration_hms(seconds), expected);
+        }
+        assert_eq!(duration_hms(f64::NAN), "unbekannt");
+        assert_eq!(duration_hms(f64::INFINITY), "unbekannt");
+    }
+}
+
 fn open_info(o: &Opts, input: &str) -> VideoInfo {
     // With --size the source is not probed: ffprobe would consume a one-shot live connection (srt/rtmp listener).
     let mut info = if o.s("size").is_some() {
@@ -1219,11 +1240,11 @@ fn cmd_run(o: &Opts, input: &str) {
             let fps = done as f32 / el;
             let speed = fps * every as f32 / info.fps as f32; // source seconds per wall second
             let end = o.s("duration").and_then(|v| v.parse::<f64>().ok()).map(|d| t_start + d).or(info.duration);
-            let eta = end.map(|d| format!("  Rest ~{:.0} s", ((d - t).max(0.0) as f32) / speed.max(0.001))).unwrap_or_default();
+            let eta = end.map(|d| format!("  Rest ~{}", duration_hms((d - t).max(0.0) / speed.max(0.001) as f64))).unwrap_or_else(|| "  Rest unbekannt".into());
             eprint!("\r  t={t:7.1}s  {fps:4.1} Bilder/s (Quelle {:.1}/s){eta}   ", info.fps / every as f64);
         }
     }
-    eprintln!("\n{done} Bilder in {:.1} s ({:.2} Bilder/s).", t0.elapsed().as_secs_f32(), done as f32 / t0.elapsed().as_secs_f32().max(0.001));
+    eprintln!("\n{done} Bilder in {} ({:.2} Bilder/s).", duration_hms(t0.elapsed().as_secs_f64()), done as f32 / t0.elapsed().as_secs_f32().max(0.001));
     let per = |d: std::time::Duration| d.as_secs_f32() * 1000.0 / done.max(1) as f32;
     eprintln!("Zeit pro Bild (ms): Decode {:.0}, Kachel-Vorverarbeitung {:.0}, Inferenz {:.0}, Tracking {:.0}, Rendern/Schreiben {:.0}", per(d_decode), per(model.t_prep), per(model.t_infer), per(d_track), per(d_out));
     if let Some(nm) = numbers.as_ref() {

@@ -15,6 +15,7 @@ pub mod identity;
 pub mod jersey;
 pub mod render;
 pub mod scenes;
+pub mod scheduler;
 pub mod sport;
 pub mod team;
 pub mod tracker;

@@ -242,6 +242,15 @@ reco-minimap live <source> --model … --court court.json --teams teams.json \
 * URL parameters: `?floor=1` dark floor for testing, `?lead=0.2` predict further ahead (negative = less, to match the stream delay), `?minalpha=1`, `?debug=1`.
 * Use `--host 0.0.0.0` to reach it from another computer.
 
+Opt-in `--adaptive-live` selects tiles near recent observations between full
+searches (`--sweep-secs 2`). Live OCR is throttled with `--ocr-secs 2` and skipped
+when detection already took one second. The JSON `performance` object reports
+tile counts, inference time and dropped frames; `?debug=1` displays the counters.
+This prioritizes fresh updates, **not exhaustive frame processing**. Latency is
+measured from decoded-frame arrival, not from the camera. Adaptive search can
+miss fast objects between sweeps; it remains experimental and does not affect
+`run`. See [implementation and limitations](docs/ADAPTIVE_LIVE.de.md).
+
 Important: the minimap needs the **same full panorama you calibrated on**. The AI-panned view that `reco camera` writes is a moving crop and cannot be used.
 
 ## Command-line reference

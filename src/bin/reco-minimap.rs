@@ -68,6 +68,7 @@ live-Optionen:
                       OBS Virtual Camera / Capture-Karte (macOS): live 'OBS Virtual Camera' --in-args '-f avfoundation -framerate 25' --size ...
   --realtime        Datei in Echtzeit abspielen (zum Testen ohne Live-Quelle), mit --start S ab Sekunde S
   --adaptive-live   Live: gezielte Kacheln zwischen vollständigen Suchläufen (experimentell)
+  --ball-search-tiles N  Live adaptiv: N zusätzliche rotierende Suchkacheln, unabhängig von Spielern (Standard 4, 0 aus)
   --sweep-secs S    Vollsuche spätestens nach S Sekunden Eingangszeit (Standard 2)
   --ocr-secs S      Live: Mindestabstand der OCR-Aufrufe (Standard 2)
   Browser-Parameter: ?floor=1 dunkler Boden zum Testen, ?lead=0.2 weiter vorhersagen, ?minalpha=1, ?debug=1
@@ -955,6 +956,7 @@ struct Latest {
 }
 
 fn cmd_live(o: &Opts, input: &str) {
+    use reco_minimap::tools::async_ocr::{BackgroundOcr, Identity, Job};
     use std::sync::atomic::Ordering;
     use std::sync::Arc;
     let info = open_info(o, input);
@@ -968,7 +970,7 @@ fn cmd_live(o: &Opts, input: &str) {
     let (home, away) = read_teams(o);
     let mut mcfg = Config::for_sport(&profile, home, away);
     mcfg.referee_rgb = o.s("ref-color").and_then(parse_hex);
-    let mut numbers = numbers_setup(o, &mut mcfg);
+    let mut numbers = numbers_setup(o, &mut mcfg).map(|nm| BackgroundOcr::new(nm.reader,nm.min_h,nm.max_reads));
     let mut scenes = o.has("scenes").then(|| SceneDetector::new(profile.clone()));
     let mut mm = Minimap::new(mcfg, Box::new(projector));
 
@@ -1005,11 +1007,13 @@ fn cmd_live(o: &Opts, input: &str) {
     }
 
     let mut scheduler = reco_minimap::scheduler::TileScheduler::new(o.f("sweep-secs",2.0));
+    let mut ball_search = reco_minimap::scheduler::RecoverySweep::default();
     let mut ball_boxes: Vec<reco_minimap::tracker::BBox> = Vec::new();
     let mut ball_seen = f64::NEG_INFINITY;
     let mut person_boxes: Vec<reco_minimap::tracker::BBox> = Vec::new();
     let mut persons_seen = f64::NEG_INFINITY;
     let mut last_ocr = f64::NEG_INFINITY;
+    let (mut ocr_applied,mut ocr_stale,mut ocr_errors)=(0usize,0usize,0usize);
     let ocr_interval = o.f("ocr-secs",2.0);
     if !ocr_interval.is_finite() || ocr_interval < 0.0 { fail::<()>("--ocr-secs muss endlich und >= 0 sein"); }
     let (mut n, mut last_report, mut sum_age) = (0u64, Instant::now(), 0f32);
@@ -1033,7 +1037,16 @@ fn cmd_live(o: &Opts, input: &str) {
         // from the next detector pass.
         let mut targets = if t-persons_seen <= 1.0 { person_boxes.clone() } else { Vec::new() };
         if t-ball_seen <= 0.5 { targets.extend_from_slice(&ball_boxes); }
-        let (indices,full_sweep) = if o.has("adaptive-live") { scheduler.select(t,&tiles,info.w,info.h,&targets) } else { ((0..tiles.len()).collect(),true) };
+        let (mut indices,full_sweep) = if o.has("adaptive-live") { scheduler.select(t,&tiles,info.w,info.h,&targets) } else { ((0..tiles.len()).collect(),true) };
+        let person_tile_count=indices.len();
+        // Ball recovery must not depend solely on player/previous-ball boxes.
+        // Rotate through unobserved areas using the same calibrated scales and
+        // parallel inference pool, then merge once on this frame's timestamp.
+        if !full_sweep {
+            indices.extend(ball_search.select(tiles.len(),o.u("ball-search-tiles",4)));
+            indices.sort_unstable(); indices.dedup();
+        }
+        let recovery_tiles=indices.len()-person_tile_count;
         let selected: Vec<_> = indices.iter().map(|&i|tiles[i]).collect();
         let inference_start = Instant::now();
         let mut dets = model.detect(&frame, &selected).unwrap_or_else(|e| fail(e));
@@ -1045,13 +1058,28 @@ fn cmd_live(o: &Opts, input: &str) {
         for d in dets.iter_mut().filter(|d| d.class == Class::Player) {
             d.color = frame.torso_color(d);
         }
+        // Apply completed OCR before building this frame's public identity state.
+        // No mutable tracker references are sent to the worker.
+        if let Some(result)=numbers.as_mut().and_then(|nm|nm.poll()) {
+            ocr_errors+=result.errors;
+            for (key,reading) in result.readings {
+                if mm.tracker().tracks().iter().any(|tr|key.matches(tr,t)) {
+                    if mm.add_number_probs(key.id,&reading.probs,reading.steps).is_some() { ocr_applied+=1; }
+                } else { ocr_stale+=1; }
+            }
+        }
         let state = mm.process(t, &dets);
         if let Some(nm) = numbers.as_mut() {
-            // OCR is optional enrichment, not a prerequisite for publishing a
-            // fresh map. Skip it when inference already consumed one second.
-            if t-last_ocr >= ocr_interval && arrival.elapsed().as_secs_f64()<1.0 {
-                read_numbers(nm, &mut mm, &frame, t);
-                last_ocr=t;
+            if nm.ready() && t-last_ocr >= ocr_interval {
+                let mut candidates: Vec<_>=mm.tracker().tracks().iter().filter(|tr|!tr.referee && tr.state==reco_minimap::tracker::TrackState::Visible && (tr.last_seen-t).abs()<1e-6)
+                    .filter_map(|tr|tr.bbox.map(|bb|(tr,bb))).filter(|(_,bb)|bb.h*frame.h as f32>=nm.min_h).collect();
+                candidates.sort_by(|(a,ab),(b,bb)|a.confirmed.is_some().cmp(&b.confirmed.is_some()).then(bb.h.total_cmp(&ab.h)));
+                let jobs=candidates.into_iter().take(nm.max_reads).filter_map(|(tr,bb)| {
+                    let (x0,y0,x1,y1)=ocr::torso_rect(&frame,&bb);
+                    let (w,h,rgb)=frame.crop_rgb(x0,y0,x1,y1);
+                    (w>=6 && h>=6).then_some(Job{identity:Identity{id:tr.id,segment:tr.segment,team:tr.team,observed_at:t},crop:ocr::Crop{w,h,rgb}})
+                }).collect();
+                if nm.submit(jobs) { last_ocr=t; }
             }
         }
         log_events(&state.events);
@@ -1061,7 +1089,8 @@ fn cmd_live(o: &Opts, input: &str) {
         let age_ms = arrival.elapsed().as_secs_f64() * 1000.0;
         let mut v = state_json_with(&state, &sc);
         v["age_ms"] = serde_json::json!((age_ms * 10.0).round() / 10.0);
-        v["performance"] = serde_json::json!({"tiles":selected.len(),"total_tiles":tiles.len(),"full_sweep":full_sweep,"inference_ms":inference_ms,"dropped_frames":latest.dropped.load(Ordering::Relaxed),"queue_capacity":1,"age_scope":"decoded_frame_to_result",
+        v["ocr"] = serde_json::json!({"background":numbers.is_some(),"pending":numbers.as_ref().map(|n|!n.ready()).unwrap_or(false),"applied":ocr_applied,"stale":ocr_stale,"errors":ocr_errors});
+        v["performance"] = serde_json::json!({"tiles":selected.len(),"total_tiles":tiles.len(),"full_sweep":full_sweep,"inference_ms":inference_ms,"dropped_frames":latest.dropped.load(Ordering::Relaxed),"queue_capacity":1,"age_scope":"decoded_frame_to_result","recovery_tiles":recovery_tiles,"workers":model.workers(),
             "detected_players":dets.iter().filter(|d|d.class==Class::Player).count(),"detected_balls":ball_boxes.len()});
         let line = v.to_string();
         if let Some(j) = jsonl.as_mut() {

@@ -1,5 +1,16 @@
 use reco_minimap::{detect::Tile, scheduler::TileScheduler, tracker::BBox};
 
+#[test]
+fn independent_recovery_covers_unobserved_tiles_and_wraps() {
+    let mut s = reco_minimap::scheduler::RecoverySweep::default();
+    assert_eq!(s.select(5, 2), vec![0, 1]);
+    assert_eq!(s.select(5, 2), vec![2, 3]);
+    assert_eq!(s.select(5, 2), vec![4, 0]);
+    assert_eq!(s.select(0, 2), Vec::<usize>::new());
+    assert_eq!(s.select(5, 0), Vec::<usize>::new());
+    assert_eq!(s.select(3, 9).len(), 3);
+}
+
 fn tiles() -> Vec<Tile> {
     (0..4)
         .map(|i| Tile {

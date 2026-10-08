@@ -190,13 +190,18 @@ impl RfDetr {
         });
         self.t_infer += t1.elapsed();
 
-        let mut all = Vec::new();
+        // Worker completion/grouping must not change tie-breaking in NMS.
+        // Restore the original tile order before merging detections.
+        let mut ordered = Vec::new();
         for r in results {
-            for (i, dets) in r? {
+            ordered.extend(r?);
+        }
+        ordered.sort_by_key(|(i,_)|*i);
+        let mut all = Vec::new();
+        for (i, dets) in ordered {
                 for d in dets {
                     all.push(tile_to_pano(&d, &tiles[i], frame.w as u32, frame.h as u32));
                 }
-            }
         }
         Ok(nms(all, 0.5))
     }

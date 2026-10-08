@@ -57,7 +57,8 @@ async function save(){await api('/api/project/save',{dir:S.dir,project:S.project
 function sport(){return INIT.sports.find(s=>s.id===P().sport)||INIT.sports[0];}
 function activeModel(){return S.models.find(m=>m.id===P().model_id)||null;}
 function ep(){const e=P().run.ep;return e==='auto'?(INIT.coreml?'coreml':'cpu'):e;}
-function common(){return {ep:ep(),units:P().run.units,model_dir:(activeModel()||{}).dir||'',video:P().video,numbers:P().run.numbers,scenes:P().run.scenes};}
+function common(){return {ep:ep(),units:P().run.units,workers:Number(P().run.workers)||1,model_dir:(activeModel()||{}).dir||'',video:P().video,numbers:P().run.numbers,scenes:P().run.scenes};}
+function workerControl(){return `<label>${T('run.workers')}</label><select data-k="run.workers">${[1,2,3,4].map(n=>`<option value="${n}" ${Number(P().run.workers||1)===n?'selected':''}>${n}</option>`).join('')}</select>`;}
 function numbersBlock(withHires){const n=P().run.numbers,ok=INIT.ocr&&INIT.ocr.exists;return `<section class="card"><h2>${T('run.numbers')}</h2><label style="display:flex;gap:8px;align-items:center;color:var(--fg);font-size:14px"><input type="checkbox" data-k="run.numbers.enabled" ${n.enabled?'checked':''}> ${T('run.numbers')}</label><div class="mu small">${T('run.numbers_hint')}</div><div class="row" style="margin-top:8px"><span class="${ok?'ok':'bad'}">${ok?T('run.ocr_ok'):T('run.ocr_missing')}</span>${ok?'':`<button class="b" id="bocr">${T('run.ocr_fetch')}</button>`}</div><div class="grid2"><div><label>${T('run.roster_home')}</label><input type="text" data-k="run.numbers.roster_home" value="${esc(n.roster_home)}"></div><div><label>${T('run.roster_away')}</label><input type="text" data-k="run.numbers.roster_away" value="${esc(n.roster_away)}"></div></div><div class="mu small">${T('run.roster_hint')}</div>${withHires?`<label>${T('run.hires')}</label>${pathField('hpath',n.hires,'file',T('run.hires'))}<div class="mu small">${T('run.hires_hint')}</div>`:''}</section>`;}
 function bindNumbers(withHires){const b=$('bocr');if(b)b.onclick=()=>runJob('fetch_ocr',{},async()=>{INIT=await api('/api/init');render();});if(withHires){bindBrowse((id,p)=>{P().run.numbers.hires=p;save();});const h=$('hpath');if(h)h.onchange=e=>{P().run.numbers.hires=e.target.value;save();};}}
 
@@ -123,6 +124,7 @@ function renderRun(){const r=P().run,o=r.outputs,seg=P().segments;
  <section class="card"><h2>${T('run.outputs')}</h2>${ck('minimap',T('run.out_minimap'))}${ck('alpha',T('run.out_alpha'))}${ck('pip',T('run.out_pip'))}${ck('json',T('run.out_json'))}
  <div class="grid3"><div><label>${T('run.every')}</label><input type="number" data-k="run.every" value="${r.every}" min="1"></div><div><label>${T('run.alpha_bg')}</label><input type="number" step="0.1" data-k="run.alpha_bg" value="${r.alpha_bg}"></div><div><label>${T('run.min_alpha')}</label><input type="number" step="0.1" data-k="run.min_alpha" value="${r.min_alpha}"></div></div><div class="mu small">${T('run.every_hint')}</div>
  <div class="grid2"><div><label>${T('run.ep')}</label><select data-k="run.ep"><option value="auto" ${r.ep==='auto'?'selected':''}>${T('run.ep_auto')}</option><option value="coreml" ${r.ep==='coreml'?'selected':''}>CoreML (macOS)</option><option value="cpu" ${r.ep==='cpu'?'selected':''}>CPU</option></select></div><div><label>CoreML</label><select data-k="run.units">${['all','gpu','ane','cpu'].map(u=>`<option value="${u}" ${r.units===u?'selected':''}>${u}</option>`).join('')}</select></div></div>
+ ${workerControl()}
  <div class="row" style="margin-top:12px"><button class="b p" id="brun">${T('run.start_btn')}</button><span class="mu small">${T('run.output_dir')}: ${esc(S.dir)}/out</span></div></section>
  ${numbersBlock(true)}
  ${outs?`<section class="card"><table>${outs}</table></section>`:''}`;}
@@ -139,6 +141,7 @@ function renderLive(){const l=P().live;if(!activeModel()||!S.files.court||!S.fil
  const url=JOB&&JOB.kind==='live'&&JOB.status==='running'?`http://127.0.0.1:${l.port}/`:'';
  return `<section class="card"><h2>${T('live.title')}</h2><div class="mu small">${T('live.hint')}</div><label>${T('live.source')}</label>${pathField('lsrc',l.source,'file',T('live.source'))}
  <div class="grid3"><div><label>${T('live.size')}</label><input type="text" data-k="live.size" value="${esc(l.size)}"></div><div><label>${T('live.fps')}</label><input type="number" data-k="live.fps" value="${l.fps}"></div><div><label>${T('live.port')}</label><input type="number" data-k="live.port" value="${l.port}"></div></div>
+ ${workerControl()}
  <label style="display:flex;gap:8px;align-items:center;color:var(--fg);font-size:14px;margin-top:10px"><input type="checkbox" data-k="live.realtime" ${l.realtime?'checked':''}> ${T('live.realtime')}</label>
  <label style="display:flex;gap:8px;align-items:center;color:var(--fg);font-size:14px;margin-top:10px"><input type="checkbox" data-k="live.adaptive" ${l.adaptive?'checked':''}> ${T('live.adaptive')}</label>
  <div class="row" style="margin-top:12px"><button class="b p" id="blive" ${url?'disabled':''}>${T('live.start')}</button><button class="b" id="bstop" ${url?'':'disabled'}>${T('live.stop')}</button></div>

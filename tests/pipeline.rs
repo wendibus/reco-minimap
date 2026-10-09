@@ -523,7 +523,13 @@ fn number_changes_and_reentries_are_reported_as_substitutions() {
     assert_eq!(shown, Some(7), "number confirmed after repeated reads");
     assert!(events.is_empty(), "a first confirmation is not a substitution: {events:?}");
 
-    // the player walks off the court at the sideline (out of the field) for 4 s ...
+    // the player walks to the sideline, then off the court (out of the field) for 4 s ...
+    for k in 1..=15 {
+        let mut walk = home.clone();
+        walk[0] = Vec2::new(home[0].x, home[0].y - 0.18 * k as f32);
+        events.extend(mm.process(t, &frame_dets(&to_pano, &walk, &away, &refs, &[])).events);
+        t += 0.1;
+    }
     let mut off = home.clone();
     off[0] = Vec2::new(home[0].x, -5.0);
     for _ in 0..40 {
@@ -576,9 +582,15 @@ fn same_number_after_leaving_is_not_a_confirmed_substitution() {
         if k % 3 == 0 { let (p, n) = digits_probs(7); let id = id_of(&mm, home[0]); mm.add_number_probs(id, &p, n); }
         t += 0.1;
     }
+    let mut events = Vec::new();
+    for k in 1..=15 {
+        let mut walk = home.clone();
+        walk[0] = Vec2::new(home[0].x, home[0].y - 0.18 * k as f32);
+        events.extend(mm.process(t, &frame_dets(&to_pano, &walk, &away, &refs, &[])).events);
+        t += 0.1;
+    }
     let mut off = home.clone();
     off[0] = Vec2::new(home[0].x, -5.0);
-    let mut events = Vec::new();
     for _ in 0..40 { events.extend(mm.process(t, &frame_dets(&to_pano, &off, &away, &refs, &[0])).events); t += 0.1; }
     let mut back = home.clone();
     back[0] = Vec2::new(home[0].x + 1.0, 0.4);
@@ -743,4 +755,33 @@ fn track_started_in_the_wrong_team_follows_the_colour_evidence() {
     assert_eq!(s.players.len(), 10, "no ghost slot left behind");
     let same = mm.tracker().tracks().iter().find(|x| x.id == id.0).unwrap();
     assert_eq!(same.team, Team::Home, "the same track changed team instead of a new one being made");
+}
+
+#[test]
+fn hidden_players_are_not_possible_substitutions() {
+    let (proj, to_pano) = projector();
+    let mut mm = Minimap::new(Config::new(HOME, AWAY), Box::new(proj));
+    let (mut home, mut away, refs) = lineup();
+    home[0] = Vec2::new(27.4, 7.2); // under the basket: 0.6 m from the baseline, far from both sidelines
+    home[1] = Vec2::new(25.8, 1.0); // at the sideline
+    away[0] = Vec2::new(20.0, 14.2); // at the other sideline
+    let mut t = 0.0;
+    let mut events = Vec::new();
+    let mut run = |mm: &mut Minimap, hide_home: &[usize], away: &[Vec2], n: usize, t: &mut f64| {
+        for _ in 0..n {
+            events.extend(mm.process(*t, &frame_dets(&to_pano, &home, away, &refs, hide_home)).events);
+            *t += 0.1;
+        }
+    };
+    run(&mut mm, &[], &away, 20, &mut t);
+    // hidden under the basket for 4 s and found again in the same place
+    run(&mut mm, &[0], &away, 40, &mut t);
+    run(&mut mm, &[], &away, 5, &mut t);
+    // standing at the sideline, missed by the detector for 2.5 s: too short for someone to leave and another to enter
+    run(&mut mm, &[1], &away, 25, &mut t);
+    run(&mut mm, &[], &away, 5, &mut t);
+    // the detector loses three players at once for 4 s, one of them at a sideline
+    run(&mut mm, &[2, 3], &away[1..], 40, &mut t);
+    run(&mut mm, &[], &away, 5, &mut t);
+    assert!(events.is_empty(), "{events:?}");
 }

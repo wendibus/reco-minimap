@@ -251,6 +251,7 @@ Important: the minimap needs the **same full panorama you calibrated on**. The A
 | `colors <video> --model …` | Detect the two shirt colours → `teams.json` |
 | `run <video> --model …` | Process a video → minimap / overlay / panorama+minimap / JSON |
 | `live <source> --model …` | Live overlay and data stream |
+| `replay <detections.jsonl> --court … --teams …` | Re-run tracking, ball and game situations from recorded detections (`run … --dets file`), without the video: seconds instead of minutes. Byte-identical to the run it was recorded from; use it to compare `--thr-player`, team colours or tracker changes |
 | `stats <states.jsonl>` | Numbers about a run: slots, jumps, ball states, substitutions |
 | `import-model <path> --to <dir>` | Verify and copy a Reco Trainer model |
 | `fetch-ocr` | Download the number-reading model |
@@ -262,7 +263,8 @@ Common options (see `reco-minimap --help` for all):
 |---|---|
 | `--tile auto` / `512` / `512,1024` | Tile sizes; `auto` needs `scales.json` |
 | `--every N` | Detect on every Nth frame (output stays at full frame rate) |
-| `--start S --duration S` | Process a section |
+| `--start T` with `--end T` or `--duration T` | Process only a section of a longer video. `T` is seconds, `min:s` or `h:min:s`, e.g. `--start 12:30 --end 22:30`. Also applies to `selfcheck`, `scales` and `colors` |
+| `--dets f.jsonl` | Record the detections of `run` for `replay` (record with a low `--thr-player`, e.g. 0.3, to compare thresholds later) |
 | `--ep coreml\|cpu`, `--units all\|gpu\|ane\|cpu` | Execution provider (on M-series `all` ≈ `gpu`; the Neural Engine did not help for this model) |
 | `--scenes` | Recognise game situations (throw-in, free throw, kick-off, penalty, corner, 7 m, 2/3-point attempts …) |
 | `--numbers --roster-home … --roster-away … --hires …` | Read jersey numbers and detect substitutions |
@@ -363,7 +365,7 @@ Implement `geom::Projector` on top of your own panorama projection if a plain ho
 ## Development
 
 ```bash
-cargo test --features tools              # 32 tests (core, tools, number decoding, substitutions, game situations)
+cargo test --features tools              # 40 tests (core, tools, number decoding, substitutions, game situations)
 python3 scripts/gen_i18n.py              # regenerate src/tools/i18n.js (all keys in all 4 languages)
 python3 scripts/make_test_assets.py      # synthetic panorama + stand-in ONNX for smoke tests
 python3 scripts/coreml_probe.py <model>  # CoreML partitions and per-unit timing

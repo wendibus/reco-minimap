@@ -69,7 +69,7 @@ Klicke *Messen*. Das Programm schaut sich etwa ein Dutzend Bilder an und lernt, 
 
 ## Schritt 4 · Verarbeiten
 
-1. **Abschnitte.** Jede Zeile ist ein Lauf: *Name*, *Start (s)* und *Dauer (s)*. Dauer 0 heißt ganzes Video. Ein Spiel in Viertel zu teilen ist sicherer – ein Abbruch kostet ein Viertel, nicht das ganze Spiel. *Abschnitt hinzufügen* fügt eine Zeile hinzu.
+1. **Abschnitte.** Jede Zeile ist ein Lauf: *Name*, *Start* und *Ende* als `min:s` (oder `h:min:s` oder reine Sekunden). Ein leeres Ende heißt bis zum Schluss des Videos; so lässt sich auch nur ein Teil einer langen Aufnahme auswerten. Ein Spiel in Viertel zu teilen ist sicherer – ein Abbruch kostet ein Viertel, nicht das ganze Spiel. *Abschnitt hinzufügen* fügt eine Zeile hinzu.
 2. **Ausgaben** (Häkchen setzen):
    * *Minimap-Video* – die Minimap auf dunklem Hintergrund.
    * *Overlay mit Transparenz (.mov)* – die Minimap mit durchsichtigem Hintergrund, zum Einblenden in einem Schnittprogramm oder OBS. *Dunkle Unterlage im Overlay* (0–1) fügt eine halbtransparente dunkle Fläche hinzu, damit sie auf hellem Bild lesbar bleibt; 0,6 ist ein guter Anfang.

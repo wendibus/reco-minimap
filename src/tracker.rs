@@ -46,6 +46,16 @@ pub struct TrackerCfg {
     pub disp_tau: f32,
     pub reacq_tau: f32,
     pub reacq_secs: f32,
+    /// A detection whose shirt colour says "other team" may still be this track if it is this
+    /// close (m) to where the track is expected: one bad colour sample must not move a player
+    /// to the other team's nearest slot.
+    pub cross_team_gate: f32,
+    /// Extra cost (m) of such a match, so that a same-team match is preferred when there is one.
+    pub cross_team_penalty: f32,
+    /// Weight of one colour sample in a track's running team evidence (-1 away .. +1 home).
+    pub team_vote: f32,
+    /// A track changes team when its evidence passes this value on the other side.
+    pub team_flip: f32,
 }
 
 impl Default for TrackerCfg {
@@ -67,6 +77,10 @@ impl Default for TrackerCfg {
             disp_tau: 0.08,
             reacq_tau: 0.5,
             reacq_secs: 1.0,
+            cross_team_gate: 0.8,
+            cross_team_penalty: 1.0,
+            team_vote: 0.06,
+            team_flip: 0.3,
         }
     }
 }
@@ -141,6 +155,17 @@ pub struct Track {
     /// The confirmed number at the moment the slot was last re-taken.
     pub number_before: Option<u8>,
     pub retaken_at: Option<f64>,
+    /// Running colour evidence for the team: +1 home .. -1 away.
+    team_score: f32,
+}
+
+/// Counters about the team assignment (for run summaries).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct TeamStats {
+    /// Detections taken by a track although their colour said the other team.
+    pub cross_matches: u64,
+    /// Tracks that changed team because the colour evidence turned.
+    pub flips: u64,
 }
 
 impl Track {
@@ -253,11 +278,12 @@ pub struct Tracker {
     events: Vec<TrackerEvent>,
     next_id: u32,
     t: Option<f64>,
+    pub team_stats: TeamStats,
 }
 
 impl Tracker {
     pub fn new(cfg: TrackerCfg) -> Self {
-        Self { cfg, tracks: Vec::new(), events: Vec::new(), next_id: 1, t: None }
+        Self { cfg, tracks: Vec::new(), events: Vec::new(), next_id: 1, t: None, team_stats: TeamStats::default() }
     }
 
     pub fn tracks(&self) -> &[Track] {
@@ -303,6 +329,19 @@ impl Tracker {
         tr.state = TrackState::Visible;
         tr.conf = o.conf;
         tr.bbox = Some(o.bbox);
+        if !tr.referee && !o.referee {
+            let vote = match o.team {
+                Team::Home => Some(1.0),
+                Team::Away => Some(-1.0),
+                Team::Unknown => None,
+            };
+            if let Some(v) = vote {
+                tr.team_score += (v - tr.team_score) * self.cfg.team_vote;
+                if o.team != tr.team {
+                    self.team_stats.cross_matches += 1;
+                }
+            }
+        }
         if unseen > occ {
             tr.reacq_until = t + reacq as f64;
         }
@@ -327,6 +366,11 @@ impl Tracker {
             confirmed: None,
             number_before: None,
             retaken_at: None,
+            team_score: match (o.referee, o.team) {
+                (false, Team::Home) => self.cfg.team_vote,
+                (false, Team::Away) => -self.cfg.team_vote,
+                _ => 0.0,
+            },
         };
         self.next_id += 1;
         self.tracks.push(tr);
@@ -365,15 +409,14 @@ impl Tracker {
         // 2. associate per group
         let mut obs_used = vec![false; obs.len()];
         let mut trk_hit = vec![false; self.tracks.len()];
-        for g in 0..3usize {
-            let ti: Vec<usize> = (0..self.tracks.len()).filter(|&i| self.tracks[i].group() == g).collect();
-            let oi: Vec<usize> = (0..obs.len()).filter(|&j| group_of_obs(&obs[j]) == Some(g)).collect();
+        // players of both teams in one assignment: the colour decides between candidates, but a
+        // detection right where a track is expected belongs to it even if the colour disagrees
+        for referee in [false, true] {
+            let ti: Vec<usize> = (0..self.tracks.len()).filter(|&i| self.tracks[i].referee == referee).collect();
+            let oi: Vec<usize> = (0..obs.len()).filter(|&j| obs[j].referee == referee).collect();
             self.match_sets(&ti, &oi, obs, &mut obs_used, &mut trk_hit, t);
         }
-        // wildcard pass: players with unknown team vs. remaining player tracks
-        let ti: Vec<usize> = (0..self.tracks.len()).filter(|&i| !trk_hit[i] && !self.tracks[i].referee).collect();
-        let oi: Vec<usize> = (0..obs.len()).filter(|&j| !obs_used[j] && !obs[j].referee && obs[j].team == Team::Unknown).collect();
-        self.match_sets(&ti, &oi, obs, &mut obs_used, &mut trk_hit, t);
+        self.settle_teams(&mut trk_hit);
 
         // 3. leftovers: re-take lost slots or spawn
         for j in 0..obs.len() {
@@ -440,6 +483,50 @@ impl Tracker {
         }
     }
 
+    /// Let a track follow its colour evidence to the other team. The slot count per team holds:
+    /// if the other team is full, a lost slot there makes room (it was most likely this player's),
+    /// otherwise the track stays.
+    fn settle_teams(&mut self, hit: &mut Vec<bool>) {
+        let (flip, cap) = (self.cfg.team_flip, self.cfg.max_per_team);
+        let mut i = 0;
+        while i < self.tracks.len() {
+            let tr = &self.tracks[i];
+            let to = match tr.team {
+                Team::Home if tr.team_score < -flip => Team::Away,
+                Team::Away if tr.team_score > flip => Team::Home,
+                _ => {
+                    i += 1;
+                    continue;
+                }
+            };
+            if tr.referee {
+                i += 1;
+                continue;
+            }
+            let there = |x: &Track| !x.referee && x.team == to;
+            if self.tracks.iter().filter(|x| there(x)).count() >= cap {
+                match self.tracks.iter().position(|x| there(x) && x.state == TrackState::Lost) {
+                    Some(lost) => {
+                        self.tracks.remove(lost);
+                        hit.remove(lost);
+                        if lost < i {
+                            i -= 1;
+                        }
+                    }
+                    None => {
+                        let s = &mut self.tracks[i].team_score;
+                        *s = s.clamp(-flip, flip);
+                        i += 1;
+                        continue;
+                    }
+                }
+            }
+            self.tracks[i].team = to;
+            self.team_stats.flips += 1;
+            i += 1;
+        }
+    }
+
     fn match_sets(&mut self, ti: &[usize], oi: &[usize], obs: &[Obs], used: &mut [bool], hit: &mut [bool], t: f64) {
         if ti.is_empty() || oi.is_empty() {
             return;
@@ -449,10 +536,18 @@ impl Tracker {
             let unseen = (t - self.tracks[i].last_seen) as f32;
             let gate = self.gate(unseen);
             let fp = self.tracks[i].filter_pos();
+            let team = self.tracks[i].team;
             for (c, &j) in oi.iter().enumerate() {
                 let d = fp.dist(obs[j].pos);
-                if d <= gate {
-                    cost[r][c] = d as f64;
+                let (limit, penalty) = if obs[j].referee || obs[j].team == team {
+                    (gate, 0.0)
+                } else if obs[j].team == Team::Unknown {
+                    (gate, 0.5 * self.cfg.cross_team_penalty)
+                } else {
+                    (gate.min(self.cfg.cross_team_gate), self.cfg.cross_team_penalty)
+                };
+                if d <= limit {
+                    cost[r][c] = (d + penalty) as f64;
                 }
             }
         }

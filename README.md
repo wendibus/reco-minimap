@@ -196,7 +196,7 @@ Confident reads (≥ 0.8) were 100 % correct from 8 px up. A back number is roug
 **Substitutions** are reported when
 
 1. the confirmed number of a slot changes (`#7 → #12`), or
-2. a slot was lost for more than 2 s and is re-taken near the field edge – a *possible* substitution; if the same number comes back, nothing is confirmed.
+2. a player was last tracked within 1.5 m of a sideline (the long sides), was gone for at least 3 s, and someone appears within 2 m of a sideline – a *possible* substitution; if the same number comes back, nothing is confirmed. Players hidden in a crowd or under the basket, and moments when several slots drop out at once, are not reported; a slot reports at most once in 20 s.
 
 They appear in the log, in `events` of every JSON record, in `reco-minimap stats` and as a banner in the live overlay.
 
@@ -302,7 +302,7 @@ Common options (see `reco-minimap --help` for all):
 
 * `id` is a **slot**, stable while the slot exists. `state` is `visible`, `occluded` or `lost` (position then is an estimate).
 * `ball.state`: `held` (with `holder`), `flight`, `loose`, `unknown`.
-* `events.kind`: `confirmed` (number changed) or `possible` (leave and re-enter at the edge).
+* `events.kind`: `confirmed` (number changed) or `possible` (leave and re-enter at a sideline).
 * Live records additionally carry `age_ms` (time from camera frame to result).
 
 ## Project folder
@@ -365,7 +365,7 @@ Implement `geom::Projector` on top of your own panorama projection if a plain ho
 ## Development
 
 ```bash
-cargo test --features tools              # 40 tests (core, tools, number decoding, substitutions, game situations)
+cargo test --features tools              # 41 tests (core, tools, number decoding, substitutions, game situations)
 python3 scripts/gen_i18n.py              # regenerate src/tools/i18n.js (all keys in all 4 languages)
 python3 scripts/make_test_assets.py      # synthetic panorama + stand-in ONNX for smoke tests
 python3 scripts/coreml_probe.py <model>  # CoreML partitions and per-unit timing

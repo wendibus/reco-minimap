@@ -140,8 +140,15 @@ pub struct Config {
     pub num_min_lead: f32,
     /// Evidence decay per processed frame (a stale reading fades; the confirmed number stays until replaced).
     pub vote_decay: f32,
-    /// A leave/re-enter counts as a possible substitution if both points are within this distance (m) of an edge.
+    /// A slot that was lost and is re-taken counts as a possible substitution only if the player
+    /// was last tracked within `sub_leave_m` of a sideline (the long sides, where the benches are),
+    /// was gone for at least `sub_min_gone` seconds, and someone appears within `sub_near_edge_m`
+    /// of a sideline. Players hidden in a crowd or under the basket do not qualify.
     pub sub_near_edge_m: f32,
+    pub sub_leave_m: f32,
+    pub sub_min_gone: f32,
+    /// At most one possible substitution per slot in this many seconds.
+    pub sub_cooldown: f32,
     /// The model rarely finds referees: treat on-court players whose torso colour
     /// is clearly neither team's (black, yellow ...) as referees.
     pub referee_from_color: bool,
@@ -173,7 +180,7 @@ impl Config {
         let mut ball = BallCfg::default();
         ball.field = p.field;
         Self {
-            field: p.field, home_rgb, away_rgb, tracker, ball, roster: Vec::new(), roster_home: Vec::new(), roster_away: Vec::new(), num_min_score: 3.0, num_min_lead: 1.5, vote_decay: 0.985, sub_near_edge_m: 4.0, referee_from_color: true, referee_rgb: None, ball_margin: 3.0, ball_init_conf: 0.40, ball_reacquire_conf: 0.50, ball_max_speed: p.ball_max_speed }
+            field: p.field, home_rgb, away_rgb, tracker, ball, roster: Vec::new(), roster_home: Vec::new(), roster_away: Vec::new(), num_min_score: 3.0, num_min_lead: 1.5, vote_decay: 0.985, sub_near_edge_m: 2.0, sub_leave_m: 1.5, sub_min_gone: 3.0, sub_cooldown: 20.0, referee_from_color: true, referee_rgb: None, ball_margin: 3.0, ball_init_conf: 0.40, ball_reacquire_conf: 0.50, ball_max_speed: p.ball_max_speed }
     }
 }
 
@@ -185,6 +192,10 @@ pub struct Minimap {
     ball: BallTracker,
     last: Option<BallOut>,
     events_log: Vec<SubEvent>,
+    /// Times of recent slot re-takes (several at once = the detector lost the scene, not a substitution).
+    retakes: Vec<f64>,
+    /// When each slot last raised a possible substitution.
+    sub_raised: Vec<(u32, f64)>,
 }
 
 impl Minimap {
@@ -195,7 +206,7 @@ impl Minimap {
         }
         let tracker = Tracker::new(cfg.tracker.clone());
         let ball = BallTracker::new(cfg.ball.clone());
-        Self { cfg, projector, classifier, tracker, ball, last: None, events_log: Vec::new() }
+        Self { cfg, projector, classifier, tracker, ball, last: None, events_log: Vec::new(), retakes: Vec::new(), sub_raised: Vec::new() }
     }
 
     pub fn tracker(&self) -> &Tracker {
@@ -292,11 +303,19 @@ impl Minimap {
     fn update_numbers(&mut self, t: f64) -> Vec<SubEvent> {
         let mut ev = Vec::new();
         let field = self.cfg.field;
-        for e in self.tracker.drain_events() {
-            let TrackerEvent::Retaken { id, team, last_pos, new_pos, .. } = e;
-            if field.edge_dist(last_pos) <= self.cfg.sub_near_edge_m && field.edge_dist(new_pos) <= self.cfg.sub_near_edge_m {
+        let events = self.tracker.drain_events();
+        self.retakes.retain(|x| t - x <= 1.0);
+        self.retakes.extend(events.iter().map(|_| t));
+        let dropout = self.retakes.len() >= 3;
+        let side = |p: geom::Vec2| p.y.min(field.width - p.y); // distance to the nearer sideline, negative outside
+        for e in events {
+            let TrackerEvent::Retaken { id, team, last_pos, new_pos, unseen } = e;
+            let cooled = !self.sub_raised.iter().any(|r| r.0 == id && t - r.1 < self.cfg.sub_cooldown as f64);
+            if !dropout && cooled && unseen >= self.cfg.sub_min_gone && side(last_pos) <= self.cfg.sub_leave_m && side(new_pos) <= self.cfg.sub_near_edge_m {
                 let out = self.tracker.tracks().iter().find(|x| x.id == id).and_then(|x| x.number_before);
                 ev.push(SubEvent { t, team, slot: id, out_number: out, in_number: None, kind: SubKind::Possible });
+                self.sub_raised.retain(|r| r.0 != id);
+                self.sub_raised.push((id, t));
             }
         }
         let (decay, min_s, min_l) = (self.cfg.vote_decay, self.cfg.num_min_score, self.cfg.num_min_lead);

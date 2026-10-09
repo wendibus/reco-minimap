@@ -56,6 +56,11 @@ pub struct TrackerCfg {
     pub team_vote: f32,
     /// A track changes team when its evidence passes this value on the other side.
     pub team_flip: f32,
+    /// Detections below this confidence only keep an existing track going (matched after the
+    /// confident ones, and not to lost tracks); they never start a track or re-take a lost slot.
+    /// A weak detector then still follows players through a crowd without its false positives
+    /// becoming players. 0 = every detection counts fully.
+    pub spawn_conf: f32,
 }
 
 impl Default for TrackerCfg {
@@ -81,6 +86,7 @@ impl Default for TrackerCfg {
             cross_team_penalty: 1.0,
             team_vote: 0.06,
             team_flip: 0.3,
+            spawn_conf: 0.0,
         }
     }
 }
@@ -411,16 +417,20 @@ impl Tracker {
         let mut trk_hit = vec![false; self.tracks.len()];
         // players of both teams in one assignment: the colour decides between candidates, but a
         // detection right where a track is expected belongs to it even if the colour disagrees
+        // confident detections first; the weak ones then go to tracks that are still open and not lost
         for referee in [false, true] {
             let ti: Vec<usize> = (0..self.tracks.len()).filter(|&i| self.tracks[i].referee == referee).collect();
-            let oi: Vec<usize> = (0..obs.len()).filter(|&j| obs[j].referee == referee).collect();
+            let oi: Vec<usize> = (0..obs.len()).filter(|&j| obs[j].referee == referee && obs[j].conf >= cfg.spawn_conf).collect();
+            self.match_sets(&ti, &oi, obs, &mut obs_used, &mut trk_hit, t);
+            let ti: Vec<usize> = ti.into_iter().filter(|&i| !trk_hit[i] && (t - self.tracks[i].last_seen) as f32 <= cfg.lost_after).collect();
+            let oi: Vec<usize> = (0..obs.len()).filter(|&j| obs[j].referee == referee && obs[j].conf < cfg.spawn_conf).collect();
             self.match_sets(&ti, &oi, obs, &mut obs_used, &mut trk_hit, t);
         }
         self.settle_teams(&mut trk_hit);
 
         // 3. leftovers: re-take lost slots or spawn
         for j in 0..obs.len() {
-            if obs_used[j] {
+            if obs_used[j] || obs[j].conf < cfg.spawn_conf {
                 continue;
             }
             let g = match group_of_obs(&obs[j]) {

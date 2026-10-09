@@ -311,7 +311,7 @@ impl Minimap {
         for e in events {
             let TrackerEvent::Retaken { id, team, last_pos, new_pos, unseen } = e;
             let cooled = !self.sub_raised.iter().any(|r| r.0 == id && t - r.1 < self.cfg.sub_cooldown as f64);
-            if !dropout && cooled && unseen >= self.cfg.sub_min_gone && side(last_pos) <= self.cfg.sub_leave_m && side(new_pos) <= self.cfg.sub_near_edge_m {
+            if !dropout && cooled && team != Team::Unknown && unseen >= self.cfg.sub_min_gone && side(last_pos) <= self.cfg.sub_leave_m && side(new_pos) <= self.cfg.sub_near_edge_m {
                 let out = self.tracker.tracks().iter().find(|x| x.id == id).and_then(|x| x.number_before);
                 ev.push(SubEvent { t, team, slot: id, out_number: out, in_number: None, kind: SubKind::Possible });
                 self.sub_raised.retain(|r| r.0 != id);

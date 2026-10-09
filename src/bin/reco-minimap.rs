@@ -39,6 +39,9 @@ reco-minimap – Minimap (Court, Spieler, Schiris, Ball) aus einem Reco-Panorama
   reco-minimap ui [--port 8788] [--no-open]                          Oberfläche im Browser (Deutsch/English/Français/Español)
   reco-minimap fetch-ocr                                            OCR-Modell für Trikotnummern laden (ca. 11 MB, Apache-2.0)
   reco-minimap ocr-bench <manifest.tsv> [--roster 4,5,7]            Zahlenleser an Ausschnitt-Bildern messen (Zeile: Pfad<TAB>Nummer<TAB>Gruppe)
+  reco-minimap replay    <erkennungen.jsonl> --court court.json --teams teams.json [--json out.jsonl] [--minimap out.mp4]
+                         Aufgezeichnete Erkennungen (run … --dets <datei>) ohne Video erneut durch Tracking, Ball und
+                         Situationen schicken: Sekunden statt Minuten, z.B. um --thr-player oder Farben zu vergleichen
   reco-minimap stats     <states.jsonl>            Zahlen-Report zu einem run-Ergebnis (Slots, Sprünge, Ball)
   reco-minimap colors    <video> --model <ordner|.onnx> [--court court.json] [--home-hint #rrggbb] [--out teams.json]
   reco-minimap run       <video> --model <ordner|.onnx> --court court.json (--teams teams.json | --home #hex --away #hex)
@@ -56,7 +59,9 @@ Gemeinsame Optionen:
   --workers N       parallele Modell-Sitzungen (z.B. 2-3 mit CoreML; mehr Durchsatz, mehr Speicher)
   --units all|ane|gpu|cpu   CoreML-Recheneinheiten (Standard all); mit `selfcheck` die schnellste ermitteln
   --ep cpu|coreml   Ausführung (coreml nur mit `--features coreml` gebaut)
-  --start S --duration S --every N   Ausschnitt / jedes N-te Bild verarbeiten
+  --start T [--end T | --duration T]   nur einen Ausschnitt verarbeiten; T in Sekunden oder als min:s bzw. h:min:s
+                    (z.B. --start 12:30 --end 22:30). Gilt auch für selfcheck, scales und colors.
+  --every N         nur jedes N-te Bild auswerten
   --thr-ball 0.30 --thr-player 0.60 --thr-ref 0.50
 
 live-Optionen:
@@ -132,6 +137,38 @@ impl Opts {
 fn fail<T>(msg: impl std::fmt::Display) -> T {
     eprintln!("Fehler: {msg}");
     std::process::exit(1)
+}
+
+/// Seconds from "90", "1:30" or "0:01:30".
+fn parse_clock(s: &str) -> Option<f64> {
+    let parts: Vec<f64> = s.trim().split(':').map(|p| p.trim().parse::<f64>().ok().filter(|v| *v >= 0.0)).collect::<Option<_>>()?;
+    match parts.as_slice() {
+        [s] => Some(*s),
+        [m, s] => Some(m * 60.0 + s),
+        [h, m, s] => Some(h * 3600.0 + m * 60.0 + s),
+        _ => None,
+    }
+}
+
+fn clock_opt(o: &Opts, key: &str) -> Option<f64> {
+    o.s(key).map(|v| parse_clock(v).unwrap_or_else(|| fail(format!("--{key} {v}: Sekunden oder min:s oder h:min:s erwartet"))))
+}
+
+/// Start of the section to process (`--start`).
+fn t_start(o: &Opts) -> f64 {
+    clock_opt(o, "start").unwrap_or(0.0)
+}
+
+/// Length of the section: `--duration`, or up to `--end`. `None` = to the end of the video.
+fn t_duration(o: &Opts) -> Option<f64> {
+    if let Some(d) = clock_opt(o, "duration") {
+        return Some(d).filter(|d| *d > 0.0);
+    }
+    let end = clock_opt(o, "end")?;
+    if end <= t_start(o) {
+        fail::<()>("--end muss nach --start liegen");
+    }
+    Some(end - t_start(o))
 }
 
 fn open_info(o: &Opts, input: &str) -> VideoInfo {
@@ -258,6 +295,7 @@ fn main() {
         "ocr-bench" => cmd_ocr_bench(&o, &input),
         "colors" => cmd_colors(&o, &input),
         "run" => cmd_run(&o, &input),
+        "replay" => cmd_replay(&o, &input),
         "live" => cmd_live(&o, &input),
         other => fail(format!("unbekannter Befehl '{other}' (calibrate | selfcheck | colors | run)")),
     }
@@ -282,8 +320,8 @@ fn cmd_selfcheck(o: &Opts, input: &str) {
     let mut model = load_model(o);
     let tiles = plan(o, &info);
     let samples = o.u("samples", 12).max(1);
-    let start = o.f("start", 0.0);
-    let span = o.s("duration").and_then(|v| v.parse().ok()).or(info.duration.map(|d| d - start - 1.0)).unwrap_or(60.0).max(1.0);
+    let start = t_start(o);
+    let span = t_duration(o).or(info.duration.map(|d| d - start - 1.0)).unwrap_or(60.0).max(1.0);
     eprintln!("Panorama {}x{}, {} Kachel(n) à {} px, {} Stichproben\n", info.w, info.h, tiles.len(), o.u("tile", 512), samples);
 
     let nc = model.cfg.n_classes;
@@ -720,8 +758,8 @@ fn cmd_scales(o: &Opts, input: &str) {
 
 fn sample_frames(o: &Opts, input: &str, info: &VideoInfo) -> Vec<Frame> {
     let n = o.u("samples", 20).max(1);
-    let start = o.f("start", 0.0);
-    let span = o.s("duration").and_then(|v| v.parse().ok()).or(info.duration.map(|d| d - start - 1.0)).unwrap_or(60.0).max(1.0);
+    let start = t_start(o);
+    let span = t_duration(o).or(info.duration.map(|d| d - start - 1.0)).unwrap_or(60.0).max(1.0);
     (0..n).filter_map(|s| video::grab(input, info, start + span * (s as f64 + 0.5) / n as f64).ok()).collect()
 }
 
@@ -954,7 +992,7 @@ fn cmd_live(o: &Opts, input: &str) {
     eprintln!("  Zum Testen im Browser: http://{addr}/?floor=1&debug=1      Daten: http://{addr}/state.json\n");
 
     let mut jsonl = o.s("json").map(|p| std::io::BufWriter::new(std::fs::File::create(p).unwrap_or_else(|e| fail(format!("{p}: {e}")))));
-    let reader = FrameReader::open_with(input, &info, o.f("start", 0.0), None, 1, true, o.has("realtime"), &o.s("in-args").map(|a| a.split_whitespace().map(|x| x.to_string()).collect::<Vec<_>>()).unwrap_or_default()).unwrap_or_else(|e| fail(e));
+    let reader = FrameReader::open_with(input, &info, t_start(o), None, 1, true, o.has("realtime"), &o.s("in-args").map(|a| a.split_whitespace().map(|x| x.to_string()).collect::<Vec<_>>()).unwrap_or_default()).unwrap_or_else(|e| fail(e));
     let latest = Arc::new(Latest { slot: Default::default(), cv: Default::default(), eof: Default::default(), dropped: Default::default() });
     {
         let latest = latest.clone();
@@ -1120,18 +1158,24 @@ fn cmd_run(o: &Opts, input: &str) {
     if let Some(p) = o.s("json") {
         jsonl = Some(std::io::BufWriter::new(std::fs::File::create(p).unwrap_or_else(|e| fail(format!("{p}: {e}")))));
     }
-    if w_min.is_none() && w_alpha.is_none() && w_pip.is_none() && jsonl.is_none() {
-        fail::<()>("kein Ausgang gewählt: --minimap, --alpha, --pip und/oder --json");
+    let mut dets_out = o.s("dets").map(|p| std::io::BufWriter::new(std::fs::File::create(p).unwrap_or_else(|e| fail(format!("{p}: {e}")))));
+    if w_min.is_none() && w_alpha.is_none() && w_pip.is_none() && jsonl.is_none() && dets_out.is_none() {
+        fail::<()>("kein Ausgang gewählt: --minimap, --alpha, --pip, --json und/oder --dets");
+    }
+    if let Some(w) = dets_out.as_mut() {
+        let head = serde_json::json!({"reco_minimap_dets": 1, "video": input, "w": info.w, "h": info.h, "fps": info.fps, "every": every, "start": t_start(o),
+            "thr": {"ball": model.cfg.thr_ball, "player": model.cfg.thr_player, "referee": model.cfg.thr_referee}});
+        let _ = writeln!(w, "{head}");
     }
 
-    let mut reader = FrameReader::open(input, &info, o.f("start", 0.0), o.s("duration").and_then(|v| v.parse().ok()), every as u32).unwrap_or_else(|e| fail(e));
+    let mut reader = FrameReader::open(input, &info, t_start(o), t_duration(o), every as u32).unwrap_or_else(|e| fail(e));
     // optional second, higher-resolution version of the same panorama for reading numbers
     let mut hires = o.s("hires").map(|p| {
         let hi = video::probe(p).unwrap_or_else(|e| fail(format!("--hires: {e}")));
         eprintln!("Nummern aus {} ({}x{}), Erkennung aus dem kleineren Panorama", p, hi.w, hi.h);
-        FrameReader::open(p, &hi, o.f("start", 0.0), o.s("duration").and_then(|v| v.parse().ok()), every as u32).unwrap_or_else(|e| fail(e))
+        FrameReader::open(p, &hi, t_start(o), t_duration(o), every as u32).unwrap_or_else(|e| fail(e))
     });
-    let t_start = o.f("start", 0.0);
+    let t_start = t_start(o);
     let (mut idx, mut done) = (0u64, 0u64);
     let t0 = Instant::now();
     let mut last_report = Instant::now();
@@ -1161,6 +1205,9 @@ fn cmd_run(o: &Opts, input: &str) {
         }
         n_ref += dets.iter().filter(|d| d.class == Class::Referee).count();
         n_ball += dets.iter().filter(|d| d.class == Class::Ball).count();
+        if let Some(w) = dets_out.as_mut() {
+            let _ = writeln!(w, "{}", dets_json(t, &dets));
+        }
         let tt = Instant::now();
         let state = mm.process(t, &dets);
         if let Some(nm) = numbers.as_mut() {
@@ -1211,7 +1258,7 @@ fn cmd_run(o: &Opts, input: &str) {
             let el = t0.elapsed().as_secs_f32();
             let fps = done as f32 / el;
             let speed = fps * every as f32 / info.fps as f32; // source seconds per wall second
-            let end = o.s("duration").and_then(|v| v.parse::<f64>().ok()).map(|d| t_start + d).or(info.duration);
+            let end = t_duration(o).map(|d| t_start + d).or(info.duration);
             let eta = end.map(|d| format!("  Rest ~{:.0} s", ((d - t).max(0.0) as f32) / speed.max(0.001))).unwrap_or_default();
             eprint!("\r  t={t:7.1}s  {fps:4.1} Bilder/s (Quelle {:.1}/s){eta}   ", info.fps / every as f64);
         }
@@ -1251,5 +1298,139 @@ fn cmd_run(o: &Opts, input: &str) {
     if let Some(mut j) = jsonl {
         let _ = j.flush();
     }
+    if let Some(mut w) = dets_out {
+        let _ = w.flush();
+    }
     let _ = Vec2::default();
+}
+
+// ---------------------------------------------------------------- record + replay
+
+/// One line of a detections file: `{"t": seconds, "d": [[class, conf, cx, cy, w, h, [r,g,b] | null], ...]}`
+/// (class 0 ball, 1 player, 2 referee; box in normalized panorama coordinates; torso colour as sampled).
+fn dets_json(t: f64, dets: &[Det]) -> serde_json::Value {
+    // shortest decimal that reads back as the same f32: a replay then reproduces the run exactly
+    let r = |v: f32| v.to_string().parse::<f64>().unwrap_or(v as f64);
+    let rows: Vec<serde_json::Value> = dets
+        .iter()
+        .map(|d| {
+            let c = match d.class { Class::Ball => 0, Class::Player => 1, Class::Referee => 2 };
+            serde_json::json!([c, r(d.conf), r(d.cx), r(d.cy), r(d.w), r(d.h), d.color])
+        })
+        .collect();
+    serde_json::json!({"t": t, "d": rows})
+}
+
+fn dets_from_json(v: &serde_json::Value) -> Option<(f64, Vec<Det>)> {
+    let t = v["t"].as_f64()?;
+    let mut out = Vec::new();
+    for row in v["d"].as_array()? {
+        let f = |i: usize| row[i].as_f64().map(|x| x as f32);
+        let class = match row[0].as_u64()? { 0 => Class::Ball, 1 => Class::Player, 2 => Class::Referee, _ => return None };
+        let mut d = Det::new(class, f(1)?, f(2)?, f(3)?, f(4)?, f(5)?);
+        if let Some(c) = row[6].as_array().filter(|c| c.len() == 3) {
+            d.color = Some([c[0].as_u64()? as u8, c[1].as_u64()? as u8, c[2].as_u64()? as u8]);
+        }
+        out.push(d);
+    }
+    Some((t, out))
+}
+
+/// Tracking, ball and situations from recorded detections: everything after the detector, without the video.
+/// Thresholds can only be raised above the ones used while recording, so record with low ones to compare.
+fn cmd_replay(o: &Opts, path: &str) {
+    let text = std::fs::read_to_string(path).unwrap_or_else(|e| fail(format!("{path}: {e}")));
+    let mut lines = text.lines().filter(|l| !l.trim().is_empty());
+    let head: serde_json::Value = lines.next().and_then(|l| serde_json::from_str(l).ok()).filter(|v: &serde_json::Value| v["reco_minimap_dets"].as_u64() == Some(1)).unwrap_or_else(|| fail(format!("{path}: keine Erkennungs-Datei (erzeugen mit `run … --dets <datei>`)")));
+    let rate = head["fps"].as_f64().unwrap_or(25.0) / head["every"].as_f64().unwrap_or(1.0).max(1.0);
+    let rec = |k: &str| head["thr"][k].as_f64().unwrap_or(0.0) as f32;
+    let (thr_ball, thr_player, thr_ref) = (o.f("thr-ball", 0.30) as f32, o.f("thr-player", 0.60) as f32, o.f("thr-ref", 0.50) as f32);
+    for (name, want, have) in [("--thr-ball", thr_ball, rec("ball")), ("--thr-player", thr_player, rec("player")), ("--thr-ref", thr_ref, rec("referee"))] {
+        if want < have - 1e-6 {
+            eprintln!("Hinweis: {name} {want} liegt unter der Aufnahme-Schwelle {have}; es gilt {have}.");
+        }
+    }
+    let (cal, profile) = load_court(o.s("court").unwrap_or_else(|| fail("--court court.json fehlt")));
+    let projector = cal.projector().unwrap_or_else(|| fail("court.json: Homographie nicht lösbar"));
+    let (home, away) = read_teams(o);
+    let mut mcfg = Config::for_sport(&profile, home, away);
+    mcfg.referee_rgb = o.s("ref-color").and_then(parse_hex);
+    let mut scenes = o.has("scenes").then(|| SceneDetector::new(profile.clone()));
+    let mut mm = Minimap::new(mcfg, Box::new(projector));
+    let mut jsonl = o.s("json").map(|p| std::io::BufWriter::new(std::fs::File::create(p).unwrap_or_else(|e| fail(format!("{p}: {e}")))));
+    let theme = Theme { px_per_m: o.s("scale").and_then(|v| v.parse().ok()).unwrap_or_else(|| Renderer::default_px_per_m(&profile)), home: o.s("draw-home").and_then(parse_hex).unwrap_or(home), away: o.s("draw-away").and_then(parse_hex).unwrap_or(away), min_alpha: o.f("min-alpha", 0.8) as f32, ..Theme::default() };
+    let renderer = Renderer::with_profile(theme, profile.clone());
+    let mut w_min = o.s("minimap").map(|p| {
+        let (w, h) = renderer.size();
+        FrameWriter::open(p, w, h, rate, true, &Codec::H264(o.s("vcodec").unwrap_or("libx264").to_string())).unwrap_or_else(|e| fail(e))
+    });
+    let (from, to) = (clock_opt(o, "start"), t_duration(o).map(|d| t_start(o) + d));
+    let t0 = Instant::now();
+    let (mut n, mut n_scene) = (0u64, 0usize);
+    for line in lines {
+        let (t, mut dets) = serde_json::from_str(line).ok().and_then(|v| dets_from_json(&v)).unwrap_or_else(|| fail(format!("{path}: Zeile {} unlesbar", n + 2)));
+        if from.map(|f| t < f).unwrap_or(false) || to.map(|e| t >= e).unwrap_or(false) {
+            continue;
+        }
+        dets.retain(|d| d.conf >= match d.class { Class::Ball => thr_ball, Class::Player => thr_player, Class::Referee => thr_ref });
+        let state = mm.process(t, &dets);
+        log_events(&state.events);
+        let sc = scenes.as_mut().map(|d| d.update(&state)).unwrap_or_default();
+        log_scenes(&sc, &profile.id);
+        n_scene += sc.len();
+        if let Some(j) = jsonl.as_mut() {
+            let _ = writeln!(j, "{}", state_json_with(&state, &sc));
+        }
+        if let Some(w) = w_min.as_mut() {
+            w.write(&renderer.render(&state).rgba).unwrap_or_else(|e| fail(e));
+        }
+        n += 1;
+    }
+    if let Some(w) = w_min {
+        w.finish().unwrap_or_else(|e| fail(e));
+    }
+    if let Some(mut j) = jsonl {
+        let _ = j.flush();
+    }
+    let ts = mm.tracker().team_stats;
+    eprintln!("{n} Bilder in {:.2} s wiedergegeben ({:.1} Bilder/s in der Aufnahme).", t0.elapsed().as_secs_f32(), rate);
+    eprintln!("Team-Zuordnung: {} Erkennungen trotz anderer Trikotfarbe über die Position zugeordnet, {} Teamwechsel eines Tracks", ts.cross_matches, ts.flips);
+    if scenes.is_some() {
+        eprintln!("Situationen: {n_scene}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clock_times() {
+        assert_eq!(parse_clock("90"), Some(90.0));
+        assert_eq!(parse_clock("1:30"), Some(90.0));
+        assert_eq!(parse_clock("0:12:30.5"), Some(750.5));
+        assert_eq!(parse_clock("1:02:03"), Some(3723.0));
+        assert_eq!(parse_clock("abc"), None);
+        assert_eq!(parse_clock("1:2:3:4"), None);
+        assert_eq!(parse_clock("-5"), None);
+        let o = Opts::parse(&["--start".into(), "12:30".into(), "--end".into(), "22:30".into()]);
+        assert_eq!((t_start(&o), t_duration(&o)), (750.0, Some(600.0)));
+        let o = Opts::parse(&["--start".into(), "60".into()]);
+        assert_eq!((t_start(&o), t_duration(&o)), (60.0, None));
+    }
+
+    #[test]
+    fn detections_survive_recording() {
+        let mut p = Det::new(Class::Player, 0.8123, 1.0 / 3.0, 0.4 + f32::EPSILON, 0.01, 0.09);
+        p.color = Some([12, 200, 7]);
+        let dets = vec![p, Det::new(Class::Ball, 0.31, 0.25, 0.75, 0.004, 0.007), Det::new(Class::Referee, 0.6, 0.1, 0.2, 0.01, 0.08)];
+        let line = dets_json(12.3456, &dets).to_string();
+        let (t, back) = dets_from_json(&serde_json::from_str(&line).unwrap()).unwrap();
+        assert_eq!(t, 12.3456);
+        assert_eq!(back.len(), 3);
+        for (a, b) in dets.iter().zip(&back) {
+            assert_eq!((a.class, a.color), (b.class, b.color));
+            assert_eq!((a.conf, a.cx, a.cy, a.w, a.h), (b.conf, b.cx, b.cy, b.w, b.h));
+        }
+    }
 }

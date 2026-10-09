@@ -69,7 +69,7 @@ Click *Measure*. The program looks at a dozen frames and learns how tall a playe
 
 ## Step 4 · Process
 
-1. **Segments.** Each row is one run: a *Name*, *Start (s)* and *Duration (s)*. Duration 0 means the whole video. Splitting a game into quarters is safer – an interruption costs one quarter, not the whole game. *Add segment* adds a row.
+1. **Segments.** Each row is one run: a *Name*, a *Start* and an *End* as `min:s` (or `h:min:s`, or plain seconds). An empty end means up to the end of the video, so you can analyse just a part of a long recording. Splitting a game into quarters is safer – an interruption costs one quarter, not the whole game. *Add segment* adds a row.
 2. **Outputs** (tick what you want):
    * *Minimap video* – the minimap on a dark background.
    * *Overlay with transparency (.mov)* – the minimap with a transparent background, to place over a video in an editor or OBS. *Dark backing in the overlay* (0–1) adds a semi-transparent dark box so it stays readable on a bright picture; 0.6 is a good start.

@@ -616,6 +616,7 @@ fn merge_tiles_drops_boxes_cut_by_a_tile_edge() {
     let out = merge_tiles(&[(left, vec![cut]), (right, vec![whole])], pw, ph, 0.5);
     assert_eq!(out.len(), 1, "{out:?}");
     assert!((out[0].w * pw as f32 - 40.0).abs() < 0.5, "the complete box wins although it is less confident");
+    assert!((out[0].conf - 0.9).abs() < 1e-6, "and carries the confidence of the clearer view");
 
     // nobody saw him whole: the cut box is kept
     assert_eq!(merge_tiles(&[(left, vec![cut]), (right, vec![])], pw, ph, 0.5).len(), 1);
@@ -784,4 +785,36 @@ fn hidden_players_are_not_possible_substitutions() {
     run(&mut mm, &[2, 3], &away[1..], 40, &mut t);
     run(&mut mm, &[], &away, 5, &mut t);
     assert!(events.is_empty(), "{events:?}");
+}
+
+#[test]
+fn weak_detections_keep_a_track_but_never_start_one() {
+    use reco_minimap::tracker::{BBox, Obs, Tracker, TrackerCfg, TrackState};
+    let mut cfg = TrackerCfg::default();
+    cfg.spawn_conf = 0.6;
+    let mut tr = Tracker::new(cfg);
+    let obs = |p: Vec2, conf: f32| Obs { referee: false, team: Team::Home, pos: p, bbox: BBox::default(), conf };
+    let (a, ghost) = (Vec2::new(10.0, 7.0), Vec2::new(20.0, 3.0));
+    let mut t = 0.0;
+    // a confident start, then only weak detections of the same player; a weak false positive elsewhere all along
+    for k in 0..60 {
+        let p = a + Vec2::new(0.05 * k as f32, 0.0);
+        tr.update(t, &[obs(p, if k < 3 { 0.8 } else { 0.35 }), obs(ghost, 0.45)]);
+        t += 0.1;
+    }
+    assert_eq!(tr.tracks().len(), 1, "the weak false positive never became a player");
+    let x = &tr.tracks()[0];
+    assert_eq!(x.state, TrackState::Visible);
+    assert!(x.filter_pos().dist(a + Vec2::new(0.05 * 59.0, 0.0)) < 0.5, "followed on weak detections: {:?}", x.filter_pos());
+
+    // once lost, a weak detection does not bring the slot back; a confident one does
+    for _ in 0..30 {
+        tr.update(t, &[]);
+        t += 0.1;
+    }
+    assert_eq!(tr.tracks()[0].state, TrackState::Lost);
+    tr.update(t, &[obs(Vec2::new(13.0, 7.0), 0.4)]);
+    assert_eq!(tr.tracks()[0].state, TrackState::Lost);
+    tr.update(t + 0.1, &[obs(Vec2::new(13.0, 7.0), 0.7)]);
+    assert_eq!(tr.tracks()[0].state, TrackState::Visible);
 }

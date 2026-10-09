@@ -63,6 +63,9 @@ Gemeinsame Optionen:
                     (z.B. --start 12:30 --end 22:30). Gilt auch für selfcheck, scales und colors.
   --every N         nur jedes N-te Bild auswerten
   --thr-ball 0.30 --thr-player 0.60 --thr-ref 0.50
+  --thr-player-low 0.30   (run/live/replay) schwächere Spieler-Erkennungen ab diesem Wert halten einen bestehenden
+                    Punkt am Leben, starten aber keinen neuen: so bleiben Spieler im Gedränge erhalten, ohne dass
+                    Fehlerkennungen zu Spielern werden. Gleicher Wert wie --thr-player schaltet das ab.
 
 live-Optionen:
   --port 8765 --host 127.0.0.1   Overlay: http://HOST:PORT/  (OBS: Quelle 'Browser', diese URL; Hintergrund bleibt transparent)
@@ -222,10 +225,17 @@ fn load_model(o: &Opts) -> RfDetr {
     };
     let mut m = RfDetr::load(path, ep, o.s("units").map(|u| Units::parse(u).unwrap_or_else(|| fail("--units: all | ane | gpu | cpu"))).unwrap_or(Units::All), o.u("workers", 1)).unwrap_or_else(|e| fail(e));
     m.cfg.thr_ball = o.f("thr-ball", 0.30) as f32;
-    m.cfg.thr_player = o.f("thr-player", 0.60) as f32;
+    m.cfg.thr_player = thr_players(o).1;
     m.cfg.thr_referee = o.f("thr-ref", 0.50) as f32;
     eprintln!("Modell: {} ({}x{}, Klassen {:?}), {} Worker", m.info.id, m.size, m.size, m.info.classes, m.workers());
     m
+}
+
+/// Player thresholds (low, high): detections from `--thr-player-low` on keep an existing track going,
+/// only those from `--thr-player` on may start one. Set both to the same value to turn this off.
+fn thr_players(o: &Opts) -> (f32, f32) {
+    let high = o.f("thr-player", 0.60) as f32;
+    (o.s("thr-player-low").and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.30).min(high), high)
 }
 
 /// Sport profile from --sport (+ --length/--width/--team-size/--referees for `custom`).
@@ -971,12 +981,14 @@ fn cmd_live(o: &Opts, input: &str) {
         fail::<()>("--size WxH angeben, z.B. --size 1920x1080 (Live-Quellen werden nicht vorab geprüft)");
     }
     let mut model = load_model(o);
+    model.cfg.thr_player = thr_players(o).0;
     let tiles = plan(o, &info);
     let (cal, profile) = load_court(o.s("court").unwrap_or_else(|| fail("--court court.json fehlt")));
     let projector = cal.projector().unwrap_or_else(|| fail("court.json: Homographie nicht lösbar"));
     let (home, away) = read_teams(o);
     let mut mcfg = Config::for_sport(&profile, home, away);
     mcfg.referee_rgb = o.s("ref-color").and_then(parse_hex);
+    mcfg.tracker.spawn_conf = { let (low, high) = thr_players(o); if low < high { high } else { 0.0 } };
     let mut numbers = numbers_setup(o, &mut mcfg);
     let mut scenes = o.has("scenes").then(|| SceneDetector::new(profile.clone()));
     let mut mm = Minimap::new(mcfg, Box::new(projector));
@@ -1097,6 +1109,7 @@ fn state_json_with(s: &FrameState, scenes: &[SceneEvent]) -> serde_json::Value {
 fn cmd_run(o: &Opts, input: &str) {
     let info = open_info(o, input);
     let mut model = load_model(o);
+    model.cfg.thr_player = thr_players(o).0;
     let tiles = plan(o, &info);
     let (cal, profile) = load_court(o.s("court").unwrap_or_else(|| fail("--court court.json fehlt (erst `reco-minimap calibrate`)")));
     if cal.pano_w > 0 && cal.pano_h > 0 {
@@ -1120,6 +1133,7 @@ fn cmd_run(o: &Opts, input: &str) {
     let mut theme = Theme { px_per_m: ppm, home: draw_home, away: draw_away, min_alpha: o.f("min-alpha", 0.8) as f32, show_numbers: o.has("numbers"), ..Theme::default() };
     let mut mcfg = Config::for_sport(&profile, home, away);
     mcfg.referee_rgb = o.s("ref-color").and_then(parse_hex);
+    mcfg.tracker.spawn_conf = { let (low, high) = thr_players(o); if low < high { high } else { 0.0 } };
     let mut numbers = numbers_setup(o, &mut mcfg);
     let mut scenes = o.has("scenes").then(|| SceneDetector::new(profile.clone()));
     let mut scene_log: Vec<SceneEvent> = Vec::new();
@@ -1344,8 +1358,8 @@ fn cmd_replay(o: &Opts, path: &str) {
     let head: serde_json::Value = lines.next().and_then(|l| serde_json::from_str(l).ok()).filter(|v: &serde_json::Value| v["reco_minimap_dets"].as_u64() == Some(1)).unwrap_or_else(|| fail(format!("{path}: keine Erkennungs-Datei (erzeugen mit `run … --dets <datei>`)")));
     let rate = head["fps"].as_f64().unwrap_or(25.0) / head["every"].as_f64().unwrap_or(1.0).max(1.0);
     let rec = |k: &str| head["thr"][k].as_f64().unwrap_or(0.0) as f32;
-    let (thr_ball, thr_player, thr_ref) = (o.f("thr-ball", 0.30) as f32, o.f("thr-player", 0.60) as f32, o.f("thr-ref", 0.50) as f32);
-    for (name, want, have) in [("--thr-ball", thr_ball, rec("ball")), ("--thr-player", thr_player, rec("player")), ("--thr-ref", thr_ref, rec("referee"))] {
+    let (thr_ball, thr_player, thr_ref) = (o.f("thr-ball", 0.30) as f32, thr_players(o).0, o.f("thr-ref", 0.50) as f32);
+    for (name, want, have) in [("--thr-ball", thr_ball, rec("ball")), ("--thr-player(-low)", thr_player, rec("player")), ("--thr-ref", thr_ref, rec("referee"))] {
         if want < have - 1e-6 {
             eprintln!("Hinweis: {name} {want} liegt unter der Aufnahme-Schwelle {have}; es gilt {have}.");
         }
@@ -1355,6 +1369,7 @@ fn cmd_replay(o: &Opts, path: &str) {
     let (home, away) = read_teams(o);
     let mut mcfg = Config::for_sport(&profile, home, away);
     mcfg.referee_rgb = o.s("ref-color").and_then(parse_hex);
+    mcfg.tracker.spawn_conf = { let (low, high) = thr_players(o); if low < high { high } else { 0.0 } };
     let mut scenes = o.has("scenes").then(|| SceneDetector::new(profile.clone()));
     let mut mm = Minimap::new(mcfg, Box::new(projector));
     let mut jsonl = o.s("json").map(|p| std::io::BufWriter::new(std::fs::File::create(p).unwrap_or_else(|e| fail(format!("{p}: {e}")))));

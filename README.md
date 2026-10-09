@@ -61,6 +61,7 @@ panorama video ──► tiles (sized by distance) ──► RF-DETR detector (O
 
 * **Tiling.** A panorama is much wider than the detector's 512 px input, and players far from the camera are small. `reco-minimap scales` measures how tall players appear at each image row and `--tile auto` then cuts each band with the tile size that makes a player about 28 px tall for the model. In our tests this halved the number of tiles and gave the model players at the size it was trained on.
 * **Calibration.** You click known field points (corners, centre, penalty-area corners …) once per camera position. The program fits a homography from panorama pixels to field metres and shows the field lines over the picture so you can judge the fit; it reports the error in metres.
+* **Two confidence levels.** Only confident player detections start a dot or bring back a lost one; weaker ones are used to keep following a player who is already tracked.
 * **Tracking.** Each team has a fixed number of slots (5 for basketball, 11 for football …). A hidden player keeps moving with damped velocity and cannot leave the field; a returning player re-takes his slot instead of creating a sixth dot.
 * **Ball.** States *held*, *in flight*, *loose* and *unknown*. A ball hidden in hands stays *held*; detections far from the tracked ball are ignored unless they are clearly confident.
 * **Smooth video.** Detection can run on every Nth frame (`--every N`); the minimap video is still written at the full frame rate by interpolating between detections.
@@ -269,6 +270,7 @@ Common options (see `reco-minimap --help` for all):
 | `--scenes` | Recognise game situations (throw-in, free throw, kick-off, penalty, corner, 7 m, 2/3-point attempts …) |
 | `--numbers --roster-home … --roster-away … --hires …` | Read jersey numbers and detect substitutions |
 | `--thr-player 0.60 --thr-ball 0.30 --thr-ref 0.50` | Detection thresholds (defaults shown) |
+| `--thr-player-low 0.30` | (`run`, `live`, `replay`) Player detections between this value and `--thr-player` keep an existing dot going but never start one. A model that is unsure in a crowd then still follows the players, without its false positives becoming players. Set it equal to `--thr-player` to turn this off |
 | `--roi x0,y0,x1,y1` | Search only a band of the panorama (fractions) |
 | `--minimap f.mp4 --alpha f.mov --pip f.mp4 --json f.jsonl` | Outputs of `run` (`--alpha-bg 0.6` adds a dark backing) |
 | `--draw-home #fff --draw-away #2f6bff --ref-color #000` | Display colours, referee shirt colour |
@@ -365,7 +367,7 @@ Implement `geom::Projector` on top of your own panorama projection if a plain ho
 ## Development
 
 ```bash
-cargo test --features tools              # 41 tests (core, tools, number decoding, substitutions, game situations)
+cargo test --features tools              # 42 tests (core, tools, number decoding, substitutions, game situations)
 python3 scripts/gen_i18n.py              # regenerate src/tools/i18n.js (all keys in all 4 languages)
 python3 scripts/make_test_assets.py      # synthetic panorama + stand-in ONNX for smoke tests
 python3 scripts/coreml_probe.py <model>  # CoreML partitions and per-unit timing

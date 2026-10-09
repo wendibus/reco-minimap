@@ -221,7 +221,8 @@ fn cut_by_tile(d: &Det, t: &Tile, pano_w: u32, pano_h: u32) -> bool {
 /// Merge the detections of overlapping tiles (tile-normalized, one list per tile) into panorama
 /// detections. A player cut by a tile edge yields a partial box whose IoU with the full box from
 /// the neighbouring tile is too low for NMS, and whose bottom edge is not the foot point. Such a
-/// cut box is dropped when a complete box of the same class covers most of it; if no tile saw the
+/// cut box is dropped when a complete box of the same class covers most of it (the complete box
+/// then carries the higher confidence of the two); if no tile saw the
 /// object whole, the cut box is kept (better a rough position than none). A box found as both
 /// player and referee keeps the more confident class.
 pub fn merge_tiles(per_tile: &[(Tile, Vec<Det>)], pano_w: u32, pano_h: u32, iou_thr: f32) -> Vec<Det> {
@@ -238,8 +239,18 @@ pub fn merge_tiles(per_tile: &[(Tile, Vec<Det>)], pano_w: u32, pano_h: u32, iou_
         let ih = ((a.cy + a.h / 2.0).min(b.cy + b.h / 2.0) - (a.cy - a.h / 2.0).max(b.cy - b.h / 2.0)).max(0.0);
         if a.w * a.h <= 0.0 { 0.0 } else { iw * ih / (a.w * a.h) }
     };
-    let whole: Vec<Det> = all.iter().filter(|x| !x.1).map(|x| x.0).collect();
-    let kept: Vec<Det> = all.iter().filter(|(d, cut)| !cut || !whole.iter().any(|k| k.class == d.class && covered(d, k) >= 0.6)).map(|x| x.0).collect();
+    // the complete box replaces the cut one but keeps the better of the two confidences:
+    // both are the same object, and the cut view is often the clearer one
+    let mut whole: Vec<Det> = all.iter().filter(|x| !x.1).map(|x| x.0).collect();
+    let mut kept: Vec<Det> = Vec::new();
+    for (d, _) in all.iter().filter(|x| x.1) {
+        let best = whole.iter_mut().filter(|k| k.class == d.class && covered(d, k) >= 0.6).max_by(|a, b| covered(d, a).partial_cmp(&covered(d, b)).unwrap_or(std::cmp::Ordering::Equal));
+        match best {
+            Some(k) => k.conf = k.conf.max(d.conf),
+            None => kept.push(*d),
+        }
+    }
+    kept.extend(whole);
     let mut out: Vec<Det> = Vec::new();
     for d in nms(kept, iou_thr) {
         let person = |c: Class| c != Class::Ball;

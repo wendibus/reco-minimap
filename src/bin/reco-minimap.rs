@@ -1219,6 +1219,8 @@ fn cmd_run(o: &Opts, input: &str) {
     eprintln!("\n{done} Bilder in {:.1} s ({:.2} Bilder/s).", t0.elapsed().as_secs_f32(), done as f32 / t0.elapsed().as_secs_f32().max(0.001));
     let per = |d: std::time::Duration| d.as_secs_f32() * 1000.0 / done.max(1) as f32;
     eprintln!("Zeit pro Bild (ms): Decode {:.0}, Kachel-Vorverarbeitung {:.0}, Inferenz {:.0}, Tracking {:.0}, Rendern/Schreiben {:.0}", per(d_decode), per(model.t_prep), per(model.t_infer), per(d_track), per(d_out));
+    let ts = mm.tracker().team_stats;
+    eprintln!("Team-Zuordnung: {} Erkennungen trotz anderer Trikotfarbe über die Position zugeordnet, {} Teamwechsel eines Tracks", ts.cross_matches, ts.flips);
     if let Some(nm) = numbers.as_ref() {
         numbers_summary(nm, &mm);
     }

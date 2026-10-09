@@ -685,3 +685,62 @@ fn resting_ball_beside_the_court_is_parked_and_the_game_ball_takes_over() {
     let p = s.unwrap().ball.pos.expect("game ball tracked");
     assert!(p.dist(Vec2::new(18.5, 3.0)) < 1.5, "ball at {p:?}");
 }
+
+/// True if a visible player of `team` is shown within 0.5 m of `p`.
+fn shown(s: &FrameState, team: Team, p: Vec2) -> bool {
+    s.players.iter().any(|a| a.team == team && a.state == tracker::TrackState::Visible && a.pos.dist(p) < 0.5)
+}
+
+#[test]
+fn one_wrong_colour_sample_does_not_move_the_other_teams_player() {
+    let (proj, to_pano) = projector();
+    let mut mm = Minimap::new(Config::new(HOME, AWAY), Box::new(proj));
+    let (home, mut away, refs) = lineup();
+    away[0] = home[0] + Vec2::new(1.6, 0.0); // a defender 1.6 m away: inside the normal matching gate
+    let mut t = 0.0;
+    for _ in 0..25 {
+        mm.process(t, &frame_dets(&to_pano, &home, &away, &refs, &[]));
+        t += 0.04;
+    }
+    // one frame: the defender is hidden and the home player's torso sample comes out in the away colour
+    let mut d: Vec<Det> = frame_dets(&to_pano, &home, &away[1..], &refs, &[0]);
+    d.push(player_det(&to_pano, home[0], Class::Player, Some(AWAY)));
+    let s = mm.process(t, &d);
+    assert!(shown(&s, Team::Home, home[0]), "the home player keeps his own detection");
+    let a = mm.tracker().tracks().iter().find(|x| x.team == Team::Away && x.filter_pos().dist(away[0]) < 0.3);
+    assert!(a.is_some(), "the hidden defender must not be pulled onto the home player");
+    assert_eq!(mm.tracker().team_stats.cross_matches, 1);
+    assert_eq!(mm.tracker().team_stats.flips, 0);
+}
+
+#[test]
+fn track_started_in_the_wrong_team_follows_the_colour_evidence() {
+    let (proj, to_pano) = projector();
+    let mut mm = Minimap::new(Config::new(HOME, AWAY), Box::new(proj));
+    let (home, away, refs) = lineup();
+    let mut t = 0.0;
+    // first two frames: home[0] is sampled in the away colour (shadow, another shirt in the crop); away[4] not seen yet
+    for _ in 0..2 {
+        let mut d = frame_dets(&to_pano, &home, &away[..4], &refs, &[0]);
+        d.push(player_det(&to_pano, home[0], Class::Player, Some(AWAY)));
+        mm.process(t, &d);
+        t += 0.04;
+    }
+    let id = mm.tracker().tracks().iter().find(|x| x.filter_pos().dist(home[0]) < 0.3).map(|x| (x.id, x.team)).unwrap();
+    assert_eq!(id.1, Team::Away);
+    let mut s = None;
+    for _ in 0..10 {
+        s = Some(mm.process(t, &frame_dets(&to_pano, &home, &away, &refs, &[])));
+        t += 0.04;
+    }
+    let s = s.unwrap();
+    for p in &home {
+        assert!(shown(&s, Team::Home, *p), "home player at {p:?} missing: {:?}", s.players);
+    }
+    for p in &away {
+        assert!(shown(&s, Team::Away, *p), "away player at {p:?} missing: {:?}", s.players);
+    }
+    assert_eq!(s.players.len(), 10, "no ghost slot left behind");
+    let same = mm.tracker().tracks().iter().find(|x| x.id == id.0).unwrap();
+    assert_eq!(same.team, Team::Home, "the same track changed team instead of a new one being made");
+}

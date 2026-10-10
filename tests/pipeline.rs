@@ -651,8 +651,16 @@ fn auto_plan_reaches_the_near_sideline_and_follows_the_field() {
     let to_pano = Homography::from_points(&court, &pano).unwrap();
     let field = reco_minimap::geom::Field::basketball();
     let floor = floor_points(&to_pano, &field, 3.0, 2560, 1440);
-    let masked = plan_auto_field(&sc, 2560, 1440, 0.25, &floor);
-    assert!(masked.len() < full.len(), "{} vs {}", masked.len(), full.len());
+    let feet = floor_points(&to_pano, &field, 1.0, 2560, 1440);
+    let masked = plan_auto_field(&sc, 2560, 1440, 0.25, &floor, Some(&feet));
+    // without the feet rows the bands keep to the measured range
+    let measured = plan_auto_field(&sc, 2560, 1440, 0.25, &floor, None);
+    assert!(measured.iter().map(|t| t.y + t.h).max().unwrap() < masked.iter().map(|t| t.y + t.h).max().unwrap());
+    assert!(measured.len() < full.len(), "{} vs {}", measured.len(), full.len());
+    // with the field known the bands reach its near edge even though players were only measured up to y_max
+    let near = feet.iter().filter(|p| p.0 >= 0.0 && p.0 <= 2560.0).map(|p| p.1.min(1440.0)).fold(0.0f32, f32::max);
+    assert!(near > sc.y_max + 20.0, "the fixture's field extends below the measured rows");
+    assert!(masked.iter().map(|t| t.y + t.h).max().unwrap() as f32 >= near - 1.0, "bands stop above the near sideline");
     assert!(masked.iter().all(|t| t.x + t.w <= 2560 && t.y + t.h <= 1440));
     // every floor point with feet in the measured rows is still inside some tile, with room for the body above
     // (checked for the 1 m margin players are tracked in; the outermost pixels of the 3 m ball margin may be given up)

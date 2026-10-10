@@ -17,6 +17,24 @@ pub struct VideoInfo {
     pub duration: Option<f64>,
 }
 
+/// Part of a player box (fractions of its height) that shows the shirt of a standing person.
+pub const TORSO_BAND: (f32, f32) = (0.18, 0.50);
+
+/// A torso pixel counts as a shirt colour within this Lab distance.
+const SHIRT_MATCH_DIST: f32 = 30.0;
+
+fn median_rgb(samples: &[[u8; 3]]) -> Option<[u8; 3]> {
+    if samples.is_empty() {
+        return None;
+    }
+    let med = |c: usize| {
+        let mut v: Vec<u8> = samples.iter().map(|s| s[c]).collect();
+        v.sort_unstable();
+        v[v.len() / 2]
+    };
+    Some([med(0), med(1), med(2)])
+}
+
 pub struct Frame {
     pub w: usize,
     pub h: usize,
@@ -240,34 +258,103 @@ impl Frame {
 
     /// Median colour of the torso region of a player box (robust against skin/background).
     pub fn torso_color(&self, d: &Det) -> Option<[u8; 3]> {
+        self.torso_color_in(d, TORSO_BAND)
+    }
+
+    /// Pixels of the middle of a player box between the fractions `band.0` and `band.1` of its height.
+    fn torso_samples(&self, d: &Det, band: (f32, f32)) -> Vec<[u8; 3]> {
         let (fw, fh) = (self.w as f32, self.h as f32);
         let x0 = ((d.cx - d.w * 0.22) * fw).max(0.0) as usize;
         let x1 = (((d.cx + d.w * 0.22) * fw) as usize).min(self.w.saturating_sub(1));
         let top = (d.cy - d.h / 2.0) * fh;
-        let y0 = (top + d.h * fh * 0.18).max(0.0) as usize;
-        let y1 = ((top + d.h * fh * 0.50) as usize).min(self.h.saturating_sub(1));
+        let y0 = (top + d.h * fh * band.0).max(0.0) as usize;
+        let y1 = ((top + d.h * fh * band.1) as usize).min(self.h.saturating_sub(1));
+        let mut out = Vec::new();
         if x1 <= x0 || y1 <= y0 {
-            return None;
+            return out;
         }
-        let mut ch: [Vec<u8>; 3] = [Vec::new(), Vec::new(), Vec::new()];
-        let (sx, sy) = (((x1 - x0) / 8).max(1), ((y1 - y0) / 8).max(1));
+        let (sx, sy) = (((x1 - x0) / 10).max(1), ((y1 - y0) / 10).max(1));
         let mut y = y0;
         while y <= y1 {
             let mut x = x0;
             while x <= x1 {
                 let i = (y * self.w + x) * 3;
-                for c in 0..3 {
-                    ch[c].push(self.rgb[i + c]);
-                }
+                out.push([self.rgb[i], self.rgb[i + 1], self.rgb[i + 2]]);
                 x += sx;
             }
             y += sy;
         }
-        let med = |v: &mut Vec<u8>| {
-            v.sort_unstable();
-            v[v.len() / 2]
-        };
-        Some([med(&mut ch[0]), med(&mut ch[1]), med(&mut ch[2])])
+        out
+    }
+
+    /// [`Frame::torso_color`] for another part of the box, e.g. `(0.35, 0.85)` for figures whose
+    /// shirt sits lower than a person's.
+    pub fn torso_color_in(&self, d: &Det, band: (f32, f32)) -> Option<[u8; 3]> {
+        median_rgb(&self.torso_samples(d, band))
+    }
+
+    /// Colour of the floor the player stands on: two patches just outside the box at foot height.
+    fn floor_color(&self, d: &Det) -> Option<[u8; 3]> {
+        let (fw, fh) = (self.w as f32, self.h as f32);
+        let (half, foot) = (d.w * 0.5 * fw, (d.cy + d.h * 0.5) * fh);
+        let size = (d.w * fw * 0.12).max(3.0);
+        let mut out = Vec::new();
+        for cx in [d.cx * fw - half - size, d.cx * fw + half + size] {
+            if cx - size / 2.0 < 0.0 || cx + size / 2.0 >= fw {
+                continue; // box at the frame edge: no floor to look at on this side
+            }
+            let (x0, x1) = ((cx - size / 2.0) as usize, (cx + size / 2.0) as usize);
+            let (y0, y1) = ((foot - size).max(0.0) as usize, (foot as usize).min(self.h.saturating_sub(1)));
+            for y in (y0..=y1).step_by(2) {
+                for x in (x0..=x1).step_by(2) {
+                    let i = (y * self.w + x) * 3;
+                    out.push([self.rgb[i], self.rgb[i + 1], self.rgb[i + 2]]);
+                }
+            }
+        }
+        median_rgb(&out)
+    }
+
+    /// Torso colour when the shirt colours are known: if a clear share of the torso pixels is one
+    /// of `shirts`, the median of just those pixels; otherwise the plain median. Skin, hair or a
+    /// number inside the box then no longer pull the colour of a player away from his shirt.
+    ///
+    /// Court paint in a team colour shows through between arms and legs and would count as that
+    /// team's shirt. So when the floor beside the player looks like one of the shirts, another
+    /// shirt colour with a fair share of the pixels wins over it.
+    pub fn torso_color_matching(&self, d: &Det, band: (f32, f32), shirts: &[[u8; 3]]) -> Option<[u8; 3]> {
+        use crate::team::rgb_to_lab;
+        let lab_dist = |a: [f32; 3], b: [f32; 3]| ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt();
+        let samples = self.torso_samples(d, band);
+        if samples.is_empty() {
+            return None;
+        }
+        let labs: Vec<[f32; 3]> = shirts.iter().map(|c| rgb_to_lab(*c)).collect();
+        let mut groups: Vec<Vec<[u8; 3]>> = vec![Vec::new(); shirts.len()];
+        for s in &samples {
+            let l = rgb_to_lab(*s);
+            let near = labs.iter().enumerate().map(|(i, r)| (i, lab_dist(l, *r))).min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+            if let Some((i, dist)) = near {
+                if dist <= SHIRT_MATCH_DIST {
+                    groups[i].push(*s);
+                }
+            }
+        }
+        let mut order: Vec<usize> = (0..groups.len()).collect();
+        order.sort_by_key(|&i| std::cmp::Reverse(groups[i].len()));
+        if let Some(floor) = self.floor_color(d).map(rgb_to_lab) {
+            let painted = (0..labs.len()).find(|&i| lab_dist(floor, labs[i]) <= SHIRT_MATCH_DIST);
+            if let Some(k) = painted {
+                if let Some(&j) = order.iter().find(|&&j| j != k && groups[j].len() * 100 >= samples.len() * 8) {
+                    return median_rgb(&groups[j]);
+                }
+            }
+        }
+        let (best, second) = (order.first().map_or(0, |&i| groups[i].len()), order.get(1).map_or(0, |&i| groups[i].len()));
+        if best * 5 >= samples.len() && best * 2 >= second * 3 {
+            return median_rgb(&groups[order[0]]);
+        }
+        median_rgb(&samples)
     }
 
     /// Copy a pixel rectangle (clamped to the frame) as RGB: (width, height, data).

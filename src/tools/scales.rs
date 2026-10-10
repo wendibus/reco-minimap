@@ -94,15 +94,19 @@ impl Scales {
 
 /// Bands over the court; each band is tiled with the size that suits its distance.
 pub fn plan_auto(s: &Scales, frame_w: u32, frame_h: u32, overlap: f32) -> Vec<Tile> {
-    plan_bands(s, frame_w, frame_h, overlap, None)
+    plan_bands(s, frame_w, frame_h, overlap, None, None)
 }
 
 /// Like [`plan_auto`], but each band only spans the part of the panorama where the field is.
 /// `floor_px`: floor points of the field (grown by the margin in which detections are still used)
 /// in panorama pixels, see [`floor_points`]. The far bands use small tiles, so not tiling the
 /// stands left and right of the field saves most there.
-pub fn plan_auto_field(s: &Scales, frame_w: u32, frame_h: u32, overlap: f32, floor_px: &[(f32, f32)]) -> Vec<Tile> {
-    plan_bands(s, frame_w, frame_h, overlap, Some(floor_px))
+///
+/// `feet_px`: floor points where players can stand (the field grown by the player margin). The
+/// bands then run from its far to its near edge instead of only over the rows in which players
+/// happened to be measured; a player at the near sideline is otherwise cut off or missed.
+pub fn plan_auto_field(s: &Scales, frame_w: u32, frame_h: u32, overlap: f32, floor_px: &[(f32, f32)], feet_px: Option<&[(f32, f32)]>) -> Vec<Tile> {
+    plan_bands(s, frame_w, frame_h, overlap, Some(floor_px), feet_px)
 }
 
 /// Floor points of `field` grown by `margin_m`, on a 0.25 m grid, as panorama pixels.
@@ -121,17 +125,26 @@ pub fn floor_points(court_to_pano: &Homography, field: &Field, margin_m: f32, fr
     out
 }
 
-fn plan_bands(s: &Scales, frame_w: u32, frame_h: u32, overlap: f32, floor_px: Option<&[(f32, f32)]>) -> Vec<Tile> {
+fn plan_bands(s: &Scales, frame_w: u32, frame_h: u32, overlap: f32, floor_px: Option<&[(f32, f32)]>, feet_px: Option<&[(f32, f32)]>) -> Vec<Tile> {
     let mut tiles = Vec::new();
-    let mut y = s.y_min;
+    // Rows in which feet can stand. The measured range only reaches as far as players happened to
+    // stand in the sample frames; with the field known, the bands cover it from sideline to sideline.
+    let (mut y_min, mut y_max) = (s.y_min, s.y_max);
+    if let Some(pts) = feet_px {
+        for p in pts.iter().filter(|p| p.0 >= 0.0 && p.0 <= frame_w as f32) {
+            y_min = y_min.min(p.1.max(0.0));
+            y_max = y_max.max(p.1.min(frame_h as f32));
+        }
+    }
+    let mut y = y_min;
     let mut bands = 0;
     // every band covers a 25 % growth in player height; the count is only bounded against a degenerate fit
-    while y < s.y_max - 1.0 && bands < 32 {
+    while y < y_max - 1.0 && bands < 32 {
         let h0 = s.height_at(y);
-        let mut y1 = if s.b > 1e-4 { (h0 * 1.25 - s.a) / s.b } else { s.y_max };
-        y1 = y1.clamp(y + 10.0, s.y_max);
-        if s.y_max - y1 < 0.05 * (s.y_max - s.y_min) {
-            y1 = s.y_max;
+        let mut y1 = if s.b > 1e-4 { (h0 * 1.25 - s.a) / s.b } else { y_max };
+        y1 = y1.clamp(y + 10.0, y_max);
+        if y_max - y1 < 0.05 * (y_max - y_min) {
+            y1 = y_max;
         }
         let side = s.tile_at((y + y1) / 2.0).round() as u32;
         let top = (y - h0 * 1.1).max(0.0);

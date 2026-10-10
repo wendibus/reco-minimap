@@ -127,3 +127,55 @@ fn ui_only_accepts_its_own_page() {
     assert!(!request_allowed(Some("127.0.0.1.evil.example"), None));
     assert!(!request_allowed(None, None));
 }
+
+#[test]
+fn torso_colour_snaps_to_a_known_shirt_colour() {
+    use reco_minimap::detect::{Class, Det};
+    use reco_minimap::tools::video::{Frame, TORSO_BAND};
+    // a 100x200 frame: one box filling it; the torso band is 45 % red shirt, 55 % skin tone
+    let (w, h) = (100usize, 200usize);
+    let (red, skin, blue) = ([200u8, 30, 40], [224u8, 172, 140], [30u8, 60, 200]);
+    let mut rgb = vec![0u8; w * h * 3];
+    for y in 0..h {
+        for x in 0..w {
+            let c = if x < 46 { red } else { skin };
+            rgb[(y * w + x) * 3..(y * w + x) * 3 + 3].copy_from_slice(&c);
+        }
+    }
+    let frame = Frame { w, h, rgb };
+    let d = Det::new(Class::Player, 0.9, 0.5, 0.5, 1.0, 1.0);
+    // the plain median lands on the majority, the skin
+    assert_eq!(frame.torso_color(&d), Some(skin));
+    // knowing the shirts, the red pixels are a clear share and win
+    assert_eq!(frame.torso_color_matching(&d, TORSO_BAND, &[red, blue]), Some(red));
+    // neither shirt present: unchanged
+    assert_eq!(frame.torso_color_matching(&d, TORSO_BAND, &[blue, [0, 0, 0]]), Some(skin));
+}
+
+#[test]
+fn court_paint_in_a_team_colour_is_not_taken_for_a_shirt() {
+    use reco_minimap::detect::{Class, Det};
+    use reco_minimap::tools::video::{Frame, TORSO_BAND};
+    // red floor everywhere; a player box in the middle whose torso band is 40 % blue shirt, 60 % red floor showing through
+    let (w, h) = (300usize, 300usize);
+    let (red, blue) = ([200u8, 30, 40], [30u8, 60, 200]);
+    let mut rgb = vec![0u8; w * h * 3];
+    for y in 0..h {
+        for x in 0..w {
+            let shirt = (130..146).contains(&x) && (100..200).contains(&y);
+            rgb[(y * w + x) * 3..(y * w + x) * 3 + 3].copy_from_slice(if shirt { &blue } else { &red });
+        }
+    }
+    let frame = Frame { w, h, rgb };
+    let d = Det::new(Class::Player, 0.9, 0.5, 0.5, 100.0 / 300.0, 100.0 / 300.0);
+    assert_eq!(frame.torso_color(&d), Some(red), "the plain median is the floor");
+    assert_eq!(frame.torso_color_matching(&d, TORSO_BAND, &[red, blue]), Some(blue));
+
+    // a red shirt on the red floor is still red: no other shirt colour is in the box
+    let mut rgb = vec![0u8; w * h * 3];
+    for px in rgb.chunks_exact_mut(3) {
+        px.copy_from_slice(&red);
+    }
+    let frame = Frame { w, h, rgb };
+    assert_eq!(frame.torso_color_matching(&d, TORSO_BAND, &[red, blue]), Some(red));
+}

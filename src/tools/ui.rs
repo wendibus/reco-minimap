@@ -233,6 +233,12 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
     let ep = get_s(p, "ep");
     let units = get_s(p, "units");
     let has_scales = dir.join("scales.json").exists();
+    // which part of a player box shows the shirt (only passed when it is a usable range)
+    let fig = &p["figures"];
+    let torso = match (fig["torso_top"].as_f64(), fig["torso_bottom"].as_f64()) {
+        (Some(t), Some(b)) if (0.0..1.0).contains(&t) && t < b && b <= 1.0 => Some(format!("{t},{b}")),
+        _ => None,
+    };
     let engine = |a: &mut Vec<String>| {
         a.push("--ep".into());
         a.push(if ep == "cpu" { "cpu".into() } else { "coreml".into() });
@@ -266,6 +272,9 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
             if has_scales && kind != "scales" {
                 pushs(&mut a, &["--tile", "auto"]);
             }
+            if let (Some(t), "colors") = (&torso, kind) {
+                pushs(&mut a, &["--torso", t]);
+            }
             engine(&mut a);
         }
         "run" | "live" => {
@@ -281,6 +290,15 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
             }
             if p["scenes"].as_bool() == Some(true) {
                 pushs(&mut a, &["--scenes"]);
+            }
+            if let Some(t) = &torso {
+                pushs(&mut a, &["--torso", t]);
+            }
+            if fig["shirt_match"].as_bool() == Some(true) {
+                pushs(&mut a, &["--shirt-match"]);
+            }
+            if fig["no_referees"].as_bool() == Some(true) {
+                pushs(&mut a, &["--referees", "0"]);
             }
             let nm = &p["numbers"];
             if nm["enabled"].as_bool() == Some(true) {
@@ -504,4 +522,47 @@ pub fn serve(port: u16, open: bool, block: bool) -> Result<String, String> {
         std::thread::spawn(accept);
     }
     Ok(url)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(kind: &str, figures: Value) -> Vec<String> {
+        let p = json!({"model_dir": "/m", "video": "/v.mp4", "source": "/v.mp4", "ep": "cpu", "every": 5, "name": "a",
+            "outputs": {"json": true}, "size": "1920x1080", "fps": 25, "port": 8765, "figures": figures});
+        build_args(kind, Path::new("/nonexistent-project"), &p).unwrap()
+    }
+
+    fn pair(a: &[String], flag: &str) -> Option<String> {
+        a.iter().position(|x| x == flag).and_then(|i| a.get(i + 1).cloned())
+    }
+
+    #[test]
+    fn figure_options_reach_the_commands() {
+        let fig = json!({"torso_top": 0.3, "torso_bottom": 0.65, "shirt_match": true, "no_referees": true});
+        for kind in ["run", "live"] {
+            let a = args(kind, fig.clone());
+            assert_eq!(pair(&a, "--torso").as_deref(), Some("0.3,0.65"), "{a:?}");
+            assert!(a.contains(&"--shirt-match".to_string()));
+            assert_eq!(pair(&a, "--referees").as_deref(), Some("0"));
+        }
+        // colour detection only needs the torso band
+        let a = args("colors", fig.clone());
+        assert_eq!(pair(&a, "--torso").as_deref(), Some("0.3,0.65"));
+        assert!(!a.contains(&"--shirt-match".to_string()) && pair(&a, "--referees").is_none());
+        assert!(pair(&args("scales", fig), "--torso").is_none());
+    }
+
+    #[test]
+    fn defaults_and_bad_torso_values_add_nothing() {
+        let a = args("run", json!({"torso_top": 0.18, "torso_bottom": 0.5, "shirt_match": false, "no_referees": false}));
+        assert_eq!(pair(&a, "--torso").as_deref(), Some("0.18,0.5"));
+        assert!(!a.contains(&"--shirt-match".to_string()) && pair(&a, "--referees").is_none());
+        // a project saved before these options existed, and an unusable range
+        for fig in [Value::Null, json!({"torso_top": 0.7, "torso_bottom": 0.4}), json!({"torso_top": "x"})] {
+            let a = args("run", fig);
+            assert!(pair(&a, "--torso").is_none() && !a.contains(&"--shirt-match".to_string()), "{a:?}");
+        }
+    }
 }

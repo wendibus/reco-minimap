@@ -62,6 +62,11 @@ Gemeinsame Optionen:
   --start T [--end T | --duration T]   nur einen Ausschnitt verarbeiten; T in Sekunden oder als min:s bzw. h:min:s
                     (z.B. --start 12:30 --end 22:30). Gilt auch für selfcheck, scales und colors.
   --every N         nur jedes N-te Bild auswerten
+  --shirt-match     Farbprobe an die bekannten Trikotfarben anlehnen: hilft bei kräftigen, klar verschiedenen Farben
+                    (z.B. Rot gegen Blau) und bei Spielfeldflächen in Teamfarbe; bei Hell gegen Dunkel weglassen
+  --referees N      Zahl der Schiedsrichter-Plätze (Standard aus der Kalibrierung); 0 = Spiel ohne Schiedsrichter
+  --torso 0.18,0.50 Teil der Spieler-Box (oben,unten als Bruchteil der Höhe), in dem das Trikot liegt; für Figuren mit
+                    anderen Proportionen anpassen (colors, run, live)
   --thr-ball 0.30 --thr-player 0.60 --thr-ref 0.50
   --thr-player-low 0.30   (run/live/replay) schwächere Spieler-Erkennungen ab diesem Wert halten einen bestehenden
                     Punkt am Leben, starten aber keinen neuen: so bleiben Spieler im Gedränge erhalten, ohne dass
@@ -204,7 +209,9 @@ fn plan(o: &Opts, info: &VideoInfo) -> Vec<Tile> {
         if let Some(c) = o.s("court").filter(|_| !o.has("no-field-mask")) {
             let (cal, profile) = load_court(c);
             if let Some(inv) = cal.projector().and_then(|p| p.pano_to_court.inverse()) {
-                return plan_auto_field(&sc, info.w, info.h, overlap, &floor_points(&inv, &profile.field, 3.0, info.w, info.h));
+                // columns: where the ball is still used (3 m outside); rows: where players are tracked (1 m)
+                let feet = floor_points(&inv, &profile.field, 1.0, info.w, info.h);
+                return plan_auto_field(&sc, info.w, info.h, overlap, &floor_points(&inv, &profile.field, 3.0, info.w, info.h), Some(&feet));
             }
         }
         return plan_auto(&sc, info.w, info.h, overlap);
@@ -236,6 +243,31 @@ fn load_model(o: &Opts) -> RfDetr {
 fn thr_players(o: &Opts) -> (f32, f32) {
     let high = o.f("thr-player", 0.60) as f32;
     (o.s("thr-player-low").and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.30).min(high), high)
+}
+
+/// Tracking configuration for a game. `--referees N` overrides the number of referee slots from the
+/// calibration; with 0 nobody is taken for a referee because of an odd shirt colour either, so such
+/// a player stays a player.
+fn game_config(o: &Opts, profile: &SportProfile, home: [u8; 3], away: [u8; 3]) -> Config {
+    let mut profile = profile.clone();
+    if o.has("referees") {
+        profile.referees = o.u("referees", profile.referees);
+    }
+    let mut cfg = Config::for_sport(&profile, home, away);
+    cfg.referee_from_color = profile.referees > 0;
+    cfg
+}
+
+/// Part of a player box that shows the shirt (`--torso top,bottom` as fractions of the box height).
+fn torso_band(o: &Opts) -> (f32, f32) {
+    let Some(v) = o.s("torso") else {
+        return video::TORSO_BAND;
+    };
+    let p: Vec<f32> = v.split(',').filter_map(|x| x.trim().parse().ok()).collect();
+    if p.len() != 2 || !(0.0..1.0).contains(&p[0]) || !(p[0] < p[1] && p[1] <= 1.0) {
+        fail::<()>("--torso erwartet oben,unten als Bruchteile der Boxhöhe, z.B. 0.18,0.50");
+    }
+    (p[0], p[1])
 }
 
 /// Sport profile from --sport (+ --length/--width/--team-size/--referees for `custom`).
@@ -794,7 +826,7 @@ fn cmd_colors(o: &Opts, input: &str) {
                     continue;
                 }
             }
-            if let Some(c) = frame.torso_color(d) {
+            if let Some(c) = frame.torso_color_in(d, torso_band(o)) {
                 samples.push(c);
             }
         }
@@ -986,7 +1018,11 @@ fn cmd_live(o: &Opts, input: &str) {
     let (cal, profile) = load_court(o.s("court").unwrap_or_else(|| fail("--court court.json fehlt")));
     let projector = cal.projector().unwrap_or_else(|| fail("court.json: Homographie nicht lösbar"));
     let (home, away) = read_teams(o);
-    let mut mcfg = Config::for_sport(&profile, home, away);
+    // shirt colours the torso sample may snap to (teams, and the referees' if given)
+    let shirts: Vec<[u8; 3]> = [Some(home), Some(away), o.s("ref-color").and_then(parse_hex)].into_iter().flatten().collect();
+    let torso = torso_band(o);
+    let shirt_match = o.has("shirt-match");
+    let mut mcfg = game_config(o, &profile, home, away);
     mcfg.referee_rgb = o.s("ref-color").and_then(parse_hex);
     mcfg.tracker.spawn_conf = { let (low, high) = thr_players(o); if low < high { high } else { 0.0 } };
     let mut numbers = numbers_setup(o, &mut mcfg);
@@ -1041,7 +1077,7 @@ fn cmd_live(o: &Opts, input: &str) {
         let t = arrival.duration_since(t0).as_secs_f64();
         let mut dets = model.detect(&frame, &tiles).unwrap_or_else(|e| fail(e));
         for d in dets.iter_mut().filter(|d| d.class == Class::Player) {
-            d.color = frame.torso_color(d);
+            d.color = if shirt_match { frame.torso_color_matching(d, torso, &shirts) } else { frame.torso_color_in(d, torso) };
         }
         let state = mm.process(t, &dets);
         if let Some(nm) = numbers.as_mut() {
@@ -1120,6 +1156,10 @@ fn cmd_run(o: &Opts, input: &str) {
     }
     let projector = cal.projector().unwrap_or_else(|| fail("court.json: Homographie nicht lösbar"));
     let (home, away) = read_teams(o);
+    // shirt colours the torso sample may snap to (teams, and the referees' if given)
+    let shirts: Vec<[u8; 3]> = [Some(home), Some(away), o.s("ref-color").and_then(parse_hex)].into_iter().flatten().collect();
+    let torso = torso_band(o);
+    let shirt_match = o.has("shirt-match");
     eprintln!("Heim {}  Gast {}  | Kalibrierfehler {:.2} m", hex(home), hex(away), cal.rms_m);
 
     let every = o.u("every", 1).max(1);
@@ -1131,7 +1171,7 @@ fn cmd_run(o: &Opts, input: &str) {
     let draw_home = o.s("draw-home").and_then(parse_hex).unwrap_or(home);
     let draw_away = o.s("draw-away").and_then(parse_hex).unwrap_or(away);
     let mut theme = Theme { px_per_m: ppm, home: draw_home, away: draw_away, min_alpha: o.f("min-alpha", 0.8) as f32, show_numbers: o.has("numbers"), ..Theme::default() };
-    let mut mcfg = Config::for_sport(&profile, home, away);
+    let mut mcfg = game_config(o, &profile, home, away);
     mcfg.referee_rgb = o.s("ref-color").and_then(parse_hex);
     mcfg.tracker.spawn_conf = { let (low, high) = thr_players(o); if low < high { high } else { 0.0 } };
     let mut numbers = numbers_setup(o, &mut mcfg);
@@ -1208,7 +1248,7 @@ fn cmd_run(o: &Opts, input: &str) {
         let t = t_start + this as f64 / info.fps;
         let mut dets = model.detect(&frame, &tiles).unwrap_or_else(|e| fail(e));
         for d in dets.iter_mut().filter(|d| d.class == Class::Player) {
-            d.color = frame.torso_color(d);
+            d.color = if shirt_match { frame.torso_color_matching(d, torso, &shirts) } else { frame.torso_color_in(d, torso) };
             n_player += 1;
             if classifier.classify(d.color) == Team::Unknown {
                 n_unknown += 1;
@@ -1367,7 +1407,7 @@ fn cmd_replay(o: &Opts, path: &str) {
     let (cal, profile) = load_court(o.s("court").unwrap_or_else(|| fail("--court court.json fehlt")));
     let projector = cal.projector().unwrap_or_else(|| fail("court.json: Homographie nicht lösbar"));
     let (home, away) = read_teams(o);
-    let mut mcfg = Config::for_sport(&profile, home, away);
+    let mut mcfg = game_config(o, &profile, home, away);
     mcfg.referee_rgb = o.s("ref-color").and_then(parse_hex);
     mcfg.tracker.spawn_conf = { let (low, high) = thr_players(o); if low < high { high } else { 0.0 } };
     let mut scenes = o.has("scenes").then(|| SceneDetector::new(profile.clone()));

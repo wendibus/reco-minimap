@@ -1,0 +1,77 @@
+reco-minimap – minimapa (campo, jugadores, árbitros, balón) a partir de un panorama de Reco
+
+  reco-minimap calibrate <vídeo> [--sport football|futsal|basketball|handball|hockey|rugby|lacrosse|american_football|volleyball|custom] [--time 5] [--out court.json]
+                         (custom: --length 40 --width 20 --team-size 5 --referees 2)
+  reco-minimap selfcheck <vídeo> --model <carpeta|.onnx> [--samples 12] [--annotate <carpeta>]
+  reco-minimap scales    <vídeo> --model <carpeta|.onnx> [--court court.json] [--samples 12] [--out scales.json]
+  reco-minimap live      <fuente> --model <..> --court court.json --teams teams.json   minimapa en directo para OBS/Spieldock (superposición en el navegador)
+  reco-minimap import-model <carpeta|.onnx> --to <carpeta de modelos>   comprobar y copiar un modelo de Reco Trainer
+  reco-minimap ui [--port 8788] [--no-open] [--no-update-check]                          interfaz en el navegador (Deutsch/English/Français/Español)
+  reco-minimap update [--check] [--yes]                              buscar una versión más reciente en GitHub; --yes la compila e instala
+  reco-minimap fetch-ocr                                            descargar el modelo de dorsales (unos 11 MB, Apache-2.0)
+  reco-minimap ocr-bench <manifest.tsv> [--roster 4,5,7]            medir el lector de dorsales con imágenes recortadas (línea: ruta<TAB>número<TAB>grupo)
+  reco-minimap replay    <detecciones.jsonl> --court court.json --teams teams.json [--json out.jsonl] [--minimap out.mp4]
+                         volver a pasar detecciones grabadas (run … --dets <archivo>) por el seguimiento, el balón y las
+                         situaciones sin el vídeo: segundos en vez de minutos, p. ej. para comparar --thr-player o los colores
+  reco-minimap stats     <states.jsonl>            informe con cifras de un proceso (puestos, saltos, balón)
+  reco-minimap colors    <vídeo> --model <carpeta|.onnx> [--court court.json] [--home-hint #rrggbb] [--out teams.json]
+  reco-minimap run       <vídeo> --model <carpeta|.onnx> --court court.json (--teams teams.json | --home #hex --away #hex)
+                         [--minimap out.mp4] [--alpha out.mov] [--pip out.mp4] [--json out.jsonl]
+
+<vídeo> es un archivo o cualquier fuente de ffmpeg (rtmp://, srt://, udp://, tubería con nombre ...) – también un panorama en directo.
+Para fuentes en directo indica --size 4096x1500 --fps 25.
+
+Opciones comunes:
+  --lang de|en|fr|es   idioma de todos los mensajes (por defecto: RECO_MINIMAP_LANG, si no el idioma del sistema, si no inglés)
+  --tile auto       teselas por fila de imagen según la distancia (necesita scales.json, ver `scales`; --scales <archivo>)
+  --tile 512        tamaño(s) de tesela en píxeles, se admiten varios: --tile 512,1024 (multiescala). Las teselas > 512 se
+                    reducen, las no cuadradas se ajustan con margen (letterbox).
+  --overlap 0.25    solapamiento de las teselas
+  --roi x0,y0,x1,y1 zona de búsqueda en fracciones del panorama (p. ej. 0,0.3,1,0.9 = solo la franja del campo)
+  --workers N       sesiones de modelo en paralelo (p. ej. 2-3 con CoreML; más rendimiento, más memoria)
+  --units all|ane|gpu|cpu   unidades de cálculo de CoreML (por defecto all); averigua la más rápida con `selfcheck`
+  --ep cpu|coreml   ejecución (coreml solo si se compiló con `--features coreml`)
+  --start T [--end T | --duration T]   procesar solo un tramo; T en segundos o como min:s o h:min:s
+                    (p. ej. --start 12:30 --end 22:30). También vale para selfcheck, scales y colors.
+  --every N         analizar solo una de cada N imágenes
+  --shirt-match     ajustar la muestra de color a los colores de camiseta conocidos: ayuda con colores vivos y claramente
+                    distintos (p. ej. rojo contra azul) y con zonas del campo en un color de equipo; déjalo desactivado
+                    para claro contra oscuro
+  --referees N      número de puestos de árbitro (por defecto según la calibración); 0 = partido sin árbitros
+  --torso 0.18,0.50 parte del recuadro del jugador (arriba,abajo como fracción de su altura) donde está la camiseta; ajústalo
+                    para figuras con otras proporciones (colors, run, live)
+  --thr-ball 0.30 --thr-player 0.60 --thr-ref 0.50
+  --thr-player-low 0.30   (run/live/replay) las detecciones de jugador más débiles, desde este valor, mantienen un punto
+                    existente pero no crean uno nuevo: los jugadores siguen localizados en una aglomeración sin que
+                    las detecciones falsas se conviertan en jugadores. El mismo valor que --thr-player lo desactiva.
+
+Opciones de live:
+  --port 8765 --host 127.0.0.1   superposición: http://HOST:PORT/  (OBS: fuente 'Navegador', esta URL; el fondo queda transparente)
+                    datos: /events (SSE), /state.json (consulta)   (--host 0.0.0.0 para OBS en otro ordenador)
+  --in-args '<opciones de entrada de ffmpeg>'  se pasan a ffmpeg antes de la fuente. Ejemplos:
+                      archivo que sigue creciendo (Reco aún escribe):   live file:live.mkv --in-args '-follow 1' --size ...
+                      OBS Virtual Camera / capturadora (macOS): live 'OBS Virtual Camera' --in-args '-f avfoundation -framerate 25' --size ...
+  --realtime        reproducir un archivo en tiempo real (para probar sin fuente en directo), con --start S desde el segundo S
+  parámetros del navegador: ?floor=1 suelo oscuro para probar, ?lead=0.2 predecir más adelante, ?minalpha=1, ?debug=1
+
+Dorsales (run/live; ejecuta antes `fetch-ocr`):
+  --numbers         leer los dorsales y mostrarlos en los puntos; detecta cambios (el número cambia / un jugador sale y otro entra)
+  --roster-home 4,5,7,10   --roster-away 3,6,8     plantillas: el lector solo elige entre estos números (mucho más fiable)
+  --hires <vídeo>   segundo panorama de mayor resolución (misma línea de tiempo) para los dorsales; los jugadores necesitan unos 80 px de alto
+  --ocr-model <archivo>  (por defecto ~/.cache/reco-minimap/ocr/rec.onnx)   --ocr-min-h 45 --ocr-max 4
+
+Situaciones de juego (run/live):
+  --scenes          detecta formaciones e intentos de tiro: baloncesto salto inicial, tiro libre, saque de banda, tiro de 2/3 puntos;
+                    fútbol saque inicial, penalti, córner, saque de banda; balonmano saque de centro, lanzamiento de 7 m, saque de banda; fútbol sala/hockey saque inicial, penalti, ...
+                    (lista por deporte: docs/SCENARIOS.es.md); aparece en el registro, como `scenes` en el JSON y en `stats`
+
+Opciones de run:
+  --ref-color #hex  color de la camiseta de los árbitros (p. ej. #000000 o amarillo): encuentra a los árbitros por el color aunque el modelo no los vea
+  --no-field-mask   con --tile auto, cubrir todo el ancho de la imagen (por defecto: con --court solo donde está el campo)
+  --no-smooth       escribir --minimap/--alpha solo a la cadencia de detección (por defecto: cadencia completa por interpolación con --every N)
+  --alpha-bg 0.0    opacidad del fondo oscuro en la superposición --alpha (0 = transparente, 0.6 = legible sobre un vídeo claro)
+  --min-alpha 0.8   opacidad de los puntos cuyo jugador no se detecta en ese momento (0.35 = muy atenuado; el blanco atenuado se vuelve gris)
+  --draw-home #hex --draw-away #hex   colores de dibujo de los jugadores en el minimapa (los colores detectados dependen de la luz)
+  --scale 30        píxeles por metro del minimapa (930x540 a 30)
+  --pip-width 0.28  ancho del minimapa en el vídeo --pip (parte del ancho del panorama)
+  --vcodec libx264  (macOS: h264_videotoolbox)

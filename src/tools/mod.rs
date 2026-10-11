@@ -2,6 +2,7 @@
 
 pub mod calib;
 pub mod colors;
+pub mod i18n;
 pub mod infer;
 pub mod live;
 pub mod models;

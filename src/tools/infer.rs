@@ -1,5 +1,6 @@
 //! RF-DETR inference through ONNX Runtime (`ort`, load-dynamic like reco-detect).
 
+use crate::{tr, trs};
 use std::path::{Path, PathBuf};
 
 use ort::session::builder::GraphOptimizationLevel;
@@ -53,7 +54,7 @@ pub fn resolve_model(p: &str) -> Result<ModelInfo, String> {
         let rt = path.join("runtime.json");
         let txt = std::fs::read_to_string(&rt).map_err(|e| format!("{}: {e}", rt.display()))?;
         let v: serde_json::Value = serde_json::from_str(&txt).map_err(|e| format!("runtime.json: {e}"))?;
-        let file = v["artifact"]["file"].as_str().ok_or("runtime.json: artifact.file missing")?;
+        let file = v["artifact"]["file"].as_str().ok_or(trs!("runtime.json: artifact.file fehlt", "runtime.json: artifact.file missing", "runtime.json : artifact.file manquant", "runtime.json: falta artifact.file"))?;
         let classes = v["classes"].as_array().map(|a| a.iter().filter_map(|c| c.as_str().map(|s| s.to_string())).collect()).unwrap_or(default_classes);
         Ok(ModelInfo {
             onnx: path.join(file),
@@ -71,7 +72,7 @@ pub fn resolve_model(p: &str) -> Result<ModelInfo, String> {
 /// library cannot be loaded, so check for it first (same reason reco-detect probes).
 pub fn ensure_ort_runtime() -> Result<(), String> {
     if let Ok(p) = std::env::var("ORT_DYLIB_PATH") {
-        return if Path::new(&p).exists() { Ok(()) } else { Err(format!("ORT_DYLIB_PATH={p} does not exist")) };
+        return if Path::new(&p).exists() { Ok(()) } else { Err(tr!("ORT_DYLIB_PATH={p} existiert nicht", "ORT_DYLIB_PATH={p} does not exist", "ORT_DYLIB_PATH={p} n'existe pas", "ORT_DYLIB_PATH={p} no existe")) };
     }
     let candidates = [
         "/opt/homebrew/lib/libonnxruntime.dylib",
@@ -88,7 +89,7 @@ pub fn ensure_ort_runtime() -> Result<(), String> {
             return Ok(());
         }
     }
-    Err("ONNX Runtime library not found. macOS: `brew install onnxruntime`, then\n  export ORT_DYLIB_PATH=/opt/homebrew/lib/libonnxruntime.dylib\n(the runtime must be >= 1.24: this build uses ort rc.12 / api-24 like reco-detect)".into())
+    Err(trs!("ONNX-Runtime-Bibliothek nicht gefunden. macOS: `brew install onnxruntime`, dann\n  export ORT_DYLIB_PATH=/opt/homebrew/lib/libonnxruntime.dylib\n(die Runtime muss >= 1.24 sein: dieser Build nutzt ort rc.12 / api-24 wie reco-detect)", "ONNX Runtime library not found. macOS: `brew install onnxruntime`, then\n  export ORT_DYLIB_PATH=/opt/homebrew/lib/libonnxruntime.dylib\n(the runtime must be >= 1.24: this build uses ort rc.12 / api-24 like reco-detect)", "Bibliothèque ONNX Runtime introuvable. macOS : `brew install onnxruntime`, puis\n  export ORT_DYLIB_PATH=/opt/homebrew/lib/libonnxruntime.dylib\n(la version doit être >= 1.24 : ce build utilise ort rc.12 / api-24 comme reco-detect)", "No se encuentra la biblioteca ONNX Runtime. macOS: `brew install onnxruntime`, y luego\n  export ORT_DYLIB_PATH=/opt/homebrew/lib/libonnxruntime.dylib\n(la versión debe ser >= 1.24: esta compilación usa ort rc.12 / api-24 como reco-detect)").into())
 }
 
 pub struct RfDetr {
@@ -114,7 +115,7 @@ impl RfDetr {
     pub fn load(model: &str, ep: Ep, units: Units, workers: usize) -> Result<Self, String> {
         let info = resolve_model(model)?;
         if !info.onnx.exists() {
-            return Err(format!("model file not found: {}", info.onnx.display()));
+            return Err(tr!("Modelldatei nicht gefunden: {}", "model file not found: {}", "fichier du modèle introuvable : {}", "no se encuentra el archivo del modelo: {}", info.onnx.display()));
         }
         ensure_ort_runtime()?;
         let workers = workers.clamp(1, 8);
@@ -143,7 +144,7 @@ impl RfDetr {
     pub fn detect_tile(&mut self, chw: &[f32]) -> Result<Vec<Det>, String> {
         let (boxes, logits, _nq, nc) = self.run_raw(chw)?;
         if nc != self.cfg.n_classes {
-            return Err(format!("model has {nc} class logits, runtime.json lists {}", self.cfg.n_classes));
+            return Err(tr!("Modell hat {nc} Klassen-Logits, runtime.json nennt {}", "model has {nc} class logits, runtime.json lists {}", "le modèle a {nc} logits de classe, runtime.json en indique {}", "el modelo tiene {nc} logits de clase, runtime.json indica {}", self.cfg.n_classes));
         }
         decode_rfdetr(&boxes, &logits, &self.cfg).map_err(|e| format!("{e:?}"))
     }
@@ -177,7 +178,7 @@ impl RfDetr {
                         while i < tiles.len() {
                             let (b, l, _nq, nc) = run_session(sess, size, &tensors_ref[i])?;
                             if nc != cfg.n_classes {
-                                return Err(format!("model has {nc} class logits, runtime.json lists {}", cfg.n_classes));
+                                return Err(tr!("Modell hat {nc} Klassen-Logits, runtime.json nennt {}", "model has {nc} class logits, runtime.json lists {}", "le modèle a {nc} logits de classe, runtime.json en indique {}", "el modelo tiene {nc} logits de clase, runtime.json indica {}", cfg.n_classes));
                             }
                             out.push((i, decode_rfdetr(&b, &l, cfg).map_err(|e| format!("{e:?}"))?));
                             i += n;
@@ -227,17 +228,17 @@ fn build_session(info: &ModelInfo, ep: Ep, units: Units, announce: bool) -> Resu
             match coreml.is_available() {
                 Ok(true) => {
                     if announce {
-                        eprintln!("CoreML-Provider: verfügbar (MLProgram, Einheiten: {units:?})");
+                        eprintln!("{}", tr!("CoreML-Provider: verfügbar (MLProgram, Einheiten: {units:?})", "CoreML provider: available (MLProgram, units: {units:?})", "Fournisseur CoreML : disponible (MLProgram, unités : {units:?})", "Proveedor CoreML: disponible (MLProgram, unidades: {units:?})"));
                     }
                 }
-                Ok(false) => return Err("CoreML-Provider ist in dieser ONNX-Runtime NICHT enthalten. Nutze eine ONNX Runtime mit CoreML (pip-Paket `onnxruntime` für macOS: ORT_DYLIB_PATH auf dessen libonnxruntime.*.dylib) oder --ep cpu.".into()),
-                Err(e) => return Err(format!("CoreML-Prüfung fehlgeschlagen: {e}")),
+                Ok(false) => return Err(trs!("CoreML-Provider ist in dieser ONNX-Runtime NICHT enthalten. Nutze eine ONNX Runtime mit CoreML (pip-Paket `onnxruntime` für macOS: ORT_DYLIB_PATH auf dessen libonnxruntime.*.dylib) oder --ep cpu.", "The CoreML provider is NOT included in this ONNX Runtime. Use an ONNX Runtime with CoreML (pip package `onnxruntime` for macOS: point ORT_DYLIB_PATH to its libonnxruntime.*.dylib) or --ep cpu.", "Le fournisseur CoreML n'est PAS inclus dans cette ONNX Runtime. Utiliser une ONNX Runtime avec CoreML (paquet pip `onnxruntime` pour macOS : faire pointer ORT_DYLIB_PATH sur son libonnxruntime.*.dylib) ou --ep cpu.", "El proveedor CoreML NO está incluido en esta ONNX Runtime. Usa una ONNX Runtime con CoreML (paquete pip `onnxruntime` para macOS: apunta ORT_DYLIB_PATH a su libonnxruntime.*.dylib) o --ep cpu.").into()),
+                Err(e) => return Err(tr!("CoreML-Prüfung fehlgeschlagen: {e}", "CoreML check failed: {e}", "La vérification de CoreML a échoué : {e}", "La comprobación de CoreML ha fallado: {e}")),
             }
             // error_on_failure: do not silently fall back to the CPU
-            builder = builder.with_execution_providers([coreml.build().error_on_failure()]).map_err(|e| format!("CoreML konnte nicht aktiviert werden: {e}"))?;
+            builder = builder.with_execution_providers([coreml.build().error_on_failure()]).map_err(|e| tr!("CoreML konnte nicht aktiviert werden: {e}", "CoreML could not be enabled: {e}", "CoreML n'a pas pu être activé : {e}", "No se pudo activar CoreML: {e}"))?;
         }
         #[cfg(not(feature = "coreml"))]
-        return Err("built without CoreML: rebuild with `--features tools,coreml` or use --ep cpu".into());
+        return Err(trs!("ohne CoreML gebaut: mit `--features tools,coreml` neu bauen oder --ep cpu verwenden", "built without CoreML: rebuild with `--features tools,coreml` or use --ep cpu", "compilé sans CoreML : recompiler avec `--features tools,coreml` ou utiliser --ep cpu", "compilado sin CoreML: recompila con `--features tools,coreml` o usa --ep cpu").into());
     }
     builder.commit_from_file(&info.onnx).map_err(|e| e.to_string())
 }

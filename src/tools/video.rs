@@ -3,6 +3,7 @@
 //! Input can be anything ffmpeg can read: a file, a named pipe, or a live URL
 //! (rtmp/srt/udp/rtsp ...), so a Reco panorama live feed works the same way.
 
+use crate::{tr, trs};
 use std::io::{Read, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
@@ -55,9 +56,9 @@ pub fn probe(input: &str) -> Result<VideoInfo, String> {
     let out = Command::new("ffprobe")
         .args(["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,r_frame_rate,avg_frame_rate:format=duration", "-of", "default=noprint_wrappers=1", input])
         .output()
-        .map_err(|e| format!("ffprobe not found ({e}). Install ffmpeg (brew install ffmpeg)."))?;
+        .map_err(|e| tr!("ffprobe nicht gefunden ({e}). ffmpeg installieren (brew install ffmpeg).", "ffprobe not found ({e}). Install ffmpeg (brew install ffmpeg).", "ffprobe introuvable ({e}). Installer ffmpeg (brew install ffmpeg).", "no se encuentra ffprobe ({e}). Instala ffmpeg (brew install ffmpeg)."))?;
     if !out.status.success() {
-        return Err(format!("ffprobe failed: {}", String::from_utf8_lossy(&out.stderr).trim()));
+        return Err(tr!("ffprobe fehlgeschlagen: {}", "ffprobe failed: {}", "ffprobe a échoué : {}", "ffprobe ha fallado: {}", String::from_utf8_lossy(&out.stderr).trim()));
     }
     let text = String::from_utf8_lossy(&out.stdout);
     let (mut w, mut h, mut fps, mut dur) = (0u32, 0u32, None, None);
@@ -82,7 +83,7 @@ pub fn probe(input: &str) -> Result<VideoInfo, String> {
         }
     }
     if w == 0 || h == 0 {
-        return Err("could not read video size from ffprobe (for live inputs pass --size WxH --fps F)".into());
+        return Err(trs!("die Videogröße ließ sich mit ffprobe nicht lesen (bei Live-Quellen --size WxH --fps F angeben)", "could not read video size from ffprobe (for live inputs pass --size WxH --fps F)", "impossible de lire la taille de la vidéo avec ffprobe (pour une source en direct, indiquer --size LxH --fps F)", "no se pudo leer el tamaño del vídeo con ffprobe (para fuentes en directo indica --size AnxAl --fps F)").into());
     }
     Ok(VideoInfo { w, h, fps: fps.unwrap_or(25.0), duration: dur })
 }
@@ -127,7 +128,7 @@ impl FrameReader {
             c.args(["-vf", &format!("select=not(mod(n\\,{every}))"), "-fps_mode", "vfr"]);
         }
         c.args(["-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
-        let mut child = c.stdout(Stdio::piped()).stderr(Stdio::inherit()).spawn().map_err(|e| format!("ffmpeg not found ({e})"))?;
+        let mut child = c.stdout(Stdio::piped()).stderr(Stdio::inherit()).spawn().map_err(|e| tr!("ffmpeg nicht gefunden ({e})", "ffmpeg not found ({e})", "ffmpeg introuvable ({e})", "no se encuentra ffmpeg ({e})"))?;
         let stdout = child.stdout.take().ok_or("no ffmpeg stdout")?;
         Ok(Self { child, stdout, w: info.w as usize, h: info.h as usize })
     }
@@ -148,7 +149,7 @@ impl Drop for FrameReader {
 
 /// Decode a single frame at `t` seconds.
 pub fn grab(input: &str, info: &VideoInfo, t: f64) -> Result<Frame, String> {
-    FrameReader::open(input, info, t, None, 1)?.next().ok_or_else(|| format!("no frame at {t}s"))
+    FrameReader::open(input, info, t, None, 1)?.next().ok_or_else(|| tr!("kein Bild bei {t}s", "no frame at {t}s", "aucune image à {t}s", "no hay imagen en {t}s"))
 }
 
 /// PNG bytes of the frame at `t` (for the calibration page).
@@ -156,9 +157,9 @@ pub fn grab_png(input: &str, t: f64) -> Result<Vec<u8>, String> {
     let out = Command::new("ffmpeg")
         .args(["-v", "error", "-nostdin", "-ss", &format!("{t}"), "-i", input, "-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "-"])
         .output()
-        .map_err(|e| format!("ffmpeg not found ({e})"))?;
+        .map_err(|e| tr!("ffmpeg nicht gefunden ({e})", "ffmpeg not found ({e})", "ffmpeg introuvable ({e})", "no se encuentra ffmpeg ({e})"))?;
     if out.stdout.is_empty() {
-        return Err(format!("ffmpeg produced no frame: {}", String::from_utf8_lossy(&out.stderr).trim()));
+        return Err(tr!("ffmpeg hat kein Bild geliefert: {}", "ffmpeg produced no frame: {}", "ffmpeg n'a produit aucune image : {}", "ffmpeg no ha producido ninguna imagen: {}", String::from_utf8_lossy(&out.stderr).trim()));
     }
     Ok(out.stdout)
 }
@@ -191,19 +192,19 @@ impl FrameWriter {
             }
         }
         c.arg(path);
-        let mut child = c.stdin(Stdio::piped()).stderr(Stdio::inherit()).spawn().map_err(|e| format!("ffmpeg not found ({e})"))?;
+        let mut child = c.stdin(Stdio::piped()).stderr(Stdio::inherit()).spawn().map_err(|e| tr!("ffmpeg nicht gefunden ({e})", "ffmpeg not found ({e})", "ffmpeg introuvable ({e})", "no se encuentra ffmpeg ({e})"))?;
         let stdin = child.stdin.take();
         Ok(Self { child, stdin })
     }
 
     pub fn write(&mut self, buf: &[u8]) -> Result<(), String> {
-        self.stdin.as_mut().ok_or("writer closed")?.write_all(buf).map_err(|e| format!("ffmpeg write failed: {e}"))
+        self.stdin.as_mut().ok_or("writer closed")?.write_all(buf).map_err(|e| tr!("Schreiben an ffmpeg fehlgeschlagen: {e}", "ffmpeg write failed: {e}", "échec de l'écriture vers ffmpeg : {e}", "fallo al escribir en ffmpeg: {e}"))
     }
 
     pub fn finish(mut self) -> Result<(), String> {
         drop(self.stdin.take());
         let st = self.child.wait().map_err(|e| e.to_string())?;
-        if st.success() { Ok(()) } else { Err("ffmpeg exited with an error".into()) }
+        if st.success() { Ok(()) } else { Err(trs!("ffmpeg wurde mit einem Fehler beendet", "ffmpeg exited with an error", "ffmpeg s'est terminé avec une erreur", "ffmpeg ha terminado con un error").into()) }
     }
 }
 
@@ -433,7 +434,7 @@ impl FrameWriterPng {
             .stdin(Stdio::piped())
             .stderr(Stdio::inherit())
             .spawn()
-            .map_err(|e| format!("ffmpeg not found ({e})"))?;
+            .map_err(|e| tr!("ffmpeg nicht gefunden ({e})", "ffmpeg not found ({e})", "ffmpeg introuvable ({e})", "no se encuentra ffmpeg ({e})"))?;
         let stdin = child.stdin.take();
         Ok(Self { child, stdin })
     }

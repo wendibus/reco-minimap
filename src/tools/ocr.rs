@@ -5,6 +5,7 @@
 //! The recognition output is kept as per-step probabilities for blank + digits; decoding (free or
 //! constrained to a roster) is done by `crate::jersey`.
 
+use crate::{tr, trs};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -44,7 +45,7 @@ pub struct Reading {
 impl NumberReader {
     pub fn load(path: &Path) -> Result<Self, String> {
         if !path.exists() {
-            return Err(format!("OCR-Modell nicht gefunden: {} (herunterladen mit `reco-minimap fetch-ocr`)", path.display()));
+            return Err(tr!("OCR-Modell nicht gefunden: {} (herunterladen mit `reco-minimap fetch-ocr`)", "Number model not found: {} (download it with `reco-minimap fetch-ocr`)", "Modèle de numéros introuvable : {} (le télécharger avec `reco-minimap fetch-ocr`)", "No se encuentra el modelo de dorsales: {} (descárgalo con `reco-minimap fetch-ocr`)", path.display()));
         }
         super::infer::ensure_ort_runtime()?;
         let session = Session::builder()
@@ -69,7 +70,7 @@ impl NumberReader {
     /// Run the recognition on a prepared crop.
     pub fn read(&mut self, crop: &Crop) -> Result<Reading, String> {
         if crop.w < 2 || crop.h < 2 {
-            return Err("Ausschnitt zu klein".into());
+            return Err(trs!("Ausschnitt zu klein", "the crop is too small", "la découpe est trop petite", "el recorte es demasiado pequeño").into());
         }
         let nh = 48usize;
         let nw = (((nh as f32) * crop.w as f32 / crop.h as f32).ceil() as usize).clamp(16, 320);
@@ -160,26 +161,26 @@ pub fn localize(w: usize, h: usize, rgb: &[u8]) -> Crop {
 
 /// Download the recognition model (Apache-2.0, from the `rapidocr-onnxruntime` wheel on PyPI) with curl + unzip.
 pub fn fetch_model(dest: &Path) -> Result<PathBuf, String> {
-    let dir = dest.parent().ok_or("Zielordner")?;
+    let dir = dest.parent().ok_or(trs!("Zielordner", "target folder", "dossier cible", "carpeta de destino"))?;
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    eprintln!("Suche das aktuelle OCR-Paket auf PyPI …");
-    let meta = Command::new("curl").args(["-fsSL", "https://pypi.org/pypi/rapidocr-onnxruntime/json"]).output().map_err(|e| format!("curl nicht gefunden: {e}"))?;
+    eprintln!("{}", trs!("Suche das aktuelle OCR-Paket auf PyPI …", "Looking for the current OCR package on PyPI …", "Recherche du paquet OCR actuel sur PyPI …", "Buscando el paquete OCR actual en PyPI …"));
+    let meta = Command::new("curl").args(["-fsSL", "https://pypi.org/pypi/rapidocr-onnxruntime/json"]).output().map_err(|e| tr!("curl nicht gefunden: {e}", "curl not found: {e}", "curl introuvable : {e}", "no se encuentra curl: {e}"))?;
     if !meta.status.success() {
-        return Err("PyPI nicht erreichbar (curl fehlgeschlagen)".into());
+        return Err(trs!("PyPI nicht erreichbar (curl fehlgeschlagen)", "PyPI cannot be reached (curl failed)", "PyPI inaccessible (échec de curl)", "No se puede acceder a PyPI (curl ha fallado)").into());
     }
-    let v: serde_json::Value = serde_json::from_slice(&meta.stdout).map_err(|e| format!("PyPI-Antwort: {e}"))?;
-    let url = v["urls"].as_array().and_then(|a| a.iter().find(|u| u["filename"].as_str().map(|f| f.ends_with(".whl")).unwrap_or(false))).and_then(|u| u["url"].as_str()).ok_or("kein Wheel auf PyPI gefunden")?.to_string();
+    let v: serde_json::Value = serde_json::from_slice(&meta.stdout).map_err(|e| tr!("PyPI-Antwort: {e}", "PyPI answer: {e}", "Réponse de PyPI : {e}", "Respuesta de PyPI: {e}"))?;
+    let url = v["urls"].as_array().and_then(|a| a.iter().find(|u| u["filename"].as_str().map(|f| f.ends_with(".whl")).unwrap_or(false))).and_then(|u| u["url"].as_str()).ok_or(trs!("kein Wheel auf PyPI gefunden", "no wheel found on PyPI", "aucun wheel trouvé sur PyPI", "no se ha encontrado ningún wheel en PyPI"))?.to_string();
     let wheel = dir.join("rapidocr.whl");
-    eprintln!("Lade {url} (ca. 15 MB) …");
+    eprintln!("{}", tr!("Lade {url} (ca. 15 MB) …", "Downloading {url} (about 15 MB) …", "Téléchargement de {url} (environ 15 Mo) …", "Descargando {url} (unos 15 MB) …"));
     let st = Command::new("curl").args(["-fL", "--progress-bar", "-o"]).arg(&wheel).arg(&url).status().map_err(|e| e.to_string())?;
     if !st.success() {
-        return Err("Download fehlgeschlagen".into());
+        return Err(trs!("Download fehlgeschlagen", "the download failed", "le téléchargement a échoué", "la descarga ha fallado").into());
     }
-    let st = Command::new("unzip").args(["-o", "-j"]).arg(&wheel).arg("*ch_PP-OCRv4_rec_infer.onnx").arg("-d").arg(dir).stdout(std::process::Stdio::null()).status().map_err(|e| format!("unzip nicht gefunden: {e}"))?;
+    let st = Command::new("unzip").args(["-o", "-j"]).arg(&wheel).arg("*ch_PP-OCRv4_rec_infer.onnx").arg("-d").arg(dir).stdout(std::process::Stdio::null()).status().map_err(|e| tr!("unzip nicht gefunden: {e}", "unzip not found: {e}", "unzip introuvable : {e}", "no se encuentra unzip: {e}"))?;
     let _ = std::fs::remove_file(&wheel);
     let extracted = dir.join("ch_PP-OCRv4_rec_infer.onnx");
     if !st.success() || !extracted.exists() {
-        return Err("Das Erkennungsmodell wurde im Paket nicht gefunden".into());
+        return Err(trs!("Das Erkennungsmodell wurde im Paket nicht gefunden", "The recognition model was not found in the package", "Le modèle de reconnaissance est introuvable dans le paquet", "No se ha encontrado el modelo de reconocimiento en el paquete").into());
     }
     std::fs::rename(&extracted, dest).map_err(|e| e.to_string())?;
     let _ = std::fs::write(dir.join("LICENSE.txt"), "PP-OCRv4 text recognition model (PaddleOCR), ONNX export from the RapidOCR project.\nLicense: Apache-2.0 - https://github.com/RapidAI/RapidOCR , https://github.com/PaddlePaddle/PaddleOCR\n");

@@ -1,0 +1,76 @@
+reco-minimap – Minimap (Court, Spieler, Schiris, Ball) aus einem Reco-Panorama
+
+  reco-minimap calibrate <video> [--sport football|futsal|basketball|handball|hockey|rugby|lacrosse|american_football|volleyball|custom] [--time 5] [--out court.json]
+                         (custom: --length 40 --width 20 --team-size 5 --referees 2)
+  reco-minimap selfcheck <video> --model <ordner|.onnx> [--samples 12] [--annotate <ordner>]
+  reco-minimap scales    <video> --model <ordner|.onnx> [--court court.json] [--samples 12] [--out scales.json]
+  reco-minimap live      <quelle> --model <..> --court court.json --teams teams.json   Live-Minimap für OBS/Spieldock (Browser-Overlay)
+  reco-minimap import-model <ordner|.onnx> --to <modelle-ordner>   Reco-Trainer-Modell prüfen und kopieren
+  reco-minimap ui [--port 8788] [--no-open] [--no-update-check]                          Oberfläche im Browser (Deutsch/English/Français/Español)
+  reco-minimap update [--check] [--yes]                              nach einer neueren Version auf GitHub sehen; --yes baut und installiert sie
+  reco-minimap fetch-ocr                                            OCR-Modell für Trikotnummern laden (ca. 11 MB, Apache-2.0)
+  reco-minimap ocr-bench <manifest.tsv> [--roster 4,5,7]            Zahlenleser an Ausschnitt-Bildern messen (Zeile: Pfad<TAB>Nummer<TAB>Gruppe)
+  reco-minimap replay    <erkennungen.jsonl> --court court.json --teams teams.json [--json out.jsonl] [--minimap out.mp4]
+                         Aufgezeichnete Erkennungen (run … --dets <datei>) ohne Video erneut durch Tracking, Ball und
+                         Situationen schicken: Sekunden statt Minuten, z.B. um --thr-player oder Farben zu vergleichen
+  reco-minimap stats     <states.jsonl>            Zahlen-Report zu einem run-Ergebnis (Slots, Sprünge, Ball)
+  reco-minimap colors    <video> --model <ordner|.onnx> [--court court.json] [--home-hint #rrggbb] [--out teams.json]
+  reco-minimap run       <video> --model <ordner|.onnx> --court court.json (--teams teams.json | --home #hex --away #hex)
+                         [--minimap out.mp4] [--alpha out.mov] [--pip out.mp4] [--json out.jsonl]
+
+<video> ist eine Datei oder jede ffmpeg-Quelle (rtmp://, srt://, udp://, Named Pipe ...) – also auch ein Live-Panorama.
+Für Live-Quellen: --size 4096x1500 --fps 25 angeben.
+
+Gemeinsame Optionen:
+  --lang de|en|fr|es   Sprache aller Meldungen (Standard: RECO_MINIMAP_LANG, sonst die Systemsprache, sonst Englisch)
+  --tile auto       Kacheln je Bildzeile passend zur Entfernung (braucht scales.json, siehe `scales`; --scales <datei>)
+  --tile 512        Kachelgröße(n) in Pixeln, auch mehrere: --tile 512,1024 (Mehrmaßstab). Kacheln > 512 werden
+                    verkleinert, nicht-quadratische mit Rand (Letterbox) eingepasst.
+  --overlap 0.25    Überlappung der Kacheln
+  --roi x0,y0,x1,y1 Suchbereich als Bruchteile des Panoramas (z.B. 0,0.3,1,0.9 = nur das Spielfeld-Band)
+  --workers N       parallele Modell-Sitzungen (z.B. 2-3 mit CoreML; mehr Durchsatz, mehr Speicher)
+  --units all|ane|gpu|cpu   CoreML-Recheneinheiten (Standard all); mit `selfcheck` die schnellste ermitteln
+  --ep cpu|coreml   Ausführung (coreml nur mit `--features coreml` gebaut)
+  --start T [--end T | --duration T]   nur einen Ausschnitt verarbeiten; T in Sekunden oder als min:s bzw. h:min:s
+                    (z.B. --start 12:30 --end 22:30). Gilt auch für selfcheck, scales und colors.
+  --every N         nur jedes N-te Bild auswerten
+  --shirt-match     Farbprobe an die bekannten Trikotfarben anlehnen: hilft bei kräftigen, klar verschiedenen Farben
+                    (z.B. Rot gegen Blau) und bei Spielfeldflächen in Teamfarbe; bei Hell gegen Dunkel weglassen
+  --referees N      Zahl der Schiedsrichter-Plätze (Standard aus der Kalibrierung); 0 = Spiel ohne Schiedsrichter
+  --torso 0.18,0.50 Teil der Spieler-Box (oben,unten als Bruchteil der Höhe), in dem das Trikot liegt; für Figuren mit
+                    anderen Proportionen anpassen (colors, run, live)
+  --thr-ball 0.30 --thr-player 0.60 --thr-ref 0.50
+  --thr-player-low 0.30   (run/live/replay) schwächere Spieler-Erkennungen ab diesem Wert halten einen bestehenden
+                    Punkt am Leben, starten aber keinen neuen: so bleiben Spieler im Gedränge erhalten, ohne dass
+                    Fehlerkennungen zu Spielern werden. Gleicher Wert wie --thr-player schaltet das ab.
+
+live-Optionen:
+  --port 8765 --host 127.0.0.1   Overlay: http://HOST:PORT/  (OBS: Quelle 'Browser', diese URL; Hintergrund bleibt transparent)
+                    Daten: /events (SSE), /state.json (Polling)   (--host 0.0.0.0 für OBS auf einem anderen Rechner)
+  --in-args '<ffmpeg-Eingabeoptionen>'  vor der Quelle an ffmpeg gereicht. Beispiele:
+                      wachsende Datei (Reco schreibt noch):   live file:live.mkv --in-args '-follow 1' --size ...
+                      OBS Virtual Camera / Capture-Karte (macOS): live 'OBS Virtual Camera' --in-args '-f avfoundation -framerate 25' --size ...
+  --realtime        Datei in Echtzeit abspielen (zum Testen ohne Live-Quelle), mit --start S ab Sekunde S
+  Browser-Parameter: ?floor=1 dunkler Boden zum Testen, ?lead=0.2 weiter vorhersagen, ?minalpha=1, ?debug=1
+
+Trikotnummern (run/live; erst `fetch-ocr`):
+  --numbers         Nummern lesen und auf den Scheiben anzeigen; erkennt Wechsel (Nummer wechselt / Spieler verlässt und betritt das Feld)
+  --roster-home 4,5,7,10   --roster-away 3,6,8     Kader: Erkennung wählt nur unter diesen Nummern (deutlich zuverlässiger)
+  --hires <video>   zweites, höher aufgelöstes Panorama (gleiche Zeitachse) für die Nummern; Spieler brauchen ca. 80 px Höhe
+  --ocr-model <datei>  (Standard ~/.cache/reco-minimap/ocr/rec.onnx)   --ocr-min-h 45 --ocr-max 4
+
+Spielsituationen (run/live):
+  --scenes          erkennt Aufstellungen und Wurfversuche: Basketball Sprungball, Freiwurf, Einwurf, 2er/3er-Versuch;
+                    Fußball Anstoß, Elfmeter, Ecke, Einwurf; Handball Anwurf, 7 Meter, Einwurf; Futsal/Hockey Anstoß, Strafstoß, ...
+                    (Liste je Sportart: docs/SZENARIEN.de.md); erscheint im Protokoll, als `scenes` im JSON und in `stats`
+
+run-Optionen:
+  --ref-color #hex  Schiri-Trikotfarbe (z.B. #000000 oder gelb): erkennt Schiris über die Farbe, auch wenn das Modell sie nicht findet
+  --no-field-mask   bei --tile auto die volle Bildbreite kacheln (Standard: mit --court nur dort, wo das Feld liegt)
+  --no-smooth       --minimap/--alpha nur mit der Erkennungsrate schreiben (Standard: volle Bildrate durch Interpolation bei --every N)
+  --alpha-bg 0.0    Deckkraft der dunklen Unterlage im --alpha-Overlay (0 = transparent, 0.6 = gut lesbar auf hellem Video)
+  --min-alpha 0.8   Deckkraft von Punkten, deren Spieler gerade nicht erkannt wird (0.35 = stark verblasst; verblasst Weiß wird grau)
+  --draw-home #hex --draw-away #hex   Zeichenfarben der Spieler in der Minimap (die erkannten Farben sind lichtabhängig)
+  --scale 30        Pixel pro Meter der Minimap (930x540 bei 30)
+  --pip-width 0.28  Breite der Minimap im --pip-Video (Anteil der Panoramabreite)
+  --vcodec libx264  (macOS: h264_videotoolbox)

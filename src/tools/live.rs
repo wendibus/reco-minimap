@@ -6,6 +6,7 @@
 //!   GET /state.json    latest message (polling)
 //!   GET /config.json   colours
 
+use crate::{tr};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Condvar, Mutex};
@@ -86,7 +87,7 @@ fn handle(mut s: TcpStream, hub: Arc<Hub>) {
 
 /// Start serving in background threads; returns the bound address.
 pub fn serve(hub: Arc<Hub>, host: &str, port: u16) -> Result<String, String> {
-    let listener = TcpListener::bind((host, port)).map_err(|e| format!("{host}:{port}: {e} (Port belegt? --port ändern)"))?;
+    let listener = TcpListener::bind((host, port)).map_err(|e| tr!("{host}:{port}: {e} (Port belegt? --port ändern)", "{host}:{port}: {e} (port in use? change --port)", "{host}:{port} : {e} (port occupé ? changer --port)", "{host}:{port}: {e} (¿puerto ocupado? cambia --port)"))?;
     let addr = listener.local_addr().map_err(|e| e.to_string())?.to_string();
     std::thread::spawn(move || {
         for s in listener.incoming().flatten() {

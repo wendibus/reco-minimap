@@ -8,6 +8,7 @@
 //! horizontal bands, each with the tile size that makes players ~`target_px`
 //! tall in the model input.
 
+use crate::{tr};
 use serde_json::{json, Value};
 
 use crate::detect::{plan_tiles, Tile};
@@ -87,8 +88,8 @@ impl Scales {
     }
 
     pub fn load(path: &str) -> Result<Self, String> {
-        let txt = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e} (erst `reco-minimap scales` ausführen)"))?;
-        Self::from_json(&serde_json::from_str(&txt).map_err(|e| format!("{path}: {e}"))?).ok_or_else(|| format!("{path}: ungültig"))
+        let txt = std::fs::read_to_string(path).map_err(|e| tr!("{path}: {e} (erst `reco-minimap scales` ausführen)", "{path}: {e} (run `reco-minimap scales` first)", "{path} : {e} (lancer d'abord `reco-minimap scales`)", "{path}: {e} (ejecuta antes `reco-minimap scales`)"))?;
+        Self::from_json(&serde_json::from_str(&txt).map_err(|e| format!("{path}: {e}"))?).ok_or_else(|| tr!("{path}: ungültig", "{path}: invalid", "{path} : invalide", "{path}: no válido"))
     }
 }
 

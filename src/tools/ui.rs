@@ -2,6 +2,7 @@
 //! browser. A small std-only HTTP server on 127.0.0.1; heavy work runs as child processes of this
 //! same executable (the CLI commands), so UI and command line always behave the same.
 
+use crate::{tr, trs};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -231,7 +232,7 @@ fn get_s(v: &Value, k: &str) -> String {
 fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> {
     let model = get_s(p, "model_dir");
     let video = get_s(p, "video");
-    let need = |v: &str, what: &str| if v.is_empty() { Err(format!("{what} fehlt")) } else { Ok(()) };
+    let need = |v: &str, what: &str| if v.is_empty() { Err(tr!("{what} fehlt", "{what} is missing", "{what} : manquant", "falta: {what}")) } else { Ok(()) };
     let mut a: Vec<String> = Vec::new();
     let ep = get_s(p, "ep");
     let units = get_s(p, "units");
@@ -252,7 +253,7 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
     };
     match kind {
         "calibrate" => {
-            need(&video, "Video")?;
+            need(&video, trs!("Video", "video", "vidéo", "vídeo"))?;
             pushs(&mut a, &["calibrate", &video, "--sport", &get_s(p, "sport"), "--time", &get_s(p, "time"), "--out", "court.json", "--lang", &get_s(p, "lang")]);
             if get_s(p, "sport") == "custom" {
                 pushs(&mut a, &["--length", &get_s(p, "length"), "--width", &get_s(p, "width")]);
@@ -264,8 +265,8 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
             }
         }
         "selfcheck" | "scales" | "colors" => {
-            need(&video, "Video")?;
-            need(&model, "Modell")?;
+            need(&video, trs!("Video", "video", "vidéo", "vídeo"))?;
+            need(&model, trs!("Modell", "model", "modèle", "modelo"))?;
             pushs(&mut a, &[kind, &video, "--model", &model]);
             if kind == "selfcheck" {
                 pushs(&mut a, &["--samples", "6"]);
@@ -281,9 +282,9 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
             engine(&mut a);
         }
         "run" | "live" => {
-            need(&model, "Modell")?;
+            need(&model, trs!("Modell", "model", "modèle", "modelo"))?;
             let src = if kind == "run" { video.clone() } else { get_s(p, "source") };
-            need(&src, "Quelle/Video")?;
+            need(&src, trs!("Quelle/Video", "source/video", "source/vidéo", "fuente/vídeo"))?;
             pushs(&mut a, &[kind, &src, "--model", &model, "--court", "court.json", "--teams", "teams.json", "--tile", if has_scales { "auto" } else { "512" }]);
             engine(&mut a);
             for (flag, key) in [("--draw-home", "draw_home"), ("--draw-away", "draw_away"), ("--ref-color", "ref_color"), ("--min-alpha", "min_alpha")] {
@@ -333,7 +334,7 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
                 if o["json"].as_bool() == Some(true) { paths.push(("--json", out(".jsonl"))); }
                 for (f, v) in &paths { if !f.starts_with("--alpha-bg") { any = true; } pushs(&mut a, &[f, v]); }
                 if !any {
-                    return Err("keine Ausgabe gewählt".into());
+                    return Err(trs!("keine Ausgabe gewählt", "no output chosen", "aucune sortie choisie", "no se ha elegido ninguna salida").into());
                 }
             } else {
                 pushs(&mut a, &["--size", &get_s(p, "size"), "--fps", &get_s(p, "fps"), "--port", &get_s(p, "port")]);
@@ -346,13 +347,19 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
         "update" => pushs(&mut a, &["update", "--yes"]),
         "stats" => {
             let f = get_s(p, "file");
-            need(&f, "Datei")?;
+            need(&f, trs!("Datei", "file", "fichier", "archivo"))?;
             pushs(&mut a, &["stats", &f]);
             if dir.join("court.json").exists() {
                 pushs(&mut a, &["--court", "court.json"]);
             }
         }
-        other => return Err(format!("unbekannter Auftrag: {other}")),
+        other => return Err(tr!("unbekannter Auftrag: {other}", "unknown job: {other}", "tâche inconnue : {other}", "tarea desconocida: {other}")),
+    }
+    // the job reports in the language of the page (calibrate already carries it for its own page)
+    if kind != "calibrate" {
+        if let Some(l) = p["lang"].as_str().and_then(super::i18n::Lang::parse) {
+            pushs(&mut a, &["--lang", l.code()]);
+        }
     }
     Ok(a)
 }
@@ -363,7 +370,7 @@ fn pushs(a: &mut Vec<String>, xs: &[&str]) {
 
 fn start_job(ui: &Arc<Ui>, dir: &Path, kind: &str, params: &Value) -> Result<u64, String> {
     let args = build_args(kind, dir, params)?;
-    let mut child = Command::new(&ui.exe).args(&args).current_dir(dir).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| format!("Start fehlgeschlagen: {e}"))?;
+    let mut child = Command::new(&ui.exe).args(&args).current_dir(dir).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| tr!("Start fehlgeschlagen: {e}", "could not start: {e}", "échec du démarrage : {e}", "no se pudo iniciar: {e}"))?;
     let id = ui.next.fetch_add(1, Ordering::SeqCst);
     let job = Arc::new(Job { lines: Mutex::new(vec![(format!("$ reco-minimap {}", args.iter().map(|a| if a.contains(' ') { format!("'{a}'") } else { a.clone() }).collect::<Vec<_>>().join(" ")), false)]), status: Mutex::new("running".into()), code: Mutex::new(None), child: Mutex::new(None) });
     let (so, se) = (child.stdout.take(), child.stderr.take());
@@ -406,6 +413,10 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
         return respond(&mut s, "403 Forbidden", "text/plain", b"forbidden");
     }
     let b: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+    // answer in the language of the page that asked (it sends it with every request)
+    if let Some(l) = b["lang"].as_str().and_then(super::i18n::Lang::parse) {
+        super::i18n::set_lang(l);
+    }
     match (method.as_str(), path.as_str()) {
         ("GET", "/") => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("ui.html").as_bytes()),
         ("GET", "/i18n.js") => respond(&mut s, "200 OK", "application/javascript; charset=utf-8", include_str!("i18n.js").as_bytes()),
@@ -463,7 +474,11 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
         }
         ("POST", "/api/job/start") => {
             let dir = PathBuf::from(get_s(&b, "dir"));
-            match start_job(&ui, &dir, &get_s(&b, "kind"), &b["params"]) {
+            let mut params = b["params"].clone();
+            if params.is_object() && params["lang"].is_null() {
+                params["lang"] = b["lang"].clone();
+            }
+            match start_job(&ui, &dir, &get_s(&b, "kind"), &params) {
                 Ok(id) => jres(&mut s, json!({"ok": true, "id": id})),
                 Err(e) => err(&mut s, e),
             }
@@ -484,7 +499,7 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
                     };
                     jres(&mut s, json!({"ok": true, "status": *j.status.lock().unwrap(), "code": *j.code.lock().unwrap(), "from": from_eff, "total": lines.len(), "lines": new}));
                 }
-                None => err(&mut s, "Auftrag unbekannt"),
+                None => err(&mut s, trs!("Auftrag unbekannt", "unknown job", "tâche inconnue", "tarea desconocida")),
             }
         }
         ("POST", p) if p.starts_with("/api/job/") && p.ends_with("/cancel") => {
@@ -511,7 +526,7 @@ pub fn serve(port: u16, open: bool, block: bool, update_check: bool) -> Result<S
             break;
         }
     }
-    let listener = listener.ok_or("Kein freier Port (--port ändern)")?;
+    let listener = listener.ok_or(trs!("Kein freier Port (--port ändern)", "No free port (change --port)", "Aucun port libre (changer --port)", "No hay ningún puerto libre (cambia --port)"))?;
     let url = format!("http://127.0.0.1:{}/", listener.local_addr().map_err(|e| e.to_string())?.port());
     let ui = Arc::new(Ui { exe, jobs: Mutex::new(HashMap::new()), next: AtomicU64::new(1), update: Mutex::new(None) });
     if update_check && std::env::var_os("RECO_MINIMAP_NO_UPDATE_CHECK").is_none() {
@@ -568,6 +583,20 @@ mod tests {
         assert_eq!(pair(&a, "--torso").as_deref(), Some("0.3,0.65"));
         assert!(!a.contains(&"--shirt-match".to_string()) && pair(&a, "--referees").is_none());
         assert!(pair(&args("scales", fig), "--torso").is_none());
+    }
+
+    #[test]
+    fn jobs_report_in_the_page_language() {
+        let p = json!({"model_dir": "/m", "video": "/v.mp4", "ep": "cpu", "every": 5, "name": "a", "outputs": {"json": true}, "lang": "fr"});
+        for kind in ["run", "colors", "scales", "selfcheck"] {
+            let a = build_args(kind, Path::new("/nonexistent-project"), &p).unwrap();
+            assert_eq!(pair(&a, "--lang").as_deref(), Some("fr"), "{kind}: {a:?}");
+        }
+        assert_eq!(pair(&build_args("update", Path::new("/x"), &json!({"lang": "es"})).unwrap(), "--lang").as_deref(), Some("es"));
+        // an unknown language is not passed on; calibrate keeps its own single --lang
+        assert!(pair(&build_args("update", Path::new("/x"), &json!({"lang": "xx"})).unwrap(), "--lang").is_none());
+        let c = build_args("calibrate", Path::new("/x"), &json!({"video": "/v.mp4", "sport": "basketball", "time": 5, "lang": "es"})).unwrap();
+        assert_eq!(c.iter().filter(|x| *x == "--lang").count(), 1);
     }
 
     #[test]

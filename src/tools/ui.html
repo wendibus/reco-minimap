@@ -29,6 +29,7 @@ footer{border-top:1px solid var(--ln);background:#0f1115;padding:8px 14px;max-he
 #logh{display:flex;gap:10px;align-items:center;margin-bottom:4px}
 #log{overflow:auto;white-space:pre-wrap;font:12px/1.4 ui-monospace,Menlo,monospace;color:#c8ced8;min-height:60px;max-height:24vh}
 .banner{background:#3a1f1f;border:1px solid #6b2b2b;border-radius:8px;padding:8px 12px;margin-bottom:12px}
+.banner.info{background:#1d2b3a;border-color:#2f5d8a;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 a{color:#7fb7ff}
 </style></head><body>
 <div id="app">
@@ -154,7 +155,14 @@ function renderEval(){const outs=(S.files.out||[]).filter(x=>x.name.endsWith('.j
  return `<section class="card"><h2>${T('eval.title')}</h2><label>${T('eval.file')}</label><select id="evf">${outs.map(x=>`<option value="${esc(x.path)}">${esc(x.name)}</option>`).join('')}</select><div style="margin-top:10px"><button class="b p" id="bev" ${outs.length?'':'disabled'}>${T('eval.btn')}</button></div></section>`;}
 function bindEval(){const b=$('bev');if(b)b.onclick=()=>runJob('stats',{file:$('evf').value});}
 function render(){if(!INIT)return;const R={setup:[renderSetup,bindSetup],video:[renderVideo,bindVideo],calib:[renderCalib,bindCalib],run:[renderRun,bindRun],live:[renderLive,bindLive],eval:[renderEval,bindEval]}[step];
- $('panel').innerHTML=(INIT.ort_error?`<div class="banner">${esc(INIT.ort_error)}</div>`:'')+R[0]();R[1]();}
+ $('panel').innerHTML=(INIT.ort_error?`<div class="banner">${esc(INIT.ort_error)}</div>`:'')+updateBanner()+R[0]();R[1]();
+ const bu=$('bupd');if(bu)bu.onclick=()=>runJob('update',{},()=>{UPD={version:UPD.version,url:UPD.url,installed:true};render();});}
+// newer version on GitHub: shown as a banner, installed only when the user asks for it
+let UPD=null;
+function updateBanner(){if(!UPD)return '';
+ return UPD.installed?`<div class="banner info"><span>${T('upd.restart',{v:esc(UPD.version)})}</span></div>`
+  :`<div class="banner info"><span>${T('upd.available',{v:esc(UPD.version),cur:esc(INIT.version)})}</span><a href="${esc(UPD.url)}" target="_blank">${T('upd.notes')}</a><button class="b p" id="bupd">${T('upd.install')}</button></div>`;}
+async function pollUpdate(tries){const r=await api('/api/update');if(r.ok&&r.update){if(r.update.latest){UPD=r.update.latest;render();}return;}if(tries>0)setTimeout(()=>pollUpdate(tries-1),3000);}
 
 // ---------- jobs + log
 function log(t){const el=$('log');el.textContent+=t+'\n';el.scrollTop=el.scrollHeight;}
@@ -170,5 +178,5 @@ async function poll(onDone,onFail){const j=JOB;if(!j)return;const r=await api('/
 $('cancel').onclick=()=>{if(JOB)api('/api/job/'+JOB.id+'/cancel',{});queue=null;};
 
 (async()=>{INIT=await api('/api/init');if(!INIT.ok){document.body.textContent='error';return;}
- $('dir').value=INIT.default_dir;chrome();await openProject(INIT.default_dir);})();
+ $('dir').value=INIT.default_dir;chrome();await openProject(INIT.default_dir);pollUpdate(4);})();
 </script></body></html>

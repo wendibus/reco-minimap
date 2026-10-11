@@ -4,7 +4,7 @@
 
 It is built to work with panoramas from [Reco](https://github.com/reco-project/video-stitcher) (two cameras stitched into one wide picture) and with detection models trained in **Reco Trainer**, but it works on any full-field panorama video plus an RF-DETR ONNX model with the same output layout.
 
-Everything runs locally. No video, frame or model leaves your computer.
+Everything runs locally. No video, frame or model leaves your computer. The only network use is the optional number-model download and the update check, which asks GitHub for the latest version number (switch it off with `--no-update-check`).
 
 ![Supported field layouts](docs/img/sports.png)
 
@@ -15,7 +15,7 @@ Everything runs locally. No video, frame or model leaves your computer.
 | **Live** | Browser overlay for OBS plus a JSON event stream |
 | **Jersey numbers** | Optional OCR on the player's back, constrained to your squad list, with substitution detection |
 | **Game situations** | Optional recognition of tip-off, free throw, throw-in, kick-off, corner, penalty, 7 m throw and basketball 2/3-point attempts, from formations on the field ([per sport](docs/SCENARIOS.md)) |
-| **Interface** | `reco-minimap ui` – six steps from model import to evaluation |
+| **Interface** | `reco-minimap ui` – six steps from model import to evaluation, with a notice when a newer version is available |
 
 > **Status:** the pipeline, interface, calibration, tracking and live mode are tested end to end. Detection quality with a real Reco Trainer model was checked on basketball footage only; the other sports are supported by their field geometry. Jersey-number reading has only been measured on synthetic digits (see [Jersey numbers](#jersey-numbers-and-substitutions)). Details in [Known limitations](#known-limitations).
 
@@ -59,11 +59,11 @@ panorama video ──► tiles (sized by distance) ──► RF-DETR detector (O
                   renderer ──► minimap video / transparent overlay / panorama + minimap / JSON / live overlay
 ```
 
-* **Tiling.** A panorama is much wider than the detector's 512 px input, and players far from the camera are small. `reco-minimap scales` measures how tall players appear at each image row and `--tile auto` then cuts each band with the tile size that makes a player about 28 px tall for the model. In our tests this halved the number of tiles and gave the model players at the size it was trained on.
-* **Calibration.** You click known field points (corners, centre, penalty-area corners …) once per camera position. The program fits a homography from panorama pixels to field metres and shows the field lines over the picture so you can judge the fit; it reports the error in metres.
+* **Tiling.** A panorama is much wider than the detector's 512 px input, and players far from the camera are small. `reco-minimap scales` measures how tall players appear at each image row and `--tile auto` then cuts each band with the tile size that makes a player about 28 px tall for the model. With a calibration the bands cover the field from the far to the near sideline and only span the part of the picture where the field is, so stands and ceiling are not searched.
+* **Calibration.** You click known field points (corners, centre, penalty-area corners …) once per camera position; a small top-down field shows which one is asked for. The program fits a homography from panorama pixels to field metres and shows the field lines over the picture so you can judge the fit; it reports the error in metres.
 * **Two confidence levels.** Only confident player detections start a dot or bring back a lost one; weaker ones are used to keep following a player who is already tracked.
-* **Tracking.** Each team has a fixed number of slots (5 for basketball, 11 for football …). A hidden player keeps moving with damped velocity and cannot leave the field; a returning player re-takes his slot instead of creating a sixth dot.
-* **Ball.** States *held*, *in flight*, *loose* and *unknown*. A ball hidden in hands stays *held*; detections far from the tracked ball are ignored unless they are clearly confident.
+* **Tracking.** Each team has a fixed number of slots (5 for basketball, 11 for football …). Both teams are matched in one step: the shirt colour decides between candidates, but a detection right where a player is expected stays his even if one colour sample disagrees. A hidden player keeps moving with damped velocity and cannot leave the field; a returning player re-takes his slot instead of creating a sixth dot.
+* **Ball.** States *held*, *in flight*, *loose* and *unknown*. A ball hidden in hands stays *held*; detections far from the tracked ball are ignored unless they are clearly confident; a ball that does not move for 3 s (a spare ball beside the court) is ignored.
 * **Smooth video.** Detection can run on every Nth frame (`--every N`); the minimap video is still written at the full frame rate by interpolating between detections.
 
 ## Install
@@ -131,7 +131,16 @@ reco-minimap ui               # opens http://127.0.0.1:8788/
 
 Results land in `<project folder>/out/` (default project folder: `~/reco-minimap-projekte/standard`).
 
-New here? Follow the [walkthrough](docs/WALKTHROUGH.md).
+New here? The [walkthrough](docs/WALKTHROUGH.md) explains how the program is meant to be used: set up once per venue, then process each game, starting with a short trial run.
+
+### Updating
+
+```bash
+reco-minimap update           # is there a newer version on GitHub?
+reco-minimap update --yes     # build and install it (needs the Rust toolchain; takes a few minutes)
+```
+
+The interface runs the same check when it starts and shows a notice with an *Install now* button. Nothing is installed without that click or `--yes`. Restart the program afterwards.
 
 ## Sports
 
@@ -245,7 +254,7 @@ Important: the minimap needs the **same full panorama you calibrated on**. The A
 
 | Command | Purpose |
 |---|---|
-| `ui` | Browser interface (`--port 8788`, `--no-open`) |
+| `ui` | Browser interface (`--port 8788`, `--no-open`, `--no-update-check`) |
 | `calibrate <video>` | Click field landmarks → `court.json` (`--sport`, `--time`, `--lang`; custom: `--length --width --team-size --referees`) |
 | `selfcheck <video> --model …` | Run the model on sample frames and report players per frame, ball hits, speed (`--annotate dir` writes marked PNGs) |
 | `scales <video> --model …` | Measure player size per image row → `scales.json` for `--tile auto` |
@@ -256,6 +265,7 @@ Important: the minimap needs the **same full panorama you calibrated on**. The A
 | `stats <states.jsonl>` | Numbers about a run: slots, jumps, ball states, substitutions |
 | `import-model <path> --to <dir>` | Verify and copy a Reco Trainer model |
 | `fetch-ocr` | Download the number-reading model |
+| `update` | Look for a newer version on GitHub (`--check` only reports, `--yes` builds and installs it) |
 | `ocr-bench <manifest.tsv>` | Measure the number reader on your own crops |
 
 Common options (see `reco-minimap --help` for all):
@@ -275,6 +285,10 @@ Common options (see `reco-minimap --help` for all):
 | `--minimap f.mp4 --alpha f.mov --pip f.mp4 --json f.jsonl` | Outputs of `run` (`--alpha-bg 0.6` adds a dark backing) |
 | `--draw-home #fff --draw-away #2f6bff --ref-color #000` | Display colours, referee shirt colour |
 | `--min-alpha 1` | Keep undetected players fully opaque (default 0.8) |
+| `--torso 0.18,0.50` | Part of a player box (top, bottom as shares of its height) that shows the shirt; adjust for figures with other proportions (`colors`, `run`, `live`) |
+| `--shirt-match` | Take the torso colour from the pixels that match a known shirt colour. Helps with strong, distinct colours and with court areas painted in a team colour; leave off for light against dark |
+| `--referees N` | Number of referee slots (default from the calibration); `0` for a game without referees |
+| `--no-field-mask` | With `--tile auto`: tile the full picture width and only the measured rows instead of following the calibrated field |
 
 > The command-line messages are currently in German; the interface is available in four languages.
 
@@ -321,23 +335,27 @@ Common options (see `reco-minimap --help` for all):
 
 ## Performance
 
-Measured on a Mac with an M4 Pro, 1920×1080 panorama, RF-DETR small:
+Measured on a Mac with an M4 Pro, 2560×1440 panorama, RF-DETR small, one minute of basketball at every 10th frame:
 
 | | |
 |---|---|
-| Per 512 px tile | CPU ≈ 207 ms · CoreML (GPU) ≈ 31 ms |
-| Tiles per frame | 12 with `--tile auto` (29 with a fixed multi-scale grid) |
-| Throughput | ≈ 2.4 processed frames per second → a 10-minute quarter at `--every 5` takes about 20 minutes |
+| Per tile | CoreML ≈ 20 ms (CPU ≈ 207 ms, measured earlier on 1920×1080) |
+| Tiles per frame | 15 with `--tile auto` and a calibration; 23 without the calibration (full picture width) |
+| Per processed frame | ≈ 306 ms, of which more than 95 % is inference |
+| Throughput | ≈ 3.2 processed frames per second → a 10-minute quarter at 60 fps and `--every 10` takes about 19 minutes |
 | Parallel model sessions | no gain (the accelerator works one tile at a time) |
 
-Inference is about 94 % of the time. Lower cost with `--every N`, a smaller `--roi` and `--tile auto`.
+Lower cost with `--every N` and by keeping the calibration current, so that only the field is searched. `replay` re-runs everything after the detector from recorded detections in well under a second per minute of video.
 
 ## Known limitations
 
 * **Referees and ball** are the weakest detections with the model we tested. Referees are therefore also found by shirt colour (`--ref-color`); the ball is tracked with hysteresis and stays *unknown* when unsure. Better training data (balls of 12–15 px, referees) improves this more than any code change.
 * **A flying ball** is projected onto the floor, so its dot is displaced.
 * **Calibration** is a planar homography. Strongly curved stitches grow errors towards the edges; the page shows the error in metres.
-* **Jersey numbers** are measured on synthetic digits only and need large players (see above). Substitutions rely on numbers or on leaving/entering at the field edge; with neither, a swap on the field cannot be told.
+* **Jersey numbers** are measured on synthetic digits only and need large players (see above). Substitutions rely on numbers or on leaving and re-entering at a sideline; with neither, a swap on the field cannot be told.
+* **Team colours** come from one colour sample per player. Automatic colour detection assumes people in shirts; for unusual figures or kits set the colours by hand. A player in front of court paint in the other team's colour can be assigned to the wrong team (`--shirt-match` reduces this for strong colours).
+* **The detector decides.** On the footage we measured, about 4 of 10 players per frame reach the 0.60 confidence and about 8 reach 0.30. Tracking follows players on the weaker detections, but which player a dot belongs to after a scramble cannot be checked without jersey numbers or annotated frames.
+* **Updates** build from source with `cargo`, so they need the Rust toolchain and a few minutes. No signed binaries are published.
 * **Game situations** are rule-based and verified on constructed formations only. Ball-dependent ones (2/3-point attempts) fire only when the ball is tracked at the right moment, and whether a shot scored is not detected. Throw-ins can false-trigger when a player happens to stand still at the line during play.
 * **Detection of other sports** was not tested with trained models; the field geometry is.
 * Live input from real SRT/RTMP sources and the Neural Engine path are untested; a growing `.mkv` follows with a latency set by the muxer's cluster length.
@@ -367,7 +385,7 @@ Implement `geom::Projector` on top of your own panorama projection if a plain ho
 ## Development
 
 ```bash
-cargo test --features tools              # 42 tests (core, tools, number decoding, substitutions, game situations)
+cargo test --features tools              # 48 tests (core, tools, number decoding, substitutions, game situations, tiling, update check)
 python3 scripts/gen_i18n.py              # regenerate src/tools/i18n.js (all keys in all 4 languages)
 python3 scripts/make_test_assets.py      # synthetic panorama + stand-in ONNX for smoke tests
 python3 scripts/coreml_probe.py <model>  # CoreML partitions and per-unit timing

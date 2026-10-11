@@ -8,4 +8,5 @@ pub mod models;
 pub mod ocr;
 pub mod scales;
 pub mod ui;
+pub mod update;
 pub mod video;

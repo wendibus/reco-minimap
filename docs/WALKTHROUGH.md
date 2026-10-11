@@ -19,6 +19,36 @@ Your browser opens at `http://127.0.0.1:8788/`. Pick your language at the top ri
 
 > Tip: use one project folder per venue and camera position. The calibration depends on where the camera stands.
 
+## How it is meant to be used
+
+The work has two parts: **set up once**, then **process each game**.
+
+**Once per venue and camera position** (steps 1 to 3)
+
+1. Pick the sport and import the model.
+2. Choose a panorama video from that venue.
+3. Calibrate: click the field landmarks, measure player sizes, set the shirt colours.
+
+The result lives in the project folder (`court.json`, `scales.json`, `teams.json`) and stays valid as long as the camera stands in the same place and the panorama is exported the same way. If either changes, repeat step 3.
+
+**For each game** (steps 2, 3c, 4 and 6)
+
+1. Choose the new video (step 2).
+2. Detect the shirt colours again, or set them by hand, when other teams play (step 3c).
+3. Do a **short trial run** of 20 to 60 seconds with the check video and watch it (step 4).
+4. If it looks right, process the whole game in segments.
+5. Look at the numbers in step 6 if something seems odd.
+
+**What the program decides and what you provide**
+
+* It finds players, referees and the ball, tracks them and keeps a fixed number of slots per team. A hidden player stays at his estimated position instead of disappearing.
+* You provide where the field is, which colours the teams wear and which time span to process. These three decide the quality; everything else has usable defaults.
+* The check video (*Panorama with boxes and minimap*) is your inspection tool. Watch it for the first segment before you let a whole game run.
+
+**At the bottom of the page** is the log. It shows every command the interface runs and its output. Everything the interface does also works on the command line; a few fine settings exist only there ([README → Command-line reference](../README.md#command-line-reference)).
+
+**New versions** are announced at the top with a blue notice, see [Updating](#updating).
+
 ---
 
 ## Step 1 · Sport & model
@@ -47,6 +77,7 @@ Calibration teaches the program where the field is in the picture. Three things 
 3. **Click the landmarks in the order listed on the right** (corners, halfway line, centre, penalty/key corners …). The list is in your language.
    * Landmark names use *far* and *near* for the two sidelines (far = away from the camera) and *left/right* as seen in the picture.
    * You do not have to click everything. Skip points you cannot see with the **space bar**.
+   * Above the list on the right, a **small top-down field** shows where the landmark being asked for lies: it **blinks orange**. Landmarks already set are green, open ones grey. In this drawing the camera is at the bottom and *far* is at the top.
    * Mouse wheel = zoom, drag = move, **Backspace** = remove the last point, **F** = show the whole picture. The small window top right magnifies the area under the cursor.
 4. After the 4th point a **green field drawing** appears over the picture and the page shows the **error in metres**. Add points until the green lines sit on the real lines. Aim for **8 or more points spread over the whole field** and an error **below 0.5 m** (green). More points on different sides matter more than clicking precisely.
 5. Click *Save*. Back in the interface the line reads e.g. `15 points, error 0.21 m`.
@@ -66,6 +97,10 @@ Click *Measure*. The program looks at a dozen frames and learns how tall a playe
    * **Home / Away (detection)** – the colours as the camera sees them. These are filled in automatically; use *Swap* if home and away are the wrong way round. If it fails ("teams not distinguishable"), pick the two colours by hand with the colour pickers.
    * **Home / Away (display)** – the colours used to draw the dots. Choose what looks right, for example white and a bright blue. A very dark display colour is hard to see on the dark minimap.
    * **Referee colour** – the shirt colour of the referees (usually black or yellow). This lets the program find referees even if the model does not.
+3. **Figures and shirts** (change only when needed):
+   * **Shirt area, top / bottom** – which part of a player box shows the shirt, as a share of the box height from the top. The default 0.18 to 0.5 fits people. Adjust it for figures with other proportions (mascots, animations), then run *Detect colours* again.
+   * **Match the colour sample to the shirt colours** – helps with strong, clearly different colours (red against blue) and when areas of the court are painted in a team colour. Leave it off for light against dark: there it assigns more players to the wrong team.
+   * **Game without referees** – nobody is then taken for a referee because of an odd shirt colour.
 
 ## Step 4 · Process
 
@@ -148,6 +183,16 @@ Choose a `.jsonl` file from `out/` and click *Evaluate*. The report in the log (
 
 ---
 
+## Updating
+
+When it starts, the interface asks GitHub once whether a newer version exists. Only the request itself is sent, no video, frame or project data.
+
+* If there is one, a **blue notice** appears at the top with the version number, a *What's new?* link and the button *Install now*.
+* *Install now* fetches the source of that version and rebuilds the program. This takes a few minutes and needs the same Rust installation you used to install the program. The log shows the progress.
+* Afterwards stop the program in the terminal with **Ctrl+C** and start it again.
+
+On the command line: `reco-minimap update` tells you whether there is something new; `reco-minimap update --yes` installs it. Switch the check at start-up off with `reco-minimap ui --no-update-check`.
+
 ## Using the results
 
 **Put the minimap into a game video with ffmpeg** (overlay `abschnitt1.mov` onto `game.mp4`, bottom right, 480 px wide):
@@ -174,7 +219,9 @@ The overlay starts at the segment's start time; use `-ss` on the game video if y
 | Nothing happens on *Browse …* | The file dialogs need macOS (or `zenity` on Linux). Paste the path instead. |
 | `zsh: command not found: #…` | Do not paste lines starting with `#` into the terminal – zsh does not treat them as comments. |
 | *Detect colours* fails | Check the calibration (only players inside the calibrated field are counted) and set the colours by hand. |
-| Few players detected | Run *Measure* (3b); lower the player threshold (`--thr-player 0.35` on the command line); a small or blurry picture limits the model. |
+| Few players detected | Run *Measure* (3b). The program already follows a player on uncertain detections (from 0.30) but only starts a dot on a confident one (from 0.60); if the model is uncertain throughout on your footage, lower `--thr-player` on the command line (e.g. 0.5). A small or blurry picture limits the model. |
+| Team colours wrong, or dots in the wrong colour | Set the colours by hand in 3c. For strong colours or coloured court areas switch on *Match the colour sample to the shirt colours*. |
+| Two "referees" although there are none | Switch on *Game without referees* in 3c. |
 | Dots are in the wrong place | Calibrate again with more points spread over the whole field; the green field drawing must sit on the real lines. |
 | Referees missing | Set the referee shirt colour (3c). |
 | Very slow | Use *Detect on every Nth frame* with a higher N; make sure *Compute* is CoreML; run *Measure* so that fewer tiles are needed. |

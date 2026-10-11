@@ -179,3 +179,44 @@ fn court_paint_in_a_team_colour_is_not_taken_for_a_shirt() {
     let frame = Frame { w, h, rgb };
     assert_eq!(frame.torso_color_matching(&d, TORSO_BAND, &[red, blue]), Some(red));
 }
+
+#[test]
+fn update_versions_compare_and_parse() {
+    use reco_minimap::tools::update::{is_newer, parse_version};
+    assert_eq!(parse_version("v0.3.0"), Some([0, 3, 0]));
+    assert_eq!(parse_version("1.2"), Some([1, 2, 0]));
+    assert_eq!(parse_version("2.0.1-rc1"), Some([2, 0, 1]));
+    assert_eq!(parse_version("release"), None);
+    assert_eq!(parse_version("1.2.3.4"), None);
+    assert!(is_newer("0.3.0", "0.2.9"));
+    assert!(is_newer("v0.10.0", "0.9.5"), "numbers, not text");
+    assert!(!is_newer("0.2.0", "0.2.0"));
+    assert!(!is_newer("0.1.9", "0.2.0"));
+    assert!(!is_newer("nightly", "0.2.0"), "an unreadable version is never an update");
+}
+
+#[test]
+fn update_reads_githubs_answers() {
+    use reco_minimap::tools::update::{install_args, latest_from_release, latest_from_tags};
+    use serde_json::json;
+    let rel = json!({"tag_name": "v0.3.0", "html_url": "https://github.com/wendibus/reco-minimap/releases/tag/v0.3.0", "draft": false, "prerelease": false});
+    let l = latest_from_release(&rel).unwrap();
+    assert_eq!((l.version.as_str(), l.tag.as_str()), ("0.3.0", "v0.3.0"));
+    assert!(l.url.ends_with("/v0.3.0"));
+    // drafts, pre-releases and "not found" are not versions to install
+    assert!(latest_from_release(&json!({"tag_name": "v0.4.0", "prerelease": true})).is_none());
+    assert!(latest_from_release(&json!({"message": "Not Found"})).is_none());
+    // a tag that is not a plain version name never reaches cargo
+    assert!(latest_from_release(&json!({"tag_name": "v1.0.0 --config evil"})).is_none());
+
+    let tags = json!([{"name": "v0.2.0"}, {"name": "v0.10.1"}, {"name": "v0.9.0"}, {"name": "experiment"}]);
+    assert_eq!(latest_from_tags(&tags).unwrap().tag, "v0.10.1");
+    assert!(latest_from_tags(&json!([])).is_none());
+
+    let a = install_args(&l);
+    let at = |flag: &str| a.iter().position(|x| x == flag).map(|i| a[i + 1].as_str());
+    assert_eq!(a[0], "install");
+    assert_eq!(at("--git"), Some("https://github.com/wendibus/reco-minimap"));
+    assert_eq!(at("--tag"), Some("v0.3.0"));
+    assert!(at("--features").unwrap().starts_with("tools"));
+}

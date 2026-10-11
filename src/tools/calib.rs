@@ -170,7 +170,9 @@ fn handle(mut s: TcpStream, st: &Shared) {
         ("GET", "/frame.png") => respond(&mut s, "200 OK", "image/png", &st.png),
         ("GET", "/api/info") => {
             let v = json!({"w": st.info.w, "h": st.info.h, "sport": st.profile.id, "field": [st.profile.field.length, st.profile.field.width], "lang": st.lang,
-                           "landmarks": st.profile.landmarks.iter().map(|l| json!({"key": l.key, "x": l.x, "y": l.y})).collect::<Vec<_>>()});
+                           "landmarks": st.profile.landmarks.iter().map(|l| json!({"key": l.key, "x": l.x, "y": l.y})).collect::<Vec<_>>(),
+                           // field markings in metres for the legend that shows where the current landmark lies
+                           "lines": st.profile.lines.iter().map(|pl| pl.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>()).collect::<Vec<_>>()});
             respond(&mut s, "200 OK", "application/json", v.to_string().as_bytes());
         }
         ("POST", "/api/solve") => {

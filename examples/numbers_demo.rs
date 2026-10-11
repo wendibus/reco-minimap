@@ -7,7 +7,7 @@ use reco_minimap::tracker::TrackState;
 use reco_minimap::{AgentOut, FrameState};
 fn main() {
     let path = std::env::args().nth(1).unwrap_or_else(|| "/tmp/numbers_demo.ppm".into());
-    let ag = |id: u32, team: Team, x: f32, y: f32, jersey: Option<u8>| AgentOut { id, referee: false, team, pos: Vec2::new(x, y), vel: Vec2::default(), state: TrackState::Visible, alpha: 1.0, jersey };
+    let ag = |id: u32, team: Team, x: f32, y: f32, jersey: Option<u8>| AgentOut { segment: 0, identity: Default::default(), id, referee: false, team, pos: Vec2::new(x, y), vel: Vec2::default(), state: TrackState::Visible, alpha: 1.0, jersey };
     let home = [(5, 4u8), (7, 7), (9, 10), (11, 12), (13, 23)];
     let away = [(6, 3u8), (8, 8), (10, 15), (12, 6), (14, 99)];
     let mut players = Vec::new();

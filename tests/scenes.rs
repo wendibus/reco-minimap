@@ -21,7 +21,7 @@ fn p(id: u32, team: Team, x: f32, y: f32) -> P {
 fn frame(t: f64, ps: &[P], ball: BallOut) -> FrameState {
     FrameState {
         t,
-        players: ps.iter().map(|q| AgentOut { id: q.id, referee: false, team: q.team, pos: Vec2::new(q.x, q.y), vel: Vec2::new(q.speed, 0.0), state: TrackState::Visible, alpha: 1.0, jersey: None }).collect(),
+        players: ps.iter().map(|q| AgentOut { segment: 0, identity: Default::default(), id: q.id, referee: false, team: q.team, pos: Vec2::new(q.x, q.y), vel: Vec2::new(q.speed, 0.0), state: TrackState::Visible, alpha: 1.0, jersey: None }).collect(),
         referees: vec![],
         ball: ball,
         events: vec![],
@@ -30,6 +30,23 @@ fn frame(t: f64, ps: &[P], ball: BallOut) -> FrameState {
 
 fn no_ball() -> BallOut {
     BallOut { state: BallState::Unknown, pos: None, vel: None }
+}
+
+#[test]
+fn unsupported_sports_do_not_inherit_throw_ins() {
+    // This boundary formation triggers basketball's inbound rule, but must not
+    // invent an inbound for volleyball or an unknown custom sport.
+    let ps = vec![p(1, H, 10.0, 0.3), p(2, H, 8.0, 3.0), p(3, A, 12.0, 3.0), p(4, A, 10.0, 5.0)];
+    for id in ["volleyball", "american_football", "custom"] {
+        let mut det = SceneDetector::new(SportProfile::builtin(id).unwrap());
+        assert!(hold(&mut det, 0.0, 4.0, &ps, no_ball()).is_empty(), "{id}");
+    }
+    let mut profile = SportProfile::basketball();
+    profile.id = "local-hall".into();
+    let mut det = SceneDetector::new(profile.clone());
+    assert!(hold(&mut det, 0.0, 4.0, &ps, no_ball()).is_empty());
+    let mut det = SceneDetector::with_rules(profile, reco_minimap::sport::rules::SceneRules::Basketball);
+    assert!(hold(&mut det, 0.0, 4.0, &ps, no_ball()).iter().any(|e| e.kind == SceneKind::ThrowIn));
 }
 
 /// Feed the same formation for `secs` seconds (5 frames per second) and collect what fires.
@@ -49,6 +66,47 @@ fn filler(start_id: u32, n: usize, team: Team, x0: f32, y0: f32, dx: f32, dy: f3
 }
 
 // ---------------------------------------------------------------- basketball
+
+#[test]
+fn free_throw_requires_both_edges_and_rejects_ball_contradictions() {
+    let good=vec![p(1,H,5.8,7.5),p(2,A,2.0,5.0),p(3,H,3.0,5.0),p(4,A,2.0,10.0),p(5,H,3.0,10.0)];
+    let mut det=SceneDetector::new(SportProfile::basketball());
+    let ev=hold(&mut det,0.0,3.0,&good,no_ball());
+    let ft=ev.iter().find(|e|e.kind==SceneKind::FreeThrow).unwrap();
+    assert!(ft.evidence.contains(&"rebounders_both_lane_edges"));
+    assert_eq!(ft.started_at,0.0);
+    let mut one_side=good.iter().map(|q|p(q.id,q.team,q.x,5.0)).collect::<Vec<_>>();
+    one_side[0]=p(1,H,5.8,7.5);
+    let mut middle=good.iter().map(|q|p(q.id,q.team,q.x,q.y)).collect::<Vec<_>>();
+    middle.push(p(6,A,3.5,7.5));
+    for ps in [&one_side,&middle] {
+        let mut det=SceneDetector::new(SportProfile::basketball());
+        assert!(!hold(&mut det,0.0,3.0,ps,no_ball()).iter().any(|e|e.kind==SceneKind::FreeThrow));
+    }
+    let mut det=SceneDetector::new(SportProfile::basketball());
+    assert!(!hold(&mut det,0.0,3.0,&good,BallOut{state:BallState::Held{track:2},pos:None,vel:None}).iter().any(|e|e.kind==SceneKind::FreeThrow));
+    // Preparation followed by a release towards this basket is a separate attempt.
+    let mut det=SceneDetector::new(SportProfile::basketball());
+    hold(&mut det,0.0,3.0,&good,BallOut{state:BallState::Held{track:1},pos:Some(Vec2::new(5.8,7.5)),vel:None});
+    let ev=det.update(&frame(3.2,&good,BallOut{state:BallState::InFlight,pos:Some(Vec2::new(3.0,7.5)),vel:None}));
+    assert!(ev.iter().any(|e|e.kind==SceneKind::FreeThrow && e.evidence.contains(&"ball_release_towards_basket")));
+    assert!(!ev.iter().any(|e|e.kind==SceneKind::ShotTwo));
+}
+
+#[test]
+fn inbound_links_recent_substitution_without_upgrading_it_and_seek_resets() {
+    let ps=vec![p(1,H,14.0,0.0),p(2,A,12.0,3.0),p(3,H,16.0,4.0),p(4,A,13.0,5.0)];
+    let mut det=SceneDetector::new(SportProfile::basketball());
+    let mut s=frame(0.0,&ps,no_ball());
+    s.events.push(reco_minimap::SubEvent{t:0.0,team:A,slot:7,out_number:None,in_number:None,kind:reco_minimap::SubKind::Possible});
+    det.update(&s);
+    let ev=hold(&mut det,0.2,2.0,&ps,no_ball());
+    let ti=ev.iter().find(|e|e.kind==SceneKind::ThrowIn).unwrap();
+    assert_eq!(ti.related_substitutions.len(),1);
+    assert!(matches!(ti.related_substitutions[0].kind,reco_minimap::SubKind::Possible));
+    let ev=hold(&mut det,40.0,2.0,&ps,no_ball());
+    assert!(ev.iter().all(|e|e.related_substitutions.is_empty()));
+}
 
 #[test]
 fn basketball_tip_off_free_throw_and_inbound() {
@@ -98,6 +156,8 @@ fn basketball_tip_off_free_throw_and_inbound() {
     let mut det = SceneDetector::new(SportProfile::basketball());
     ps.push(p(20, H, 14.6, 0.6));
     assert!(hold(&mut det, 0.0, 2.0, &ps, no_ball()).iter().all(|e| e.kind != SceneKind::ThrowIn));
+    let mut det=SceneDetector::new(SportProfile::basketball());
+    assert!(hold(&mut det,0.0,2.0,&ps,ball).iter().any(|e|e.kind==SceneKind::ThrowIn));
 }
 
 #[test]
@@ -138,9 +198,10 @@ fn basketball_shot_attempts_two_and_three() {
         ev.extend(det.update(&frame(0.8 + k as f64 * 0.2, &ps, BallOut { state: BallState::InFlight, pos: Some(bp), vel: Some(Vec2::new(0.0, 8.0)) })));
     }
     assert!(ev.is_empty(), "{ev:?}");
-    // a free throw is a free throw, not a 2-point attempt
+    // Shooting from this spot alone is not evidence of a free throw.
     let ft = release(5.8, 7.5);
-    assert!(ft.is_empty(), "{ft:?}");
+    assert_eq!(ft.len(),1);
+    assert_eq!(ft[0].kind,SceneKind::ShotTwo);
 }
 
 // ---------------------------------------------------------------- football

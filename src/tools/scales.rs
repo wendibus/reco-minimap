@@ -95,7 +95,15 @@ impl Scales {
 
 /// Bands over the court; each band is tiled with the size that suits its distance.
 pub fn plan_auto(s: &Scales, frame_w: u32, frame_h: u32, overlap: f32) -> Vec<Tile> {
-    plan_bands(s, frame_w, frame_h, overlap, None, None)
+    plan_bands(s, frame_w, frame_h, overlap, full_frame(frame_w, frame_h), None, None)
+}
+
+/// Cover all requested foot-position bands, including the near sideline.
+/// ROI is an explicit pixel-space search boundary, not inferred from sport rules.
+/// Keep room for bodies/airborne balls when choosing it. Invalid scales produce
+/// no tiles rather than panicking, looping forever or wrapping coordinates.
+pub fn plan_auto_roi(s: &Scales, frame_w: u32, frame_h: u32, overlap: f32, roi: Tile) -> Vec<Tile> {
+    plan_bands(s, frame_w, frame_h, overlap, roi, None, None)
 }
 
 /// Like [`plan_auto`], but each band only spans the part of the panorama where the field is.
@@ -107,7 +115,17 @@ pub fn plan_auto(s: &Scales, frame_w: u32, frame_h: u32, overlap: f32) -> Vec<Ti
 /// bands then run from its far to its near edge instead of only over the rows in which players
 /// happened to be measured; a player at the near sideline is otherwise cut off or missed.
 pub fn plan_auto_field(s: &Scales, frame_w: u32, frame_h: u32, overlap: f32, floor_px: &[(f32, f32)], feet_px: Option<&[(f32, f32)]>) -> Vec<Tile> {
-    plan_bands(s, frame_w, frame_h, overlap, Some(floor_px), feet_px)
+    plan_bands(s, frame_w, frame_h, overlap, full_frame(frame_w, frame_h), Some(floor_px), feet_px)
+}
+
+/// [`plan_auto_field`] inside an explicit search boundary: the field decides where tiles are
+/// useful, the ROI where they are allowed.
+pub fn plan_auto_field_roi(s: &Scales, frame_w: u32, frame_h: u32, overlap: f32, roi: Tile, floor_px: &[(f32, f32)], feet_px: Option<&[(f32, f32)]>) -> Vec<Tile> {
+    plan_bands(s, frame_w, frame_h, overlap, roi, Some(floor_px), feet_px)
+}
+
+fn full_frame(frame_w: u32, frame_h: u32) -> Tile {
+    Tile { x: 0, y: 0, w: frame_w, h: frame_h }
 }
 
 /// Floor points of `field` grown by `margin_m`, on a 0.25 m grid, as panorama pixels.
@@ -126,8 +144,16 @@ pub fn floor_points(court_to_pano: &Homography, field: &Field, margin_m: f32, fr
     out
 }
 
-fn plan_bands(s: &Scales, frame_w: u32, frame_h: u32, overlap: f32, floor_px: Option<&[(f32, f32)]>, feet_px: Option<&[(f32, f32)]>) -> Vec<Tile> {
+fn plan_bands(s: &Scales, frame_w: u32, frame_h: u32, overlap: f32, roi: Tile, floor_px: Option<&[(f32, f32)]>, feet_px: Option<&[(f32, f32)]>) -> Vec<Tile> {
     let mut tiles = Vec::new();
+    if ![s.a, s.b, s.y_min, s.y_max, s.target_px, overlap].iter().all(|v| v.is_finite()) || s.target_px <= 0.0 || s.b < 0.0 || s.y_max <= s.y_min {
+        return tiles;
+    }
+    let right = roi.x.saturating_add(roi.w).min(frame_w);
+    let bottom = roi.y.saturating_add(roi.h).min(frame_h);
+    if right <= roi.x || bottom <= roi.y {
+        return tiles;
+    }
     // Rows in which feet can stand. The measured range only reaches as far as players happened to
     // stand in the sample frames; with the field known, the bands cover it from sideline to sideline.
     let (mut y_min, mut y_max) = (s.y_min, s.y_max);
@@ -137,28 +163,32 @@ fn plan_bands(s: &Scales, frame_w: u32, frame_h: u32, overlap: f32, floor_px: Op
             y_max = y_max.max(p.1.min(frame_h as f32));
         }
     }
-    let mut y = y_min;
-    let mut bands = 0;
-    // every band covers a 25 % growth in player height; the count is only bounded against a degenerate fit
-    while y < y_max - 1.0 && bands < 32 {
+    let start = y_min.max(roi.y as f32);
+    let end = y_max.min(bottom as f32);
+    let mut y = start;
+    let mut first = true;
+    // The old six-band cap silently omitted the lower field on steep fits.
+    // A minimum 10-pixel advance bounds the loop without truncating coverage.
+    while y < end {
         let h0 = s.height_at(y);
-        let mut y1 = if s.b > 1e-4 { (h0 * 1.25 - s.a) / s.b } else { y_max };
-        y1 = y1.clamp(y + 10.0, y_max);
-        if y_max - y1 < 0.05 * (y_max - y_min) {
-            y1 = y_max;
+        // every band covers a 25 % growth in player height
+        let mut y1 = if s.b > 1e-4 { (h0 * 1.25 - s.a) / s.b } else { end };
+        y1 = y1.max(y + 10.0).min(end);
+        if end - y1 < 0.05 * (end - start) {
+            y1 = end;
         }
         let side = s.tile_at((y + y1) / 2.0).round() as u32;
-        let top = (y - h0 * 1.1).max(0.0);
-        let bot = (y1 + 0.1 * h0).min(frame_h as f32);
+        let top = (y - h0 * 1.1).max(roi.y as f32).floor() as u32;
+        let bot = ((y1 + 0.1 * h0).ceil() as u32).min(bottom);
         let (band_y, band_y1) = (y, y1);
         y = y1;
-        bands += 1;
-        let (mut x0, mut x1) = (0.0f32, frame_w as f32);
+        let (mut x0, mut x1) = (roi.x as f32, right as f32);
         if let Some(pts) = floor_px {
             // feet in this band stand between these columns; a body is at most about half its height wide
             let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
             // the first band also serves whoever stands above the measured rows (far corners of the margin)
-            let from = if bands == 1 { f32::NEG_INFINITY } else { band_y };
+            let from = if first { f32::NEG_INFINITY } else { band_y };
+            first = false;
             for p in pts.iter().filter(|p| p.1 >= from && p.1 <= band_y1) {
                 lo = lo.min(p.0);
                 hi = hi.max(p.0);
@@ -167,16 +197,24 @@ fn plan_bands(s: &Scales, frame_w: u32, frame_h: u32, overlap: f32, floor_px: Op
                 continue; // no field in these rows
             }
             let pad = 0.5 * s.height_at(band_y1) + 8.0;
-            (x0, x1) = ((lo - pad).max(0.0), (hi + pad).min(frame_w as f32));
+            let (f0, f1) = ((lo - pad).max(x0), (hi + pad).min(x1));
+            if f1 <= f0 {
+                continue; // the field in these rows lies outside the ROI
+            }
             // a region narrower than the tile would be magnified beyond the intended scale
-            let want = (side.min(frame_w)) as f32;
-            if x1 - x0 < want {
-                let c = ((x0 + x1) / 2.0).clamp(want / 2.0, frame_w as f32 - want / 2.0);
+            let want = (side as f32).min(x1 - x0);
+            if f1 - f0 < want {
+                let c = ((f0 + f1) / 2.0).clamp(x0 + want / 2.0, x1 - want / 2.0);
                 (x0, x1) = (c - want / 2.0, c + want / 2.0);
+            } else {
+                (x0, x1) = (f0, f1);
             }
         }
-        let roi = Tile { x: x0 as u32, y: top as u32, w: ((x1 - x0).ceil() as u32).min(frame_w - x0 as u32), h: ((bot - top) as u32).max(32) };
-        tiles.extend(plan_tiles(roi, side, overlap));
+        if bot > top {
+            let bx = x0.floor() as u32;
+            let band = Tile { x: bx, y: top, w: ((x1.ceil() as u32).min(right)).saturating_sub(bx).max(1), h: bot - top };
+            tiles.extend(plan_tiles(band, side, overlap));
+        }
     }
     tiles
 }

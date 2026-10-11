@@ -7,6 +7,7 @@ reco-minimap – minimapa (campo, jugadores, árbitros, balón) a partir de un p
   reco-minimap live      <fuente> --model <..> --court court.json --teams teams.json   minimapa en directo para OBS/Spieldock (superposición en el navegador)
   reco-minimap import-model <carpeta|.onnx> --to <carpeta de modelos>   comprobar y copiar un modelo de Reco Trainer
   reco-minimap ui [--port 8788] [--no-open] [--no-update-check]                          interfaz en el navegador (Deutsch/English/Français/Español)
+  reco-minimap --version                                              mostrar la versión instalada
   reco-minimap update [--check] [--yes]                              buscar una versión más reciente en GitHub; --yes la compila e instala
   reco-minimap fetch-ocr                                            descargar el modelo de dorsales (unos 11 MB, Apache-2.0)
   reco-minimap ocr-bench <manifest.tsv> [--roster 4,5,7]            medir el lector de dorsales con imágenes recortadas (línea: ruta<TAB>número<TAB>grupo)

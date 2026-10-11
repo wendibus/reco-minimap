@@ -280,6 +280,10 @@ fn main() {
         print!("{}", help());
         return;
     }
+    if matches!(args[0].as_str(), "--version" | "-V" | "version") {
+        println!("reco-minimap {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
     let o = Opts::parse(&args[1..]);
     // language of all messages: --lang, else RECO_MINIMAP_LANG / the system locale, else English
     i18n::set_lang(o.s("lang").and_then(i18n::Lang::parse).unwrap_or_else(i18n::from_env));

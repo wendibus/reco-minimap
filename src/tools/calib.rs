@@ -1,6 +1,7 @@
 //! Field calibration: a tiny local web page (std-only HTTP server on 127.0.0.1)
 //! where you click field landmarks on a panorama frame. Nothing leaves the machine.
 
+use crate::{tr, trs};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -65,11 +66,11 @@ impl CourtCalib {
         let v: Value = serde_json::from_str(&txt).map_err(|e| format!("{path}: {e}"))?;
         let pt = |a: &Value| Some(Vec2::new(a[0].as_f64()? as f32, a[1].as_f64()? as f32));
         let mut points = Vec::new();
-        for p in v["points"].as_array().ok_or("court.json: points missing")? {
-            points.push(CalPoint { name: p["name"].as_str().unwrap_or("").to_string(), pano: pt(&p["pano"]).ok_or("bad pano point")?, court: pt(&p["court"]).ok_or("bad court point")? });
+        for p in v["points"].as_array().ok_or(trs!("court.json: Punkte fehlen", "court.json: points missing", "court.json : points manquants", "court.json: faltan los puntos"))? {
+            points.push(CalPoint { name: p["name"].as_str().unwrap_or("").to_string(), pano: pt(&p["pano"]).ok_or(trs!("ungültiger Bildpunkt", "bad pano point", "point d'image invalide", "punto de imagen no válido"))?, court: pt(&p["court"]).ok_or(trs!("ungültiger Feldpunkt", "bad court point", "point de terrain invalide", "punto de campo no válido"))? });
         }
         if points.len() < 4 {
-            return Err("court.json: need >= 4 points".into());
+            return Err(trs!("court.json: mindestens 4 Punkte nötig", "court.json: need >= 4 points", "court.json : au moins 4 points nécessaires", "court.json: hacen falta al menos 4 puntos").into());
         }
         // version 1 files (basketball only) have no sport fields
         let fm = pt(&v["court_m"]).unwrap_or(Vec2::new(28.0, 15.0));
@@ -213,7 +214,7 @@ fn handle(mut s: TcpStream, st: &Shared) {
                         Err(e) => json!({"ok": false, "error": e}),
                     }
                 }
-                None => json!({"ok": false, "error": "need at least 4 valid points"}),
+                None => json!({"ok": false, "error": trs!("mindestens 4 gültige Punkte nötig", "need at least 4 valid points", "au moins 4 points valides nécessaires", "hacen falta al menos 4 puntos válidos")}),
             };
             respond(&mut s, "200 OK", "application/json", r.to_string().as_bytes());
         }
@@ -234,7 +235,7 @@ pub fn run(input: &str, info: &VideoInfo, t: f64, out_path: &str, open: bool, pr
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
     let st = Arc::new(Shared { png, info: info.clone(), out_path: out_path.to_string(), video: input.to_string(), profile, lang: lang.to_string(), done: AtomicBool::new(false) });
     let url = format!("http://127.0.0.1:{port}/?lang={lang}");
-    eprintln!("Kalibrierung: {url}\n(Seite öffnet sich automatisch; sonst URL im Browser öffnen. Strg+C zum Abbrechen.)");
+    eprintln!("{}", tr!("Kalibrierung: {url}\n(Seite öffnet sich automatisch; sonst URL im Browser öffnen. Strg+C zum Abbrechen.)", "Calibration: {url}\n(The page opens by itself; otherwise open the URL in a browser. Ctrl+C to cancel.)", "Calibrage : {url}\n(La page s'ouvre toute seule ; sinon ouvrir l'URL dans un navigateur. Ctrl+C pour annuler.)", "Calibración: {url}\n(La página se abre sola; si no, abre la URL en un navegador. Ctrl+C para cancelar.)"));
     if open {
         open_browser(&url);
     }

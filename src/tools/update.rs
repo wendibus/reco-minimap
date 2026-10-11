@@ -6,6 +6,7 @@
 //! the Rust toolchain that was used to install the program in the first place. Nothing is sent
 //! except the request itself; no video, frame or project data is involved.
 
+use crate::{tr, trs};
 use std::process::{Command, Stdio};
 
 use serde_json::Value;
@@ -95,7 +96,7 @@ pub fn latest() -> Result<Option<Latest>, String> {
     // no release (or a pre-release): fall back to version tags
     match get(&format!("https://api.github.com/repos/{REPO}/tags?per_page=100")) {
         Some(tags) => Ok(latest_from_tags(&tags)),
-        None => Err(format!("GitHub nicht erreichbar (https://github.com/{REPO})")),
+        None => Err(tr!("GitHub nicht erreichbar (https://github.com/{REPO})", "GitHub cannot be reached (https://github.com/{REPO})", "GitHub inaccessible (https://github.com/{REPO})", "No se puede acceder a GitHub (https://github.com/{REPO})")),
     }
 }
 
@@ -114,12 +115,12 @@ pub fn install_args(latest: &Latest) -> Vec<String> {
 /// The running program is replaced on disk and keeps running: restart it afterwards.
 pub fn install(latest: &Latest) -> Result<(), String> {
     if !plain_tag(&latest.tag) {
-        return Err(format!("unerwarteter Tag: {}", latest.tag));
+        return Err(tr!("unerwarteter Tag: {}", "unexpected tag: {}", "tag inattendu : {}", "etiqueta inesperada: {}", latest.tag));
     }
     let status = Command::new("cargo")
         .args(install_args(latest))
         .stdin(Stdio::null())
         .status()
-        .map_err(|e| format!("cargo nicht gefunden ({e}). Die Aktualisierung baut das Programm aus dem Quelltext und braucht dafür Rust: https://rustup.rs"))?;
-    if status.success() { Ok(()) } else { Err("cargo install ist fehlgeschlagen (Ausgabe siehe oben)".into()) }
+        .map_err(|e| tr!("cargo nicht gefunden ({e}). Die Aktualisierung baut das Programm aus dem Quelltext und braucht dafür Rust: https://rustup.rs", "cargo not found ({e}). Updating builds the program from source and needs Rust for that: https://rustup.rs", "cargo introuvable ({e}). La mise à jour compile le programme depuis les sources et nécessite Rust : https://rustup.rs", "no se encuentra cargo ({e}). La actualización compila el programa desde el código fuente y necesita Rust: https://rustup.rs"))?;
+    if status.success() { Ok(()) } else { Err(trs!("cargo install ist fehlgeschlagen (Ausgabe siehe oben)", "cargo install failed (see the output above)", "cargo install a échoué (voir la sortie ci-dessus)", "cargo install ha fallado (ver la salida de arriba)").into()) }
 }

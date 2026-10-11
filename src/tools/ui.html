@@ -42,7 +42,7 @@ a{color:#7fb7ff}
 <script src="/i18n.js"></script>
 <script>
 const $=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const api=async(p,b)=>{try{const r=await fetch(p,b===undefined?{}:{method:'POST',body:JSON.stringify(b)});return await r.json();}catch(e){return {ok:false,error:String(e)};}};
+const api=async(p,b)=>{try{const r=await fetch(p,b===undefined?{}:{method:'POST',body:JSON.stringify({...b,lang:LANG})});return await r.json();}catch(e){return {ok:false,error:String(e)};}};
 const STEPS=['setup','video','calib','run','live','eval'];
 let INIT=null,S={dir:'',project:{},models:[],files:{}},step='setup',JOB=null,probe=null,queue=null;
 const P=()=>S.project;

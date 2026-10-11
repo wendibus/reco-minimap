@@ -119,7 +119,7 @@ function frame(now) {
     } else ballD = null;
   }
   drawToasts(now);
-  if (DEBUG) { const st = document.getElementById('st'); st.style.display = 'block'; st.textContent = msg ? `Alter ${Math.round(msg.age_ms)} ms · letztes Update vor ${Math.round(now - lastMsgAt)} ms · ${msg.players.length} Spieler, ${msg.referees.length} Schiris` : 'warte auf Daten …'; }
+  if (DEBUG) { const st = document.getElementById('st'); st.style.display = 'block'; st.textContent = msg ? T('live.debug', {age: Math.round(msg.age_ms), last: Math.round(now - lastMsgAt), p: msg.players.length, r: msg.referees.length}) : T('live.waiting'); }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

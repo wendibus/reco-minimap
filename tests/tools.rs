@@ -44,7 +44,7 @@ fn damaged_weights_are_rejected() {
     make_export(&src, "basketball", true);
     assert_eq!(inspect(&src).unwrap().sha, Sha::Bad);
     let err = import(&src, &root.join("models")).unwrap_err();
-    assert!(err.contains("Prüfsumme"), "{err}");
+    assert!(err.contains("model-card.json"), "{err}"); // the wording depends on the language
     assert!(!root.join("models").exists() || std::fs::read_dir(root.join("models")).unwrap().count() == 0);
 }
 
@@ -219,4 +219,27 @@ fn update_reads_githubs_answers() {
     assert_eq!(at("--git"), Some("https://github.com/wendibus/reco-minimap"));
     assert_eq!(at("--tag"), Some("v0.3.0"));
     assert!(at("--features").unwrap().starts_with("tools"));
+}
+
+#[test]
+fn messages_come_in_four_languages() {
+    use reco_minimap::tools::i18n::{from_env, lang, set_lang, Lang};
+    use reco_minimap::{tr, trs};
+    assert_eq!(Lang::parse("de_DE.UTF-8"), Some(Lang::De));
+    assert_eq!(Lang::parse("FR"), Some(Lang::Fr));
+    assert_eq!(Lang::parse("es-MX"), Some(Lang::Es));
+    assert_eq!(Lang::parse("it"), None);
+    assert_eq!(Lang::parse(""), None);
+    let _ = from_env(); // never panics, whatever the environment
+    let before = lang();
+    let n = 3;
+    let expect = [(Lang::De, "3 Bilder", "Heim"), (Lang::En, "3 frames", "home"), (Lang::Fr, "3 images", "domicile"), (Lang::Es, "3 imágenes", "local")];
+    for (l, msg, word) in expect {
+        set_lang(l);
+        assert_eq!(tr!("{n} Bilder", "{n} frames", "{n} images", "{n} imágenes"), msg);
+        assert_eq!(tr!("{} Bilder", "{} frames", "{} images", "{} imágenes", n), msg);
+        assert_eq!(trs!("Heim", "home", "domicile", "local"), word);
+        assert_eq!(l.code().len(), 2);
+    }
+    set_lang(before);
 }

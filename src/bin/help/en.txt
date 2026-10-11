@@ -1,0 +1,76 @@
+reco-minimap – minimap (court, players, referees, ball) from a Reco panorama
+
+  reco-minimap calibrate <video> [--sport football|futsal|basketball|handball|hockey|rugby|lacrosse|american_football|volleyball|custom] [--time 5] [--out court.json]
+                         (custom: --length 40 --width 20 --team-size 5 --referees 2)
+  reco-minimap selfcheck <video> --model <folder|.onnx> [--samples 12] [--annotate <folder>]
+  reco-minimap scales    <video> --model <folder|.onnx> [--court court.json] [--samples 12] [--out scales.json]
+  reco-minimap live      <source> --model <..> --court court.json --teams teams.json   live minimap for OBS/Spieldock (browser overlay)
+  reco-minimap import-model <folder|.onnx> --to <models folder>   check and copy a Reco Trainer model
+  reco-minimap ui [--port 8788] [--no-open] [--no-update-check]                          interface in the browser (Deutsch/English/Français/Español)
+  reco-minimap update [--check] [--yes]                              look for a newer version on GitHub; --yes builds and installs it
+  reco-minimap fetch-ocr                                            download the number model for jersey numbers (about 11 MB, Apache-2.0)
+  reco-minimap ocr-bench <manifest.tsv> [--roster 4,5,7]            measure the number reader on crop images (line: path<TAB>number<TAB>group)
+  reco-minimap replay    <detections.jsonl> --court court.json --teams teams.json [--json out.jsonl] [--minimap out.mp4]
+                         send recorded detections (run … --dets <file>) through tracking, ball and situations again
+                         without the video: seconds instead of minutes, e.g. to compare --thr-player or colours
+  reco-minimap stats     <states.jsonl>            report with numbers about a run (slots, jumps, ball)
+  reco-minimap colors    <video> --model <folder|.onnx> [--court court.json] [--home-hint #rrggbb] [--out teams.json]
+  reco-minimap run       <video> --model <folder|.onnx> --court court.json (--teams teams.json | --home #hex --away #hex)
+                         [--minimap out.mp4] [--alpha out.mov] [--pip out.mp4] [--json out.jsonl]
+
+<video> is a file or any ffmpeg source (rtmp://, srt://, udp://, named pipe ...) – so a live panorama works too.
+For live sources pass --size 4096x1500 --fps 25.
+
+Common options:
+  --lang de|en|fr|es   language of all messages (default: RECO_MINIMAP_LANG, else the system language, else English)
+  --tile auto       tiles per image row to suit the distance (needs scales.json, see `scales`; --scales <file>)
+  --tile 512        tile size(s) in pixels, several are possible: --tile 512,1024 (multi-scale). Tiles > 512 are
+                    scaled down, non-square ones are fitted with a border (letterbox).
+  --overlap 0.25    overlap of the tiles
+  --roi x0,y0,x1,y1 search area as fractions of the panorama (e.g. 0,0.3,1,0.9 = only the band with the field)
+  --workers N       parallel model sessions (e.g. 2-3 with CoreML; more throughput, more memory)
+  --units all|ane|gpu|cpu   CoreML compute units (default all); find the fastest with `selfcheck`
+  --ep cpu|coreml   execution (coreml only when built with `--features coreml`)
+  --start T [--end T | --duration T]   process only a section; T in seconds or as min:s or h:min:s
+                    (e.g. --start 12:30 --end 22:30). Also applies to selfcheck, scales and colors.
+  --every N         analyse only every Nth frame
+  --shirt-match     match the colour sample to the known shirt colours: helps with strong, clearly different colours
+                    (e.g. red against blue) and with court areas in a team colour; leave off for light against dark
+  --referees N      number of referee slots (default from the calibration); 0 = game without referees
+  --torso 0.18,0.50 part of the player box (top,bottom as a fraction of its height) that shows the shirt; adjust for
+                    figures with other proportions (colors, run, live)
+  --thr-ball 0.30 --thr-player 0.60 --thr-ref 0.50
+  --thr-player-low 0.30   (run/live/replay) weaker player detections from this value keep an existing dot going
+                    but never start one: players stay tracked in a crowd without false detections becoming
+                    players. The same value as --thr-player turns this off.
+
+live options:
+  --port 8765 --host 127.0.0.1   overlay: http://HOST:PORT/  (OBS: source 'Browser', this URL; the background stays transparent)
+                    data: /events (SSE), /state.json (polling)   (--host 0.0.0.0 for OBS on another computer)
+  --in-args '<ffmpeg input options>'  passed to ffmpeg before the source. Examples:
+                      growing file (Reco is still writing):   live file:live.mkv --in-args '-follow 1' --size ...
+                      OBS Virtual Camera / capture card (macOS): live 'OBS Virtual Camera' --in-args '-f avfoundation -framerate 25' --size ...
+  --realtime        play a file in real time (to test without a live source), with --start S from second S
+  browser parameters: ?floor=1 dark floor for testing, ?lead=0.2 predict further ahead, ?minalpha=1, ?debug=1
+
+Jersey numbers (run/live; run `fetch-ocr` first):
+  --numbers         read numbers and show them on the dots; detects substitutions (the number changes / a player leaves and one enters)
+  --roster-home 4,5,7,10   --roster-away 3,6,8     rosters: the reader only chooses among these numbers (much more reliable)
+  --hires <video>   second, higher-resolution panorama (same timeline) for the numbers; players need about 80 px of height
+  --ocr-model <file>  (default ~/.cache/reco-minimap/ocr/rec.onnx)   --ocr-min-h 45 --ocr-max 4
+
+Game situations (run/live):
+  --scenes          detects formations and shot attempts: basketball tip-off, free throw, throw-in, 2/3-point attempt;
+                    football kick-off, penalty, corner, throw-in; handball throw-off, 7 m throw, throw-in; futsal/hockey kick-off, penalty, ...
+                    (list per sport: docs/SCENARIOS.md); appears in the log, as `scenes` in the JSON and in `stats`
+
+run options:
+  --ref-color #hex  referee shirt colour (e.g. #000000 or yellow): finds referees by colour even if the model does not
+  --no-field-mask   with --tile auto, tile the full picture width (default: with --court only where the field is)
+  --no-smooth       write --minimap/--alpha at the detection rate only (default: full frame rate by interpolation with --every N)
+  --alpha-bg 0.0    opacity of the dark backing in the --alpha overlay (0 = transparent, 0.6 = readable on a bright video)
+  --min-alpha 0.8   opacity of dots whose player is currently not detected (0.35 = strongly faded; faded white turns grey)
+  --draw-home #hex --draw-away #hex   drawing colours of the players in the minimap (the detected colours depend on the light)
+  --scale 30        pixels per metre of the minimap (930x540 at 30)
+  --pip-width 0.28  width of the minimap in the --pip video (share of the panorama width)
+  --vcodec libx264  (macOS: h264_videotoolbox)

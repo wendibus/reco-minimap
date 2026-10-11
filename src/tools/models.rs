@@ -3,6 +3,7 @@
 //! A Reco Trainer export is a folder with `runtime.json` (contract, classes, input size,
 //! `artifact.file`), `model-card.json` (sport, SHA-256 of the weights) and the `.onnx` file.
 
+use crate::{tr, trs};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -66,17 +67,17 @@ fn default_classes() -> Vec<String> {
 /// Inspect a Reco Trainer model folder, or a bare `.onnx` file.
 pub fn inspect(path: &Path) -> Result<ModelMeta, String> {
     if path.as_os_str().is_empty() {
-        return Err("Kein Pfad angegeben".into());
+        return Err(trs!("Kein Pfad angegeben", "No path given", "Aucun chemin indiqué", "No se ha indicado ninguna ruta").into());
     }
     if path.is_file() {
         if path.extension().and_then(|e| e.to_str()) != Some("onnx") {
-            return Err("Keine .onnx-Datei".into());
+            return Err(trs!("Keine .onnx-Datei", "Not an .onnx file", "Ce n'est pas un fichier .onnx", "No es un archivo .onnx").into());
         }
         let size = fs::metadata(path).map(|m| m.len()).unwrap_or(0) as f32 / 1e6;
         return Ok(ModelMeta { id: path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(), dir: path.parent().unwrap_or(Path::new(".")).to_path_buf(), onnx: path.to_path_buf(), sport: None, classes: default_classes(), input_size: 512, confidence: None, contract: None, sha: Sha::None, size_mb: size });
     }
     if !path.is_dir() {
-        return Err(format!("{}: nicht gefunden", path.display()));
+        return Err(tr!("{}: nicht gefunden", "{}: not found", "{} : introuvable", "{}: no encontrado", path.display()));
     }
     let rt = read_json(&path.join("runtime.json"));
     let card = read_json(&path.join("model-card.json"));
@@ -89,10 +90,10 @@ pub fn inspect(path: &Path) -> Result<ModelMeta, String> {
             let v: Vec<_> = fs::read_dir(path).ok()?.flatten().filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("onnx")).collect();
             if v.len() == 1 { Some(v[0].file_name().to_string_lossy().into_owned()) } else { None }
         })
-        .ok_or("Keine runtime.json und keine eindeutige .onnx-Datei im Ordner")?;
+        .ok_or(trs!("Keine runtime.json und keine eindeutige .onnx-Datei im Ordner", "No runtime.json and no single .onnx file in the folder", "Pas de runtime.json ni de fichier .onnx unique dans le dossier", "No hay runtime.json ni un único archivo .onnx en la carpeta"))?;
     let onnx = path.join(&file);
     if !onnx.exists() {
-        return Err(format!("{} fehlt im Ordner", file));
+        return Err(tr!("{} fehlt im Ordner", "{} is missing in the folder", "{} manque dans le dossier", "falta {} en la carpeta", file));
     }
     let want = rt
         .as_ref()
@@ -128,7 +129,7 @@ fn safe_name(s: &str) -> String {
 pub fn import(src: &Path, models_dir: &Path) -> Result<ModelMeta, String> {
     let meta = inspect(src)?;
     if meta.sha == Sha::Bad {
-        return Err("Prüfsumme der .onnx-Datei stimmt nicht mit model-card.json/runtime.json überein – Datei beschädigt?".into());
+        return Err(trs!("Prüfsumme der .onnx-Datei stimmt nicht mit model-card.json/runtime.json überein – Datei beschädigt?", "The checksum of the .onnx file does not match model-card.json/runtime.json – is the file damaged?", "La somme de contrôle du fichier .onnx ne correspond pas à model-card.json/runtime.json – fichier endommagé ?", "La suma de comprobación del archivo .onnx no coincide con model-card.json/runtime.json – ¿archivo dañado?").into());
     }
     fs::create_dir_all(models_dir).map_err(|e| format!("{}: {e}", models_dir.display()))?;
     let base = safe_name(&meta.id);
@@ -139,12 +140,12 @@ pub fn import(src: &Path, models_dir: &Path) -> Result<ModelMeta, String> {
         n += 1;
     }
     fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
-    let file_name = meta.onnx.file_name().ok_or("Dateiname")?.to_owned();
-    fs::copy(&meta.onnx, dest.join(&file_name)).map_err(|e| format!("Kopieren: {e}"))?;
+    let file_name = meta.onnx.file_name().ok_or(trs!("Dateiname", "file name", "nom de fichier", "nombre de archivo"))?.to_owned();
+    fs::copy(&meta.onnx, dest.join(&file_name)).map_err(|e| tr!("Kopieren: {e}", "Copying: {e}", "Copie : {e}", "Copia: {e}"))?;
     if src.is_dir() {
         for f in ["runtime.json", "model-card.json"] {
             if src.join(f).exists() {
-                fs::copy(src.join(f), dest.join(f)).map_err(|e| format!("Kopieren: {e}"))?;
+                fs::copy(src.join(f), dest.join(f)).map_err(|e| tr!("Kopieren: {e}", "Copying: {e}", "Copie : {e}", "Copia: {e}"))?;
             }
         }
     }

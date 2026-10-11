@@ -6,6 +6,7 @@
 //!   reco-minimap colors    <video> ...   find the dominant jersey colours -> teams.json
 //!   reco-minimap run       <video> ...   panorama video / live feed -> minimap (+ PiP, JSON)
 
+use reco_minimap::{tr, trs};
 use std::collections::HashMap;
 use std::io::Write;
 use std::time::Instant;
@@ -14,6 +15,7 @@ use reco_minimap::detect::{nms, plan_tiles, Class, Det, Tile};
 use reco_minimap::geom::{Field, Vec2};
 use reco_minimap::sport::{SportProfile, BUILTIN_IDS};
 use reco_minimap::scenes::{SceneDetector, SceneEvent, SceneKind};
+use reco_minimap::tools::i18n;
 use reco_minimap::tools::models;
 use reco_minimap::tools::ocr::{self, NumberReader};
 use reco_minimap::jersey::{ctc_greedy, ctc_roster, parse_number, parse_roster};
@@ -27,83 +29,15 @@ use reco_minimap::tools::scales::{floor_points, plan_auto, plan_auto_field, Scal
 use reco_minimap::tools::video::{self, Codec, Frame, FrameReader, FrameWriter, VideoInfo};
 use reco_minimap::{ball::BallState, Config, FrameState, Minimap};
 
-const HELP: &str = "\
-reco-minimap – Minimap (Court, Spieler, Schiris, Ball) aus einem Reco-Panorama
-
-  reco-minimap calibrate <video> [--sport football|futsal|basketball|handball|hockey|rugby|lacrosse|american_football|volleyball|custom] [--time 5] [--out court.json] [--lang de|en|fr|es]
-                         (custom: --length 40 --width 20 --team-size 5 --referees 2)
-  reco-minimap selfcheck <video> --model <ordner|.onnx> [--samples 12] [--annotate <ordner>]
-  reco-minimap scales    <video> --model <ordner|.onnx> [--court court.json] [--samples 12] [--out scales.json]
-  reco-minimap live      <quelle> --model <..> --court court.json --teams teams.json   Live-Minimap für OBS/Spieldock (Browser-Overlay)
-  reco-minimap import-model <ordner|.onnx> --to <modelle-ordner>   Reco-Trainer-Modell prüfen und kopieren
-  reco-minimap ui [--port 8788] [--no-open] [--no-update-check]                          Oberfläche im Browser (Deutsch/English/Français/Español)
-  reco-minimap update [--check] [--yes]                              nach einer neueren Version auf GitHub sehen; --yes baut und installiert sie
-  reco-minimap fetch-ocr                                            OCR-Modell für Trikotnummern laden (ca. 11 MB, Apache-2.0)
-  reco-minimap ocr-bench <manifest.tsv> [--roster 4,5,7]            Zahlenleser an Ausschnitt-Bildern messen (Zeile: Pfad<TAB>Nummer<TAB>Gruppe)
-  reco-minimap replay    <erkennungen.jsonl> --court court.json --teams teams.json [--json out.jsonl] [--minimap out.mp4]
-                         Aufgezeichnete Erkennungen (run … --dets <datei>) ohne Video erneut durch Tracking, Ball und
-                         Situationen schicken: Sekunden statt Minuten, z.B. um --thr-player oder Farben zu vergleichen
-  reco-minimap stats     <states.jsonl>            Zahlen-Report zu einem run-Ergebnis (Slots, Sprünge, Ball)
-  reco-minimap colors    <video> --model <ordner|.onnx> [--court court.json] [--home-hint #rrggbb] [--out teams.json]
-  reco-minimap run       <video> --model <ordner|.onnx> --court court.json (--teams teams.json | --home #hex --away #hex)
-                         [--minimap out.mp4] [--alpha out.mov] [--pip out.mp4] [--json out.jsonl]
-
-<video> ist eine Datei oder jede ffmpeg-Quelle (rtmp://, srt://, udp://, Named Pipe ...) – also auch ein Live-Panorama.
-Für Live-Quellen: --size 4096x1500 --fps 25 angeben.
-
-Gemeinsame Optionen:
-  --tile auto       Kacheln je Bildzeile passend zur Entfernung (braucht scales.json, siehe `scales`; --scales <datei>)
-  --tile 512        Kachelgröße(n) in Pixeln, auch mehrere: --tile 512,1024 (Mehrmaßstab). Kacheln > 512 werden
-                    verkleinert, nicht-quadratische mit Rand (Letterbox) eingepasst.
-  --overlap 0.25    Überlappung der Kacheln
-  --roi x0,y0,x1,y1 Suchbereich als Bruchteile des Panoramas (z.B. 0,0.3,1,0.9 = nur das Spielfeld-Band)
-  --workers N       parallele Modell-Sitzungen (z.B. 2-3 mit CoreML; mehr Durchsatz, mehr Speicher)
-  --units all|ane|gpu|cpu   CoreML-Recheneinheiten (Standard all); mit `selfcheck` die schnellste ermitteln
-  --ep cpu|coreml   Ausführung (coreml nur mit `--features coreml` gebaut)
-  --start T [--end T | --duration T]   nur einen Ausschnitt verarbeiten; T in Sekunden oder als min:s bzw. h:min:s
-                    (z.B. --start 12:30 --end 22:30). Gilt auch für selfcheck, scales und colors.
-  --every N         nur jedes N-te Bild auswerten
-  --shirt-match     Farbprobe an die bekannten Trikotfarben anlehnen: hilft bei kräftigen, klar verschiedenen Farben
-                    (z.B. Rot gegen Blau) und bei Spielfeldflächen in Teamfarbe; bei Hell gegen Dunkel weglassen
-  --referees N      Zahl der Schiedsrichter-Plätze (Standard aus der Kalibrierung); 0 = Spiel ohne Schiedsrichter
-  --torso 0.18,0.50 Teil der Spieler-Box (oben,unten als Bruchteil der Höhe), in dem das Trikot liegt; für Figuren mit
-                    anderen Proportionen anpassen (colors, run, live)
-  --thr-ball 0.30 --thr-player 0.60 --thr-ref 0.50
-  --thr-player-low 0.30   (run/live/replay) schwächere Spieler-Erkennungen ab diesem Wert halten einen bestehenden
-                    Punkt am Leben, starten aber keinen neuen: so bleiben Spieler im Gedränge erhalten, ohne dass
-                    Fehlerkennungen zu Spielern werden. Gleicher Wert wie --thr-player schaltet das ab.
-
-live-Optionen:
-  --port 8765 --host 127.0.0.1   Overlay: http://HOST:PORT/  (OBS: Quelle 'Browser', diese URL; Hintergrund bleibt transparent)
-                    Daten: /events (SSE), /state.json (Polling)   (--host 0.0.0.0 für OBS auf einem anderen Rechner)
-  --in-args '<ffmpeg-Eingabeoptionen>'  vor der Quelle an ffmpeg gereicht. Beispiele:
-                      wachsende Datei (Reco schreibt noch):   live file:live.mkv --in-args '-follow 1' --size ...
-                      OBS Virtual Camera / Capture-Karte (macOS): live 'OBS Virtual Camera' --in-args '-f avfoundation -framerate 25' --size ...
-  --realtime        Datei in Echtzeit abspielen (zum Testen ohne Live-Quelle), mit --start S ab Sekunde S
-  Browser-Parameter: ?floor=1 dunkler Boden zum Testen, ?lead=0.2 weiter vorhersagen, ?minalpha=1, ?debug=1
-
-Trikotnummern (run/live; erst `fetch-ocr`):
-  --numbers         Nummern lesen und auf den Scheiben anzeigen; erkennt Wechsel (Nummer wechselt / Spieler verlässt und betritt das Feld)
-  --roster-home 4,5,7,10   --roster-away 3,6,8     Kader: Erkennung wählt nur unter diesen Nummern (deutlich zuverlässiger)
-  --hires <video>   zweites, höher aufgelöstes Panorama (gleiche Zeitachse) für die Nummern; Spieler brauchen ca. 80 px Höhe
-  --ocr-model <datei>  (Standard ~/.cache/reco-minimap/ocr/rec.onnx)   --ocr-min-h 45 --ocr-max 4
-
-Spielsituationen (run/live):
-  --scenes          erkennt Aufstellungen und Wurfversuche: Basketball Sprungball, Freiwurf, Einwurf, 2er/3er-Versuch;
-                    Fußball Anstoß, Elfmeter, Ecke, Einwurf; Handball Anwurf, 7 Meter, Einwurf; Futsal/Hockey Anstoß, Strafstoß, ...
-                    (Liste je Sportart: docs/SZENARIEN.de.md); erscheint im Protokoll, als `scenes` im JSON und in `stats`
-
-run-Optionen:
-  --ref-color #hex  Schiri-Trikotfarbe (z.B. #000000 oder gelb): erkennt Schiris über die Farbe, auch wenn das Modell sie nicht findet
-  --no-field-mask   bei --tile auto die volle Bildbreite kacheln (Standard: mit --court nur dort, wo das Feld liegt)
-  --no-smooth       --minimap/--alpha nur mit der Erkennungsrate schreiben (Standard: volle Bildrate durch Interpolation bei --every N)
-  --alpha-bg 0.0    Deckkraft der dunklen Unterlage im --alpha-Overlay (0 = transparent, 0.6 = gut lesbar auf hellem Video)
-  --min-alpha 0.8   Deckkraft von Punkten, deren Spieler gerade nicht erkannt wird (0.35 = stark verblasst; verblasst Weiß wird grau)
-  --draw-home #hex --draw-away #hex   Zeichenfarben der Spieler in der Minimap (die erkannten Farben sind lichtabhängig)
-  --scale 30        Pixel pro Meter der Minimap (930x540 bei 30)
-  --pip-width 0.28  Breite der Minimap im --pip-Video (Anteil der Panoramabreite)
-  --vcodec libx264  (macOS: h264_videotoolbox)
-";
+/// The help text in the current language.
+fn help() -> &'static str {
+    match i18n::lang() {
+        i18n::Lang::De => include_str!("help/de.txt"),
+        i18n::Lang::En => include_str!("help/en.txt"),
+        i18n::Lang::Fr => include_str!("help/fr.txt"),
+        i18n::Lang::Es => include_str!("help/es.txt"),
+    }
+}
 
 struct Opts {
     flags: HashMap<String, String>,
@@ -144,7 +78,7 @@ impl Opts {
 }
 
 fn fail<T>(msg: impl std::fmt::Display) -> T {
-    eprintln!("Fehler: {msg}");
+    eprintln!("{}", tr!("Fehler: {msg}", "Error: {msg}", "Erreur : {msg}", "Error: {msg}"));
     std::process::exit(1)
 }
 
@@ -160,7 +94,7 @@ fn parse_clock(s: &str) -> Option<f64> {
 }
 
 fn clock_opt(o: &Opts, key: &str) -> Option<f64> {
-    o.s(key).map(|v| parse_clock(v).unwrap_or_else(|| fail(format!("--{key} {v}: Sekunden oder min:s oder h:min:s erwartet"))))
+    o.s(key).map(|v| parse_clock(v).unwrap_or_else(|| fail(tr!("--{key} {v}: Sekunden oder min:s oder h:min:s erwartet", "--{key} {v}: expected seconds, min:s or h:min:s", "--{key} {v} : secondes, min:s ou h:min:s attendus", "--{key} {v}: se esperan segundos, min:s o h:min:s"))))
 }
 
 /// Start of the section to process (`--start`).
@@ -175,7 +109,7 @@ fn t_duration(o: &Opts) -> Option<f64> {
     }
     let end = clock_opt(o, "end")?;
     if end <= t_start(o) {
-        fail::<()>("--end muss nach --start liegen");
+        fail::<()>(trs!("--end muss nach --start liegen", "--end must be after --start", "--end doit être après --start", "--end debe ser posterior a --start"));
     }
     Some(end - t_start(o))
 }
@@ -188,7 +122,7 @@ fn open_info(o: &Opts, input: &str) -> VideoInfo {
         video::probe(input).unwrap_or_else(|e| fail(e))
     };
     if let Some(sz) = o.s("size") {
-        let (w, h) = sz.split_once('x').unwrap_or_else(|| fail("--size erwartet WxH, z.B. 4096x1500"));
+        let (w, h) = sz.split_once('x').unwrap_or_else(|| fail(trs!("--size erwartet WxH, z.B. 4096x1500", "--size expects WxH, e.g. 4096x1500", "--size attend LxH, p. ex. 4096x1500", "--size espera AnxAl, p. ej. 4096x1500")));
         info.w = w.parse().unwrap_or_else(|_| fail("--size"));
         info.h = h.parse().unwrap_or_else(|_| fail("--size"));
     }
@@ -226,16 +160,16 @@ fn plan(o: &Opts, info: &VideoInfo) -> Vec<Tile> {
 }
 
 fn load_model(o: &Opts) -> RfDetr {
-    let path = o.s("model").unwrap_or_else(|| fail("--model <ordner|.onnx> fehlt"));
+    let path = o.s("model").unwrap_or_else(|| fail(trs!("--model <ordner|.onnx> fehlt", "--model <folder|.onnx> is missing", "--model <dossier|.onnx> manquant", "falta --model <carpeta|.onnx>")));
     let ep = match o.s("ep").unwrap_or("cpu") {
         "coreml" => Ep::CoreMl,
         _ => Ep::Cpu,
     };
-    let mut m = RfDetr::load(path, ep, o.s("units").map(|u| Units::parse(u).unwrap_or_else(|| fail("--units: all | ane | gpu | cpu"))).unwrap_or(Units::All), o.u("workers", 1)).unwrap_or_else(|e| fail(e));
+    let mut m = RfDetr::load(path, ep, o.s("units").map(|u| Units::parse(u).unwrap_or_else(|| fail(trs!("--units: all | ane | gpu | cpu", "--units: all | ane | gpu | cpu", "--units : all | ane | gpu | cpu", "--units: all | ane | gpu | cpu")))).unwrap_or(Units::All), o.u("workers", 1)).unwrap_or_else(|e| fail(e));
     m.cfg.thr_ball = o.f("thr-ball", 0.30) as f32;
     m.cfg.thr_player = thr_players(o).1;
     m.cfg.thr_referee = o.f("thr-ref", 0.50) as f32;
-    eprintln!("Modell: {} ({}x{}, Klassen {:?}), {} Worker", m.info.id, m.size, m.size, m.info.classes, m.workers());
+    eprintln!("{}", tr!("Modell: {} ({}x{}, Klassen {:?}), {} Worker", "Model: {} ({}x{}, classes {:?}), {} worker(s)", "Modèle : {} ({}x{}, classes {:?}), {} worker(s)", "Modelo: {} ({}x{}, clases {:?}), {} worker(s)", m.info.id, m.size, m.size, m.info.classes, m.workers()));
     m
 }
 
@@ -266,7 +200,7 @@ fn torso_band(o: &Opts) -> (f32, f32) {
     };
     let p: Vec<f32> = v.split(',').filter_map(|x| x.trim().parse().ok()).collect();
     if p.len() != 2 || !(0.0..1.0).contains(&p[0]) || !(p[0] < p[1] && p[1] <= 1.0) {
-        fail::<()>("--torso erwartet oben,unten als Bruchteile der Boxhöhe, z.B. 0.18,0.50");
+        fail::<()>(trs!("--torso erwartet oben,unten als Bruchteile der Boxhöhe, z.B. 0.18,0.50", "--torso expects top,bottom as fractions of the box height, e.g. 0.18,0.50", "--torso attend haut,bas en fractions de la hauteur de la boîte, p. ex. 0.18,0.50", "--torso espera arriba,abajo como fracciones de la altura del recuadro, p. ej. 0.18,0.50"));
     }
     (p[0], p[1])
 }
@@ -277,7 +211,7 @@ fn profile_from_opts(o: &Opts) -> SportProfile {
     let mut p = if id == "custom" {
         SportProfile::custom_rect("custom", o.f("length", 40.0) as f32, o.f("width", 20.0) as f32, o.u("team-size", 5), o.u("referees", 2))
     } else {
-        SportProfile::builtin(id).unwrap_or_else(|| fail(format!("--sport {id}: unbekannt (möglich: {})", BUILTIN_IDS.join(", "))))
+        SportProfile::builtin(id).unwrap_or_else(|| fail(tr!("--sport {id}: unbekannt (möglich: {})", "--sport {id}: unknown (available: {})", "--sport {id} : inconnu (possibles : {})", "--sport {id}: desconocido (posibles: {})", BUILTIN_IDS.join(", "))))
     };
     if o.has("team-size") {
         p.team_size = o.u("team-size", p.team_size);
@@ -309,14 +243,19 @@ fn median(v: &mut Vec<f32>) -> Option<f32> {
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty() || args[0] == "--help" || args[0] == "-h" || args[0] == "help" {
-        print!("{HELP}");
+        // `--help --lang fr` and `help --lang fr` work too
+        let lang = args.iter().position(|a| a == "--lang").and_then(|i| args.get(i + 1)).and_then(|l| i18n::Lang::parse(l));
+        i18n::set_lang(lang.unwrap_or_else(i18n::from_env));
+        print!("{}", help());
         return;
     }
     let o = Opts::parse(&args[1..]);
+    // language of all messages: --lang, else RECO_MINIMAP_LANG / the system locale, else English
+    i18n::set_lang(o.s("lang").and_then(i18n::Lang::parse).unwrap_or_else(i18n::from_env));
     if args[0] == "fetch-ocr" {
         let dest = o.s("to").map(std::path::PathBuf::from).unwrap_or_else(ocr::default_model_path);
         match ocr::fetch_model(&dest) {
-            Ok(p) => println!("OCR-Modell gespeichert: {}", p.display()),
+            Ok(p) => println!("{}", tr!("OCR-Modell gespeichert: {}", "Number model saved: {}", "Modèle de numéros enregistré : {}", "Modelo de dorsales guardado: {}", p.display())),
             Err(e) => fail::<()>(e),
         }
         return;
@@ -327,12 +266,12 @@ fn main() {
     }
     if args[0] == "ui" {
         let url = reco_minimap::tools::ui::serve(o.u("port", 8788) as u16, !o.has("no-open"), false, !o.has("no-update-check")).unwrap_or_else(|e| fail(e));
-        eprintln!("Oberfläche: {url}\n(Strg+C beendet das Programm; laufende Aufträge werden dabei abgebrochen.)");
+        eprintln!("{}", tr!("Oberfläche: {url}\n(Strg+C beendet das Programm; laufende Aufträge werden dabei abgebrochen.)", "Interface: {url}\n(Ctrl+C stops the program; running jobs are cancelled.)", "Interface : {url}\n(Ctrl+C arrête le programme ; les tâches en cours sont annulées.)", "Interfaz: {url}\n(Ctrl+C detiene el programa; las tareas en curso se cancelan.)"));
         loop {
             std::thread::sleep(std::time::Duration::from_secs(3600));
         }
     }
-    let input = o.pos.first().cloned().unwrap_or_else(|| fail("<video> fehlt (siehe --help)"));
+    let input = o.pos.first().cloned().unwrap_or_else(|| fail(trs!("<video> fehlt (siehe --help)", "<video> is missing (see --help)", "<vidéo> manquante (voir --help)", "falta <vídeo> (ver --help)")));
     match args[0].as_str() {
         "calibrate" => cmd_calibrate(&o, &input),
         "selfcheck" => cmd_selfcheck(&o, &input),
@@ -344,7 +283,7 @@ fn main() {
         "run" => cmd_run(&o, &input),
         "replay" => cmd_replay(&o, &input),
         "live" => cmd_live(&o, &input),
-        other => fail(format!("unbekannter Befehl '{other}' (calibrate | selfcheck | colors | run)")),
+        other => fail(tr!("unbekannter Befehl '{other}' (calibrate | selfcheck | colors | run)", "unknown command '{other}' (see --help)", "commande inconnue « {other} » (voir --help)", "comando desconocido '{other}' (ver --help)")),
     }
 }
 
@@ -353,25 +292,25 @@ fn main() {
 /// `update`: look for a newer version on GitHub; with `--yes` build and install it.
 fn cmd_update(o: &Opts) {
     use reco_minimap::tools::update;
-    println!("Installiert: {}   (Quelle: https://github.com/{})", update::CURRENT, update::REPO);
+    println!("{}", tr!("Installiert: {}   (Quelle: https://github.com/{})", "Installed: {}   (source: https://github.com/{})", "Installée : {}   (source : https://github.com/{})", "Instalada: {}   (fuente: https://github.com/{})", update::CURRENT, update::REPO));
     let latest = match update::latest() {
         Ok(Some(l)) => l,
-        Ok(None) => return println!("Auf GitHub ist noch keine Version veröffentlicht."),
+        Ok(None) => return println!("{}", trs!("Auf GitHub ist noch keine Version veröffentlicht.", "No version has been published on GitHub yet.", "Aucune version n'est encore publiée sur GitHub.", "Aún no hay ninguna versión publicada en GitHub.")),
         Err(e) => fail(e),
     };
     if !update::is_newer(&latest.version, update::CURRENT) {
-        return println!("Aktuell: die neueste veröffentlichte Version ist {}.", latest.version);
+        return println!("{}", tr!("Aktuell: die neueste veröffentlichte Version ist {}.", "Up to date: the latest published version is {}.", "À jour : la dernière version publiée est {}.", "Al día: la última versión publicada es {}.", latest.version));
     }
-    println!("Neue Version {} verfügbar: {}", latest.version, latest.url);
+    println!("{}", tr!("Neue Version {} verfügbar: {}", "New version {} available: {}", "Nouvelle version {} disponible : {}", "Nueva versión {} disponible: {}", latest.version, latest.url));
     if o.has("check") {
         return;
     }
     if !o.has("yes") {
-        return println!("Installieren mit:  reco-minimap update --yes   (baut aus dem Quelltext, dauert einige Minuten)");
+        return println!("{}", trs!("Installieren mit:  reco-minimap update --yes   (baut aus dem Quelltext, dauert einige Minuten)", "Install with:  reco-minimap update --yes   (builds from source, takes a few minutes)", "Installer avec :  reco-minimap update --yes   (compile depuis les sources, quelques minutes)", "Instalar con:  reco-minimap update --yes   (compila desde el código fuente, tarda unos minutos)"));
     }
-    println!("Installiere {} …", latest.version);
+    println!("{}", tr!("Installiere {} …", "Installing {} …", "Installation de {} …", "Instalando {} …", latest.version));
     update::install(&latest).unwrap_or_else(|e| fail(e));
-    println!("Version {} ist installiert. Laufende Programme (z. B. die Oberfläche) bitte neu starten.", latest.version);
+    println!("{}", tr!("Version {} ist installiert. Laufende Programme (z. B. die Oberfläche) bitte neu starten.", "Version {} is installed. Please restart running programs (e.g. the interface).", "La version {} est installée. Veuillez relancer les programmes en cours (p. ex. l'interface).", "La versión {} está instalada. Reinicia los programas en ejecución (p. ej. la interfaz).", latest.version));
 }
 
 // ---------------------------------------------------------------- calibrate
@@ -379,11 +318,11 @@ fn cmd_update(o: &Opts) {
 fn cmd_calibrate(o: &Opts, input: &str) {
     let info = open_info(o, input);
     let out = o.s("out").unwrap_or("court.json");
-    eprintln!("Panorama {}x{} @ {:.2} fps", info.w, info.h, info.fps);
+    eprintln!("{}", tr!("Panorama {}x{} @ {:.2} fps", "Panorama {}x{} @ {:.2} fps", "Panorama {}x{} à {:.2} i/s", "Panorama {}x{} a {:.2} fps", info.w, info.h, info.fps));
     let profile = profile_from_opts(o);
-    eprintln!("Sportart: {} ({} × {} m)", profile.id, profile.field.length, profile.field.width);
+    eprintln!("{}", tr!("Sportart: {} ({} × {} m)", "Sport: {} ({} × {} m)", "Sport : {} ({} × {} m)", "Deporte: {} ({} × {} m)", profile.id, profile.field.length, profile.field.width));
     calib::run(input, &info, o.f("time", 5.0), out, !o.has("no-open"), profile, o.s("lang").unwrap_or("de")).unwrap_or_else(|e| fail(e));
-    eprintln!("Fertig: {out}");
+    eprintln!("{}", tr!("Fertig: {out}", "Done: {out}", "Terminé : {out}", "Listo: {out}"));
 }
 
 // ---------------------------------------------------------------- selfcheck
@@ -395,7 +334,7 @@ fn cmd_selfcheck(o: &Opts, input: &str) {
     let samples = o.u("samples", 12).max(1);
     let start = t_start(o);
     let span = t_duration(o).or(info.duration.map(|d| d - start - 1.0)).unwrap_or(60.0).max(1.0);
-    eprintln!("Panorama {}x{}, {} Kachel(n) à {} px, {} Stichproben\n", info.w, info.h, tiles.len(), o.u("tile", 512), samples);
+    eprintln!("{}", tr!("Panorama {}x{}, {} Kachel(n) à {} px, {} Stichproben\n", "Panorama {}x{}, {} tile(s) of {} px, {} samples\n", "Panorama {}x{}, {} tuile(s) de {} px, {} échantillons\n", "Panorama {}x{}, {} tesela(s) de {} px, {} muestras\n", info.w, info.h, tiles.len(), o.u("tile", 512), samples));
 
     let nc = model.cfg.n_classes;
     let (mut lmin, mut lmax) = (f32::INFINITY, f32::NEG_INFINITY);
@@ -427,7 +366,7 @@ fn cmd_selfcheck(o: &Opts, input: &str) {
             let (boxes, logits, nq, ncl) = model.run_raw(&chw).unwrap_or_else(|e| fail(e));
             tile_ms.push(t0.elapsed().as_secs_f32() * 1000.0);
             if ncl != nc {
-                fail::<()>(format!("Modell liefert {ncl} Klassen-Logits, runtime.json nennt {nc}"));
+                fail::<()>(tr!("Modell liefert {ncl} Klassen-Logits, runtime.json nennt {nc}", "The model returns {ncl} class logits, runtime.json lists {nc}", "Le modèle renvoie {ncl} logits de classe, runtime.json en indique {nc}", "El modelo devuelve {ncl} logits de clase, runtime.json indica {nc}"));
             }
             for v in &logits {
                 lmin = lmin.min(*v);
@@ -494,14 +433,14 @@ fn cmd_selfcheck(o: &Opts, input: &str) {
         }
         last_frame = Some(frame);
         done += 1;
-        eprintln!("  t={t:6.1}s  Spieler {np:2}  Schiris {nr}  Ball {nb}");
+        eprintln!("{}", tr!("  t={t:6.1}s  Spieler {np:2}  Schiris {nr}  Ball {nb}", "  t={t:6.1}s  players {np:2}  referees {nr}  ball {nb}", "  t={t:6.1}s  joueurs {np:2}  arbitres {nr}  ballon {nb}", "  t={t:6.1}s  jugadores {np:2}  árbitros {nr}  balón {nb}"));
     }
     if done == 0 {
-        fail::<()>("kein Frame lesbar");
+        fail::<()>(trs!("kein Frame lesbar", "no frame could be read", "aucune image lisible", "no se pudo leer ninguna imagen"));
     }
 
-    println!("\n================ Selbsttest ================");
-    println!("Inferenz: {:.0} ms/Kachel (Median) -> {:.0} ms/Bild bei {} Kacheln", median(&mut tile_ms.clone()).unwrap_or(0.0), median(&mut tile_ms.clone()).unwrap_or(0.0) * tiles.len() as f32, tiles.len());
+    println!("{}", trs!("\n================ Selbsttest ================", "\n================ Self-check ================", "\n================ Autotest ================", "\n================ Autocomprobación ================"));
+    println!("{}", tr!("Inferenz: {:.0} ms/Kachel (Median) -> {:.0} ms/Bild bei {} Kacheln", "Inference: {:.0} ms/tile (median) -> {:.0} ms/frame with {} tiles", "Inférence : {:.0} ms/tuile (médiane) -> {:.0} ms/image avec {} tuiles", "Inferencia: {:.0} ms/tesela (mediana) -> {:.0} ms/imagen con {} teselas", median(&mut tile_ms.clone()).unwrap_or(0.0), median(&mut tile_ms.clone()).unwrap_or(0.0) * tiles.len() as f32, tiles.len()));
     if let Some(f) = &last_frame {
         let mut walls = Vec::new();
         for _ in 0..4 {
@@ -510,76 +449,76 @@ fn cmd_selfcheck(o: &Opts, input: &str) {
             walls.push(t0.elapsed().as_secs_f32() * 1000.0);
         }
         walls.remove(0); // first call includes warm-up
-        println!("Wandzeit pro Bild mit {} Worker(n): {:.0} ms (alle {} Kacheln, Median)", model.workers(), median(&mut walls).unwrap_or(0.0), tiles.len());
+        println!("{}", tr!("Wandzeit pro Bild mit {} Worker(n): {:.0} ms (alle {} Kacheln, Median)", "Wall time per frame with {} worker(s): {:.0} ms (all {} tiles, median)", "Temps réel par image avec {} worker(s) : {:.0} ms (les {} tuiles, médiane)", "Tiempo real por imagen con {} worker(s): {:.0} ms (las {} teselas, mediana)", model.workers(), median(&mut walls).unwrap_or(0.0), tiles.len()));
     }
-    println!("Logits: {lmin:.1} … {lmax:.1}   Boxen-Werte: {bmin:.3} … {bmax:.3}");
-    println!("\nKlassen-Index  (laut runtime.json)   Treffer >=0.5   bester Score");
+    println!("{}", tr!("Logits: {lmin:.1} … {lmax:.1}   Boxen-Werte: {bmin:.3} … {bmax:.3}", "Logits: {lmin:.1} … {lmax:.1}   box values: {bmin:.3} … {bmax:.3}", "Logits : {lmin:.1} … {lmax:.1}   valeurs des boîtes : {bmin:.3} … {bmax:.3}", "Logits: {lmin:.1} … {lmax:.1}   valores de los recuadros: {bmin:.3} … {bmax:.3}"));
+    println!("{}", trs!("\nKlassen-Index  (laut runtime.json)   Treffer >=0.5   bester Score", "\nClass index  (from runtime.json)   hits >=0.5   best score", "\nIndice de classe  (selon runtime.json)   détections >=0.5   meilleur score", "\nÍndice de clase  (según runtime.json)   detecciones >=0.5   mejor puntuación"));
     for i in 0..nc {
         println!("  [{i}] {:<10}  {:>12}   {:>7.2}", model.info.classes.get(i).map(|s| s.as_str()).unwrap_or("?"), argmax_hits[i], best_score[i]);
     }
-    println!("\nPro Maßstab (Kachelgröße -> Verkleinerung im Modelleingang):");
+    println!("{}", trs!("\nPro Maßstab (Kachelgröße -> Verkleinerung im Modelleingang):", "\nPer scale (tile size -> reduction in the model input):", "\nPar échelle (taille de tuile -> réduction à l'entrée du modèle) :", "\nPor escala (tamaño de tesela -> reducción en la entrada del modelo):"));
     for (sz, (np, nr, nb, hs)) in &per_scale {
         let mut hs = hs.clone();
         let hp = median(&mut hs).unwrap_or(0.0);
-        println!("  Kachel {sz:>5} px (x{:.2}): Spieler-Treffer {np:>4}, Spielerhöhe im Panorama {hp:>4.0} px = im Modelleingang {:>4.0} px; Schiris {nr}, Ball {nb}", 512.0 / *sz as f32, hp * 512.0 / *sz as f32);
+        println!("{}", tr!("  Kachel {sz:>5} px (x{:.2}): Spieler-Treffer {np:>4}, Spielerhöhe im Panorama {hp:>4.0} px = im Modelleingang {:>4.0} px; Schiris {nr}, Ball {nb}", "  tile {sz:>5} px (x{:.2}): player hits {np:>4}, player height in the panorama {hp:>4.0} px = in the model input {:>4.0} px; referees {nr}, ball {nb}", "  tuile {sz:>5} px (x{:.2}) : joueurs détectés {np:>4}, hauteur des joueurs dans le panorama {hp:>4.0} px = à l'entrée du modèle {:>4.0} px ; arbitres {nr}, ballon {nb}", "  tesela {sz:>5} px (x{:.2}): jugadores detectados {np:>4}, altura de jugador en el panorama {hp:>4.0} px = en la entrada del modelo {:>4.0} px; árbitros {nr}, balón {nb}", 512.0 / *sz as f32, hp * 512.0 / *sz as f32));
     }
     if let Some((sz, (np, ..))) = per_scale.iter().max_by_key(|(_, v)| v.0) {
-        println!("  -> meiste Spieler bei Kachel {sz} px ({np} Treffer).");
+        println!("{}", tr!("  -> meiste Spieler bei Kachel {sz} px ({np} Treffer).", "  -> most players with tile {sz} px ({np} hits).", "  -> le plus de joueurs avec la tuile {sz} px ({np} détections).", "  -> más jugadores con la tesela de {sz} px ({np} detecciones)."));
     }
     let mut pl = players.clone();
     let mut rf = refs.clone();
-    println!("\nPro Bild (Median): Spieler {:.0}, Schiris {:.0}; Ball in {:.0}% der Bilder", median(&mut pl).unwrap_or(0.0), median(&mut rf).unwrap_or(0.0), 100.0 * frames_with_ball as f32 / done as f32);
+    println!("{}", tr!("\nPro Bild (Median): Spieler {:.0}, Schiris {:.0}; Ball in {:.0}% der Bilder", "\nPer frame (median): players {:.0}, referees {:.0}; ball in {:.0}% of the frames", "\nPar image (médiane) : joueurs {:.0}, arbitres {:.0} ; ballon dans {:.0}% des images", "\nPor imagen (mediana): jugadores {:.0}, árbitros {:.0}; balón en el {:.0}% de las imágenes", median(&mut pl).unwrap_or(0.0), median(&mut rf).unwrap_or(0.0), 100.0 * frames_with_ball as f32 / done as f32));
     if let (Some(w), Some(h)) = (median(&mut ball_w.clone()), median(&mut ball_h.clone())) {
-        println!("Ball-Größe im Panorama (Median): {w:.0} x {h:.0} px");
+        println!("{}", tr!("Ball-Größe im Panorama (Median): {w:.0} x {h:.0} px", "Ball size in the panorama (median): {w:.0} x {h:.0} px", "Taille du ballon dans le panorama (médiane) : {w:.0} x {h:.0} px", "Tamaño del balón en el panorama (mediana): {w:.0} x {h:.0} px"));
     }
     if let Some(h) = median(&mut pl_h.clone()) {
-        println!("Spielerhöhe im Panorama (Median): {h:.0} px");
+        println!("{}", tr!("Spielerhöhe im Panorama (Median): {h:.0} px", "Player height in the panorama (median): {h:.0} px", "Hauteur des joueurs dans le panorama (médiane) : {h:.0} px", "Altura de jugador en el panorama (mediana): {h:.0} px"));
     }
     if let Some(m) = median(&mut ball_scores.clone()) {
-        println!("Ball-Scores >= 0.05: Median {m:.2}, {} Kandidaten (Schwelle jetzt {:.2})", ball_scores.len(), model.cfg.thr_ball);
+        println!("{}", tr!("Ball-Scores >= 0.05: Median {m:.2}, {} Kandidaten (Schwelle jetzt {:.2})", "Ball scores >= 0.05: median {m:.2}, {} candidates (threshold now {:.2})", "Scores du ballon >= 0.05 : médiane {m:.2}, {} candidats (seuil actuel {:.2})", "Puntuaciones del balón >= 0.05: mediana {m:.2}, {} candidatos (umbral actual {:.2})", ball_scores.len(), model.cfg.thr_ball));
     }
 
-    println!("\nBewertung:");
+    println!("{}", trs!("\nBewertung:", "\nAssessment:", "\nÉvaluation :", "\nValoración:"));
     let mut warn = false;
     if bmax > 1.5 {
-        println!("  ! Boxen sind nicht auf 0..1 normalisiert (max {bmax:.1}) – vermutlich Pixel (0..{}); Decoder muss durch die Eingangsgröße teilen.", model.size);
+        println!("{}", tr!("  ! Boxen sind nicht auf 0..1 normalisiert (max {bmax:.1}) – vermutlich Pixel (0..{}); Decoder muss durch die Eingangsgröße teilen.", "  ! Boxes are not normalised to 0..1 (max {bmax:.1}) – probably pixels (0..{}); the decoder must divide by the input size.", "  ! Les boîtes ne sont pas normalisées sur 0..1 (max {bmax:.1}) – sans doute des pixels (0..{}) ; le décodeur doit diviser par la taille d'entrée.", "  ! Los recuadros no están normalizados a 0..1 (máx {bmax:.1}) – probablemente píxeles (0..{}); el decodificador debe dividir por el tamaño de entrada.", model.size));
         warn = true;
     } else if bmin < -0.2 {
-        println!("  ! Boxen haben negative Werte ({bmin:.2}) – ggf. anderes Boxformat (xyxy).");
+        println!("{}", tr!("  ! Boxen haben negative Werte ({bmin:.2}) – ggf. anderes Boxformat (xyxy).", "  ! Boxes have negative values ({bmin:.2}) – possibly another box format (xyxy).", "  ! Les boîtes ont des valeurs négatives ({bmin:.2}) – peut-être un autre format (xyxy).", "  ! Los recuadros tienen valores negativos ({bmin:.2}) – quizá otro formato (xyxy)."));
         warn = true;
     } else {
-        println!("  ok Boxen liegen in 0..1 (cx,cy,w,h plausibel).");
+        println!("{}", trs!("  ok Boxen liegen in 0..1 (cx,cy,w,h plausibel).", "  ok Boxes lie in 0..1 (cx,cy,w,h plausible).", "  ok Les boîtes sont dans 0..1 (cx,cy,w,h plausibles).", "  ok Los recuadros están en 0..1 (cx,cy,w,h plausibles)."));
     }
     let total_hits: usize = argmax_hits.iter().sum();
     if total_hits == 0 {
-        println!("  ! Keine einzige Erkennung >= 0.5: Vorverarbeitung (RGB/ImageNet-Normalisierung), --roi oder Kachelgröße prüfen.");
+        println!("{}", trs!("  ! Keine einzige Erkennung >= 0.5: Vorverarbeitung (RGB/ImageNet-Normalisierung), --roi oder Kachelgröße prüfen.", "  ! Not a single detection >= 0.5: check the preprocessing (RGB/ImageNet normalisation), --roi or the tile size.", "  ! Aucune détection >= 0.5 : vérifier le prétraitement (RGB/normalisation ImageNet), --roi ou la taille des tuiles.", "  ! Ninguna detección >= 0.5: revisa el preprocesado (RGB/normalización ImageNet), --roi o el tamaño de tesela."));
         warn = true;
     } else {
         let p_idx = model.info.classes.iter().position(|c| c == "player");
         if let Some(pi) = p_idx {
             let max_i = (0..nc).max_by_key(|&i| argmax_hits[i]).unwrap();
             if max_i != pi {
-                println!("  ! Die meisten Treffer liegen auf Index [{max_i}] ('{}'), nicht auf 'player' [{pi}] – Klassenreihenfolge/Offset prüfen.", model.info.classes.get(max_i).map(|s| s.as_str()).unwrap_or("?"));
+                println!("{}", tr!("  ! Die meisten Treffer liegen auf Index [{max_i}] ('{}'), nicht auf 'player' [{pi}] – Klassenreihenfolge/Offset prüfen.", "  ! Most hits are on index [{max_i}] ('{}'), not on 'player' [{pi}] – check the class order/offset.", "  ! La plupart des détections sont sur l'indice [{max_i}] ('{}'), pas sur 'player' [{pi}] – vérifier l'ordre/le décalage des classes.", "  ! La mayoría de las detecciones están en el índice [{max_i}] ('{}'), no en 'player' [{pi}] – revisa el orden/desplazamiento de las clases.", model.info.classes.get(max_i).map(|s| s.as_str()).unwrap_or("?")));
                 warn = true;
             } else {
-                println!("  ok Die meisten Treffer liegen auf 'player'.");
+                println!("{}", trs!("  ok Die meisten Treffer liegen auf 'player'.", "  ok Most hits are on 'player'.", "  ok La plupart des détections sont sur 'player'.", "  ok La mayoría de las detecciones están en 'player'."));
             }
         }
     }
     let mp = median(&mut pl).unwrap_or(0.0);
     if mp < 6.0 || mp > 16.0 {
-        println!("  ? Spieler pro Bild (Median {mp:.0}) weicht von ~10 ab: --thr-player, --roi, Kachelgröße oder Bildausschnitt prüfen.");
+        println!("{}", tr!("  ? Spieler pro Bild (Median {mp:.0}) weicht von ~10 ab: --thr-player, --roi, Kachelgröße oder Bildausschnitt prüfen.", "  ? Players per frame (median {mp:.0}) is far from the expected number on the field: check --thr-player, --roi, the tile size or the picture area.", "  ? Joueurs par image (médiane {mp:.0}) loin du nombre attendu sur le terrain : vérifier --thr-player, --roi, la taille des tuiles ou le cadrage.", "  ? Jugadores por imagen (mediana {mp:.0}) lejos del número esperado en el campo: revisa --thr-player, --roi, el tamaño de tesela o el encuadre."));
     } else {
-        println!("  ok Spieleranzahl plausibel.");
+        println!("{}", trs!("  ok Spieleranzahl plausibel.", "  ok Number of players plausible.", "  ok Nombre de joueurs plausible.", "  ok Número de jugadores plausible."));
     }
     let rate = frames_with_ball as f32 / done as f32;
     if rate < 0.3 {
-        println!("  ? Ball nur in {:.0}% der Bilder: --thr-ball senken (z.B. 0.2), kleinere --tile / mehr --overlap, oder Ball-Training verbessern.", rate * 100.0);
+        println!("{}", tr!("  ? Ball nur in {:.0}% der Bilder: --thr-ball senken (z.B. 0.2), kleinere --tile / mehr --overlap, oder Ball-Training verbessern.", "  ? Ball in only {:.0}% of the frames: lower --thr-ball (e.g. 0.2), use a smaller --tile / more --overlap, or improve the ball training.", "  ? Ballon dans seulement {:.0}% des images : baisser --thr-ball (p. ex. 0.2), réduire --tile / augmenter --overlap, ou améliorer l'entraînement du ballon.", "  ? Balón solo en el {:.0}% de las imágenes: baja --thr-ball (p. ej. 0.2), usa un --tile menor / más --overlap, o mejora el entrenamiento del balón.", rate * 100.0));
     } else {
-        println!("  ok Ball wird in {:.0}% der Bilder gefunden.", rate * 100.0);
+        println!("{}", tr!("  ok Ball wird in {:.0}% der Bilder gefunden.", "  ok The ball is found in {:.0}% of the frames.", "  ok Le ballon est trouvé dans {:.0}% des images.", "  ok El balón se encuentra en el {:.0}% de las imágenes.", rate * 100.0));
     }
     if !warn {
-        println!("\nAnnahmen bestätigt – weiter mit: reco-minimap calibrate / colors / run");
+        println!("{}", trs!("\nAnnahmen bestätigt – weiter mit: reco-minimap calibrate / colors / run", "\nAssumptions confirmed – continue with: reco-minimap calibrate / colors / run", "\nHypothèses confirmées – continuer avec : reco-minimap calibrate / colors / run", "\nSupuestos confirmados – continúa con: reco-minimap calibrate / colors / run"));
     }
     let _ = std::io::stdout().flush();
 }
@@ -619,7 +558,7 @@ fn cmd_ocr_bench(o: &Opts, manifest: &str) {
         }
         let (path, label) = (f[0], f[1]);
         let group = f.get(2).unwrap_or(&"all").to_string();
-        let (w, h, rgb) = match load_rgb(path) { Some(x) => x, None => { eprintln!("nicht lesbar: {path}"); continue; } };
+        let (w, h, rgb) = match load_rgb(path) { Some(x) => x, None => { eprintln!("{}", tr!("nicht lesbar: {path}", "cannot read: {path}", "illisible : {path}", "no se puede leer: {path}")); continue; } };
         let crop = ocr::localize(w, h, &rgb);
         let e = stats.entry(group).or_default();
         e.0 += 1;
@@ -632,7 +571,7 @@ fn cmd_ocr_bench(o: &Opts, manifest: &str) {
             }
         }
     }
-    println!("{:<12}{:>6}{:>14}{:>14}{:>26}", "Gruppe", "n", "frei richtig", "Kader richtig", "sicher (>=0.8): Anteil/richtig");
+    println!("{:<12}{:>6}{:>14}{:>14}{:>26}", trs!("Gruppe", "group", "groupe", "grupo"), "n", trs!("frei richtig", "free, correct", "libre, correct", "libre, correcto"), trs!("Kader richtig", "roster, correct", "effectif, correct", "plantilla, correcto"), trs!("sicher (>=0.8): Anteil/richtig", "confident (>=0.8): share/correct", "sûr (>=0.8) : part/correct", "seguro (>=0.8): parte/correcto"));
     for (g, (n, free, ros, conf, conf_ok)) in &stats {
         let pc = |a: usize, b: usize| if b == 0 { 0.0 } else { 100.0 * a as f32 / b as f32 };
         println!("{:<12}{:>6}{:>13.0}%{:>13.0}%{:>14.0}% / {:.0}%", g, n, pc(*free, *n), pc(*ros, *n), pc(*conf, *n), pc(*conf_ok, *conf));
@@ -644,10 +583,10 @@ fn cmd_ocr_bench(o: &Opts, manifest: &str) {
 fn cmd_import_model(o: &Opts, input: &str) {
     let to = o.s("to").unwrap_or("models");
     let m = models::import(std::path::Path::new(input), std::path::Path::new(to)).unwrap_or_else(|e| fail(e));
-    println!("Importiert: {} -> {}", m.id, m.dir.display());
-    println!("  Sportart im Modell: {}", m.sport.as_deref().unwrap_or("(nicht angegeben)"));
-    println!("  Klassen: {:?}, Eingabe {}x{}, {:.0} MB", m.classes, m.input_size, m.input_size, m.size_mb);
-    println!("  Prüfsumme: {}", match m.sha { models::Sha::Ok => "stimmt", models::Sha::Bad => "STIMMT NICHT", models::Sha::None => "keine vorhanden" });
+    println!("{}", tr!("Importiert: {} -> {}", "Imported: {} -> {}", "Importé : {} -> {}", "Importado: {} -> {}", m.id, m.dir.display()));
+    println!("{}", tr!("  Sportart im Modell: {}", "  Sport in the model: {}", "  Sport du modèle : {}", "  Deporte del modelo: {}", m.sport.as_deref().unwrap_or(trs!("(nicht angegeben)", "(not stated)", "(non indiqué)", "(no indicado)"))));
+    println!("{}", tr!("  Klassen: {:?}, Eingabe {}x{}, {:.0} MB", "  Classes: {:?}, input {}x{}, {:.0} MB", "  Classes : {:?}, entrée {}x{}, {:.0} Mo", "  Clases: {:?}, entrada {}x{}, {:.0} MB", m.classes, m.input_size, m.input_size, m.size_mb));
+    println!("{}", tr!("  Prüfsumme: {}", "  Checksum: {}", "  Somme de contrôle : {}", "  Suma de comprobación: {}", match m.sha { models::Sha::Ok => trs!("stimmt", "matches", "correcte", "correcta"), models::Sha::Bad => trs!("STIMMT NICHT", "DOES NOT MATCH", "NE CORRESPOND PAS", "NO COINCIDE"), models::Sha::None => trs!("keine vorhanden", "none present", "aucune", "ninguna") }));
 }
 
 // ---------------------------------------------------------------- stats
@@ -666,7 +605,7 @@ fn cmd_stats(o: &Opts, path: &str) {
     let txt = std::fs::read_to_string(path).unwrap_or_else(|e| fail(format!("{path}: {e}")));
     let frames: Vec<serde_json::Value> = txt.lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
     if frames.len() < 2 {
-        fail::<()>("zu wenige Bilder in der Datei");
+        fail::<()>(trs!("zu wenige Bilder in der Datei", "too few frames in the file", "trop peu d'images dans le fichier", "muy pocas imágenes en el archivo"));
     }
     let n = frames.len();
     let (t0, t1) = (frames[0]["t"].as_f64().unwrap_or(0.0), frames[n - 1]["t"].as_f64().unwrap_or(0.0));
@@ -732,40 +671,40 @@ fn cmd_stats(o: &Opts, path: &str) {
         last_state = st;
     }
     let mean = |v: &Vec<f64>| v.iter().sum::<f64>() / v.len().max(1) as f64;
-    println!("================ Lauf-Report ================");
-    println!("{n} Bilder, {:.1} s ({:.1} Bilder/s Ausgabe)", t1 - t0, n as f64 / (t1 - t0).max(1e-6));
-    println!("\nSlots: Heim im Mittel {:.1}, Gast {:.1}; genau 5+5 in {:.0}% der Bilder; 2 Schiris in {:.0}% (Schiris im Mittel {:.1})", mean(&home_n), mean(&away_n), 100.0 * f55 as f64 / n as f64, 100.0 * f2 as f64 / n as f64, mean(&ref_n));
-    println!("Verschiedene Spieler-IDs: Heim {}, Gast {} (ideal 5 + 5; mehr = Slots werden neu vergeben)", ids.get("home").map(|s| s.len()).unwrap_or(0), ids.get("away").map(|s| s.len()).unwrap_or(0));
-    println!("Sichtbar (nicht verdeckt/verloren): {:.0}% der Spieler-Einträge", 100.0 * mean(&vis_frac));
+    println!("{}", trs!("================ Lauf-Report ================", "================ Run report ================", "================ Rapport de traitement ================", "================ Informe del proceso ================"));
+    println!("{}", tr!("{n} Bilder, {:.1} s ({:.1} Bilder/s Ausgabe)", "{n} frames, {:.1} s ({:.1} frames/s output)", "{n} images, {:.1} s ({:.1} images/s en sortie)", "{n} imágenes, {:.1} s ({:.1} imágenes/s de salida)", t1 - t0, n as f64 / (t1 - t0).max(1e-6)));
+    println!("{}", tr!("\nSlots: Heim im Mittel {:.1}, Gast {:.1}; genau 5+5 in {:.0}% der Bilder; 2 Schiris in {:.0}% (Schiris im Mittel {:.1})", "\nSlots: home {:.1} on average, away {:.1}; exactly 5+5 in {:.0}% of the frames; 2 referees in {:.0}% (referees {:.1} on average)", "\nPlaces : domicile {:.1} en moyenne, visiteurs {:.1} ; exactement 5+5 dans {:.0}% des images ; 2 arbitres dans {:.0}% (arbitres {:.1} en moyenne)", "\nPuestos: local {:.1} de media, visitante {:.1}; exactamente 5+5 en el {:.0}% de las imágenes; 2 árbitros en el {:.0}% (árbitros {:.1} de media)", mean(&home_n), mean(&away_n), 100.0 * f55 as f64 / n as f64, 100.0 * f2 as f64 / n as f64, mean(&ref_n)));
+    println!("{}", tr!("Verschiedene Spieler-IDs: Heim {}, Gast {} (ideal 5 + 5; mehr = Slots werden neu vergeben)", "Distinct player IDs: home {}, away {} (ideal 5 + 5; more = slots are being re-assigned)", "Identifiants de joueurs distincts : domicile {}, visiteurs {} (idéal 5 + 5 ; davantage = des places sont réattribuées)", "IDs de jugador distintos: local {}, visitante {} (ideal 5 + 5; más = los puestos se reasignan)", ids.get("home").map(|s| s.len()).unwrap_or(0), ids.get("away").map(|s| s.len()).unwrap_or(0)));
+    println!("{}", tr!("Sichtbar (nicht verdeckt/verloren): {:.0}% der Spieler-Einträge", "Visible (not hidden/lost): {:.0}% of the player entries", "Visibles (ni masqués ni perdus) : {:.0}% des entrées de joueurs", "Visibles (ni ocultos ni perdidos): {:.0}% de las entradas de jugador", 100.0 * mean(&vis_frac)));
     let mut sp = speeds.clone();
-    println!("Geschwindigkeit der Punkte: Median {:.1} m/s, 99% {:.1} m/s, max {:.1} m/s; Schritte an der Tempogrenze (>= 11 m/s): {jumps} von {} ({:.1}%); außerhalb des Felds: {outside}", pct(&mut sp, 0.5), pct(&mut sp, 0.99), pct(&mut sp, 1.0), speeds.len(), 100.0 * jumps as f64 / speeds.len().max(1) as f64);
+    println!("{}", tr!("Geschwindigkeit der Punkte: Median {:.1} m/s, 99% {:.1} m/s, max {:.1} m/s; Schritte an der Tempogrenze (>= 11 m/s): {jumps} von {} ({:.1}%); außerhalb des Felds: {outside}", "Speed of the dots: median {:.1} m/s, 99% {:.1} m/s, max {:.1} m/s; steps at the speed limit (>= 11 m/s): {jumps} of {} ({:.1}%); outside the field: {outside}", "Vitesse des points : médiane {:.1} m/s, 99% {:.1} m/s, max {:.1} m/s ; pas à la vitesse limite (>= 11 m/s) : {jumps} sur {} ({:.1}%) ; hors du terrain : {outside}", "Velocidad de los puntos: mediana {:.1} m/s, 99% {:.1} m/s, máx {:.1} m/s; pasos en el límite de velocidad (>= 11 m/s): {jumps} de {} ({:.1}%); fuera del campo: {outside}", pct(&mut sp, 0.5), pct(&mut sp, 0.99), pct(&mut sp, 1.0), speeds.len(), 100.0 * jumps as f64 / speeds.len().max(1) as f64));
     let tot: usize = ball_states.values().sum();
     let g = |k: &str| 100.0 * *ball_states.get(k).unwrap_or(&0) as f64 / tot as f64;
-    println!("Ball: gehalten {:.0}%, Flug {:.0}%, frei {:.0}%, unbekannt {:.0}%; {flights} Flugphasen, {switches} Ballhalter-Wechsel", g("held"), g("flight"), g("loose"), g("unknown"));
+    println!("{}", tr!("Ball: gehalten {:.0}%, Flug {:.0}%, frei {:.0}%, unbekannt {:.0}%; {flights} Flugphasen, {switches} Ballhalter-Wechsel", "Ball: held {:.0}%, in flight {:.0}%, loose {:.0}%, unknown {:.0}%; {flights} flight phases, {switches} changes of ball holder", "Ballon : tenu {:.0}%, en vol {:.0}%, libre {:.0}%, inconnu {:.0}% ; {flights} phases de vol, {switches} changements de porteur", "Balón: retenido {:.0}%, en vuelo {:.0}%, suelto {:.0}%, desconocido {:.0}%; {flights} fases de vuelo, {switches} cambios de poseedor", g("held"), g("flight"), g("loose"), g("unknown")));
     let mut sub_lines = Vec::new();
     for f in &frames {
         for e in f["events"].as_array().into_iter().flatten().filter(|e| e["type"] == "sub") {
             let n = |k: &str| e[k].as_u64().map(|x| format!("#{x}")).unwrap_or_else(|| "?".into());
-            sub_lines.push(format!("  {} {} {}: {} -> {}", fmt_clock(e["t"].as_f64().unwrap_or(0.0)), if e["kind"] == "confirmed" { "Wechsel" } else { "möglicher Wechsel" }, e["team"].as_str().unwrap_or(""), n("out"), n("in")));
+            sub_lines.push(format!("  {} {} {}: {} -> {}", fmt_clock(e["t"].as_f64().unwrap_or(0.0)), if e["kind"] == "confirmed" { trs!("Wechsel", "substitution", "changement", "cambio") } else { trs!("möglicher Wechsel", "possible substitution", "changement possible", "posible cambio") }, e["team"].as_str().unwrap_or(""), n("out"), n("in")));
         }
     }
     let mut scene_lines = Vec::new();
     for f in &frames {
         for e in f["events"].as_array().into_iter().flatten().filter(|e| e["type"] == "scene") {
-            scene_lines.push(format!("  {} {} {} {} (Sicherheit {:.2}){}", fmt_clock(e["t"].as_f64().unwrap_or(0.0)), e["kind"].as_str().unwrap_or(""), e["team"].as_str().unwrap_or(""), e["side"].as_str().unwrap_or(""), e["confidence"].as_f64().unwrap_or(0.0), if e["borderline"] == true { " knapp an der Linie" } else { "" }));
+            scene_lines.push(tr!("  {} {} {} {} (Sicherheit {:.2}){}", "  {} {} {} {} (confidence {:.2}){}", "  {} {} {} {} (confiance {:.2}){}", "  {} {} {} {} (confianza {:.2}){}", fmt_clock(e["t"].as_f64().unwrap_or(0.0)), e["kind"].as_str().unwrap_or(""), e["team"].as_str().unwrap_or(""), e["side"].as_str().unwrap_or(""), e["confidence"].as_f64().unwrap_or(0.0), if e["borderline"] == true { trs!(" knapp an der Linie", " close to the line", " près de la ligne", " cerca de la línea") } else { "" }));
         }
     }
     if !scene_lines.is_empty() {
-        println!("Situationen: {} Einträge\n{}", scene_lines.len(), scene_lines.join("\n"));
+        println!("{}", tr!("Situationen: {} Einträge\n{}", "Situations: {} entries\n{}", "Situations : {} entrées\n{}", "Situaciones: {} entradas\n{}", scene_lines.len(), scene_lines.join("\n")));
     }
-    println!("Wechsel: {} Einträge{}", sub_lines.len(), if sub_lines.is_empty() { String::new() } else { format!("\n{}", sub_lines.join("\n")) });
-    println!("\nBewertung:");
+    println!("{}", tr!("Wechsel: {} Einträge{}", "Substitutions: {} entries{}", "Changements : {} entrées{}", "Cambios: {} entradas{}", sub_lines.len(), if sub_lines.is_empty() { String::new() } else { format!("\n{}", sub_lines.join("\n")) }));
+    println!("{}", trs!("\nBewertung:", "\nAssessment:", "\nÉvaluation :", "\nValoración:"));
     let ok = |c: bool, m: &str| println!("  {} {m}", if c { "ok" } else { "!" });
-    ok(f55 as f64 / n as f64 > 0.6, "5+5 Spieler meist vollständig");
-    ok(ids.get("home").map(|s| s.len()).unwrap_or(0) <= 8 && ids.get("away").map(|s| s.len()).unwrap_or(0) <= 8, "wenig Slot-Wechsel (IDs <= 8 je Team)");
-    ok((jumps as f64) < 0.03 * speeds.len().max(1) as f64, "wenige Schritte an der Tempogrenze (< 3%)");
-    ok(f2 as f64 / n as f64 > 0.5, "Schiris meist erkannt");
-    ok(g("unknown") < 40.0, "Ball seltener als 40% unbekannt");
+    ok(f55 as f64 / n as f64 > 0.6, trs!("5+5 Spieler meist vollständig", "5+5 players mostly complete", "5+5 joueurs le plus souvent au complet", "5+5 jugadores casi siempre completos"));
+    ok(ids.get("home").map(|s| s.len()).unwrap_or(0) <= 8 && ids.get("away").map(|s| s.len()).unwrap_or(0) <= 8, trs!("wenig Slot-Wechsel (IDs <= 8 je Team)", "few slot changes (IDs <= 8 per team)", "peu de changements de place (identifiants <= 8 par équipe)", "pocos cambios de puesto (IDs <= 8 por equipo)"));
+    ok((jumps as f64) < 0.03 * speeds.len().max(1) as f64, trs!("wenige Schritte an der Tempogrenze (< 3%)", "few steps at the speed limit (< 3%)", "peu de pas à la vitesse limite (< 3%)", "pocos pasos en el límite de velocidad (< 3%)"));
+    ok(f2 as f64 / n as f64 > 0.5, trs!("Schiris meist erkannt", "referees mostly found", "arbitres le plus souvent trouvés", "árbitros casi siempre detectados"));
+    ok(g("unknown") < 40.0, trs!("Ball seltener als 40% unbekannt", "ball unknown less than 40% of the time", "ballon inconnu moins de 40% du temps", "balón desconocido menos del 40% del tiempo"));
 }
 
 // ---------------------------------------------------------------- scales
@@ -782,7 +721,7 @@ fn cmd_scales(o: &Opts, input: &str) {
     let court = o.s("court").map(|p| CourtCalib::load(p).unwrap_or_else(|e| fail(e)));
     let field = court.as_ref().map(|c| c.profile().field).unwrap_or(Field::basketball());
     let projector = court.as_ref().and_then(|c| c.projector());
-    eprintln!("Messe Spielerhöhe über {} Kacheln (4 Maßstäbe) …", tiles.len());
+    eprintln!("{}", tr!("Messe Spielerhöhe über {} Kacheln (4 Maßstäbe) …", "Measuring player height over {} tiles (4 scales) …", "Mesure de la hauteur des joueurs sur {} tuiles (4 échelles) …", "Midiendo la altura de los jugadores en {} teselas (4 escalas) …", tiles.len()));
     let mut pts: Vec<(f32, f32)> = Vec::new();
     for (i, frame) in sample_frames(o, input, &info).iter().enumerate() {
         let dets = model.detect(frame, &tiles).unwrap_or_else(|e| fail(e));
@@ -796,11 +735,11 @@ fn cmd_scales(o: &Opts, input: &str) {
             }
             pts.push((v * frame.h as f32, d.h * frame.h as f32));
         }
-        eprint!("\r  Stichprobe {}…  {} Messpunkte", i + 1, pts.len());
+        eprint!("{}", tr!("\r  Stichprobe {}…  {} Messpunkte", "\r  sample {}…  {} measurements", "\r  échantillon {}…  {} mesures", "\r  muestra {}…  {} mediciones", i + 1, pts.len()));
     }
     eprintln!();
     if pts.len() < 20 {
-        fail::<()>(format!("nur {} Messpunkte – mehr --samples oder --court weglassen", pts.len()));
+        fail::<()>(tr!("nur {} Messpunkte – mehr --samples oder --court weglassen", "only {} measurements – use more --samples or leave out --court", "seulement {} mesures – augmenter --samples ou retirer --court", "solo {} mediciones – usa más --samples o quita --court", pts.len()));
     }
     // y range: court corners if known, else detection extents (3rd..99th percentile)
     let (mut y_min, mut y_max) = if let Some(c) = &court {
@@ -813,18 +752,18 @@ fn cmd_scales(o: &Opts, input: &str) {
     };
     y_min = (y_min - 0.02 * info.h as f32).max(0.0);
     y_max = (y_max + 0.02 * info.h as f32).min(info.h as f32);
-    let sc = Scales::fit(&pts, y_min, y_max, target).unwrap_or_else(|| fail("Anpassung fehlgeschlagen"));
-    println!("\nSpielerhöhe im Panorama h(y) = {:.1} + {:.4}*y   ({} Messpunkte)", sc.a, sc.b, sc.n);
-    println!("Feld-Bereich y = {:.0} … {:.0} px; Ziel: Spieler {:.0} px hoch im Modelleingang", sc.y_min, sc.y_max, sc.target_px);
+    let sc = Scales::fit(&pts, y_min, y_max, target).unwrap_or_else(|| fail(trs!("Anpassung fehlgeschlagen", "the fit failed", "l'ajustement a échoué", "el ajuste ha fallado")));
+    println!("{}", tr!("\nSpielerhöhe im Panorama h(y) = {:.1} + {:.4}*y   ({} Messpunkte)", "\nPlayer height in the panorama h(y) = {:.1} + {:.4}*y   ({} measurements)", "\nHauteur des joueurs dans le panorama h(y) = {:.1} + {:.4}*y   ({} mesures)", "\nAltura de jugador en el panorama h(y) = {:.1} + {:.4}*y   ({} mediciones)", sc.a, sc.b, sc.n));
+    println!("{}", tr!("Feld-Bereich y = {:.0} … {:.0} px; Ziel: Spieler {:.0} px hoch im Modelleingang", "Field rows y = {:.0} … {:.0} px; target: players {:.0} px tall in the model input", "Lignes du terrain y = {:.0} … {:.0} px ; cible : joueurs de {:.0} px de haut à l'entrée du modèle", "Filas del campo y = {:.0} … {:.0} px; objetivo: jugadores de {:.0} px de alto en la entrada del modelo", sc.y_min, sc.y_max, sc.target_px));
     for k in 0..=4 {
         let y = sc.y_min + (sc.y_max - sc.y_min) * k as f32 / 4.0;
-        println!("  y={y:>5.0}: Spieler ~{:>3.0} px -> Kachel {:>4.0} px", sc.height_at(y), sc.tile_at(y));
+        println!("{}", tr!("  y={y:>5.0}: Spieler ~{:>3.0} px -> Kachel {:>4.0} px", "  y={y:>5.0}: players ~{:>3.0} px -> tile {:>4.0} px", "  y={y:>5.0} : joueurs ~{:>3.0} px -> tuile {:>4.0} px", "  y={y:>5.0}: jugadores ~{:>3.0} px -> tesela {:>4.0} px", sc.height_at(y), sc.tile_at(y)));
     }
     let auto = plan_auto(&sc, info.w, info.h, o.f("overlap", 0.25) as f32);
-    println!("\n--tile auto = {} Kacheln pro Bild (statt {} im Raster).", auto.len(), tiles.len());
+    println!("{}", tr!("\n--tile auto = {} Kacheln pro Bild (statt {} im Raster).", "\n--tile auto = {} tiles per frame (instead of {} in the grid).", "\n--tile auto = {} tuiles par image (au lieu de {} en grille).", "\n--tile auto = {} teselas por imagen (en lugar de {} en la cuadrícula).", auto.len(), tiles.len()));
     let out = o.s("out").unwrap_or("scales.json");
     std::fs::write(out, serde_json::to_string_pretty(&sc.to_json()).unwrap()).unwrap_or_else(|e| fail(e));
-    println!("gespeichert: {out}  ->  danach z.B. `selfcheck … --tile auto`");
+    println!("{}", tr!("gespeichert: {out}  ->  danach z.B. `selfcheck … --tile auto`", "saved: {out}  ->  next e.g. `selfcheck … --tile auto`", "enregistré : {out}  ->  ensuite p. ex. `selfcheck … --tile auto`", "guardado: {out}  ->  después p. ej. `selfcheck … --tile auto`"));
 }
 
 // ---------------------------------------------------------------- colors
@@ -842,9 +781,9 @@ fn cmd_colors(o: &Opts, input: &str) {
     let tiles = plan(o, &info);
     let court_loaded = o.s("court").map(|p| load_court(p));
     let field = court_loaded.as_ref().map(|c| c.1.field).unwrap_or(Field::basketball());
-    let projector = court_loaded.as_ref().map(|c| c.0.projector().unwrap_or_else(|| fail("court.json: Homographie nicht lösbar")));
+    let projector = court_loaded.as_ref().map(|c| c.0.projector().unwrap_or_else(|| fail(trs!("court.json: Homographie nicht lösbar", "court.json: the homography cannot be solved", "court.json : l'homographie ne peut pas être résolue", "court.json: no se puede resolver la homografía"))));
     if projector.is_none() {
-        eprintln!("Hinweis: ohne --court werden auch Zuschauer/Bank mitgezählt. Besser erst `calibrate` und dann --court court.json.");
+        eprintln!("{}", trs!("Hinweis: ohne --court werden auch Zuschauer/Bank mitgezählt. Besser erst `calibrate` und dann --court court.json.", "Note: without --court, spectators and the bench are counted too. Better run `calibrate` first and then pass --court court.json.", "Remarque : sans --court, les spectateurs et le banc sont aussi comptés. Mieux vaut lancer `calibrate` puis passer --court court.json.", "Nota: sin --court también se cuentan espectadores y banquillo. Mejor ejecuta antes `calibrate` y pasa --court court.json."));
     }
     let mut samples: Vec<[u8; 3]> = Vec::new();
     for (i, frame) in sample_frames(o, input, &info).iter().enumerate() {
@@ -861,28 +800,28 @@ fn cmd_colors(o: &Opts, input: &str) {
                 samples.push(c);
             }
         }
-        eprint!("\r  Stichprobe {}…  {} Farbproben", i + 1, samples.len());
+        eprint!("{}", tr!("\r  Stichprobe {}…  {} Farbproben", "\r  sample {}…  {} colour samples", "\r  échantillon {}…  {} échantillons de couleur", "\r  muestra {}…  {} muestras de color", i + 1, samples.len()));
     }
     eprintln!();
     use std::io::IsTerminal;
     let tty = std::io::stdout().is_terminal();
     let swatch = |c: [u8; 3]| if tty { format!("\x1b[48;2;{};{};{}m      \x1b[0m  ", c[0], c[1], c[2]) } else { String::new() };
     if samples.len() < 6 {
-        fail::<()>("zu wenige Farbproben – andere --samples/--roi oder --thr-player senken");
+        fail::<()>(trs!("zu wenige Farbproben – andere --samples/--roi oder --thr-player senken", "too few colour samples – change --samples/--roi or lower --thr-player", "trop peu d'échantillons de couleur – changer --samples/--roi ou baisser --thr-player", "muy pocas muestras de color – cambia --samples/--roi o baja --thr-player"));
     }
     let clusters = kmeans(&samples, 3);
-    println!("\nHäufigste Farbgruppen (Anteil an {} Proben):", samples.len());
+    println!("{}", tr!("\nHäufigste Farbgruppen (Anteil an {} Proben):", "\nMost frequent colour groups (share of {} samples):", "\nGroupes de couleur les plus fréquents (part de {} échantillons) :", "\nGrupos de color más frecuentes (parte de {} muestras):", samples.len()));
     for (i, c) in clusters.iter().enumerate() {
         println!("  {}  {}{}   {:.0}%", i + 1, swatch(c.rgb), hex(c.rgb), 100.0 * c.count as f32 / samples.len() as f32);
     }
-    let (ca, cb, dist) = pick_teams(&samples).unwrap_or_else(|| fail("zu wenige Farbproben für zwei Teams"));
-    println!("\nZwei Teams (Zweiteilung, gleiche Farbe bei unterschiedlichem Licht bleibt ein Team):");
-    println!("  A: {}{}  ({} Proben)    B: {}{}  ({} Proben)    Abstand {:.0}", swatch(ca.rgb), hex(ca.rgb), ca.count, swatch(cb.rgb), hex(cb.rgb), cb.count, dist);
+    let (ca, cb, dist) = pick_teams(&samples).unwrap_or_else(|| fail(trs!("zu wenige Farbproben für zwei Teams", "too few colour samples for two teams", "trop peu d'échantillons de couleur pour deux équipes", "muy pocas muestras de color para dos equipos")));
+    println!("{}", trs!("\nZwei Teams (Zweiteilung, gleiche Farbe bei unterschiedlichem Licht bleibt ein Team):", "\nTwo teams (split in two; the same colour in different light stays one team):", "\nDeux équipes (partage en deux ; une même couleur sous des éclairages différents reste une équipe) :", "\nDos equipos (división en dos; el mismo color con distinta luz sigue siendo un equipo):"));
+    println!("{}", tr!("  A: {}{}  ({} Proben)    B: {}{}  ({} Proben)    Abstand {:.0}", "  A: {}{}  ({} samples)    B: {}{}  ({} samples)    distance {:.0}", "  A : {}{}  ({} échantillons)    B : {}{}  ({} échantillons)    distance {:.0}", "  A: {}{}  ({} muestras)    B: {}{}  ({} muestras)    distancia {:.0}", swatch(ca.rgb), hex(ca.rgb), ca.count, swatch(cb.rgb), hex(cb.rgb), cb.count, dist));
     if dist < 10.0 {
-        fail::<()>(format!("die zwei Teams sind farblich praktisch nicht unterscheidbar (Abstand {dist:.0}); in der Oberfläche die Farben von Hand setzen"));
+        fail::<()>(tr!("die zwei Teams sind farblich praktisch nicht unterscheidbar (Abstand {dist:.0}); in der Oberfläche die Farben von Hand setzen", "the two teams can hardly be told apart by colour (distance {dist:.0}); set the colours by hand in the interface", "les deux équipes sont presque impossibles à distinguer par la couleur (distance {dist:.0}) ; régler les couleurs à la main dans l'interface", "los dos equipos apenas se distinguen por el color (distancia {dist:.0}); ajusta los colores a mano en la interfaz"));
     }
     if dist < 22.0 {
-        println!("  ! Die Farben sind sich ähnlich (Abstand {dist:.0}) – bitte prüfen und bei Bedarf von Hand anpassen.");
+        println!("{}", tr!("  ! Die Farben sind sich ähnlich (Abstand {dist:.0}) – bitte prüfen und bei Bedarf von Hand anpassen.", "  ! The colours are similar (distance {dist:.0}) – please check and adjust by hand if needed.", "  ! Les couleurs sont proches (distance {dist:.0}) – à vérifier et à ajuster à la main si besoin.", "  ! Los colores se parecen (distancia {dist:.0}) – revísalos y ajústalos a mano si hace falta."));
     }
     let (a, b) = (ca.rgb, cb.rgb);
     let (home, away) = match o.s("home-hint").and_then(parse_hex) {
@@ -892,9 +831,9 @@ fn cmd_colors(o: &Opts, input: &str) {
     let out = o.s("out").unwrap_or("teams.json");
     let v = serde_json::json!({"home": hex(home), "away": hex(away)});
     std::fs::write(out, serde_json::to_string_pretty(&v).unwrap()).unwrap_or_else(|e| fail(e));
-    println!("\nHeim {}  /  Gast {}  -> {out}", hex(home), hex(away));
+    println!("{}", tr!("\nHeim {}  /  Gast {}  -> {out}", "\nHome {}  /  away {}  -> {out}", "\nDomicile {}  /  visiteurs {}  -> {out}", "\nLocal {}  /  visitante {}  -> {out}", hex(home), hex(away)));
     if o.s("home-hint").is_none() {
-        println!("(Heim/Gast sind nach Häufigkeit zugeordnet. Mit --home-hint #rrggbb festlegen, welche Farbe 'Heim' ist, oder in {out} tauschen.)");
+        println!("{}", tr!("(Heim/Gast sind nach Häufigkeit zugeordnet. Mit --home-hint #rrggbb festlegen, welche Farbe 'Heim' ist, oder in {out} tauschen.)", "(Home/away are assigned by frequency. Use --home-hint #rrggbb to say which colour is 'home', or swap them in {out}.)", "(Domicile/visiteurs sont attribués selon la fréquence. Utiliser --home-hint #rrggbb pour indiquer la couleur « domicile », ou les échanger dans {out}.)", "(Local/visitante se asignan por frecuencia. Usa --home-hint #rrggbb para indicar qué color es 'local', o intercámbialos en {out}.)"));
     }
 }
 
@@ -920,7 +859,7 @@ fn numbers_setup(o: &Opts, mcfg: &mut Config) -> Option<Numbers> {
     }
     let path = o.s("ocr-model").map(std::path::PathBuf::from).unwrap_or_else(ocr::default_model_path);
     let reader = NumberReader::load(&path).unwrap_or_else(|e| fail(e));
-    eprintln!("Trikotnummern: an (Kader Heim {:?}, Gast {:?}; leer = freie Erkennung)", mcfg.roster_home, mcfg.roster_away);
+    eprintln!("{}", tr!("Trikotnummern: an (Kader Heim {:?}, Gast {:?}; leer = freie Erkennung)", "Jersey numbers: on (roster home {:?}, away {:?}; empty = free reading)", "Numéros de maillot : activés (effectif domicile {:?}, visiteurs {:?} ; vide = lecture libre)", "Dorsales: activados (plantilla local {:?}, visitante {:?}; vacío = lectura libre)", mcfg.roster_home, mcfg.roster_away));
     Some(Numbers { reader, min_h: o.f("ocr-min-h", 45.0) as f32, max_reads: o.u("ocr-max", 4), tick: 0, tries: 0, accepted: 0, heights: Vec::new() })
 }
 
@@ -967,25 +906,25 @@ fn scene_json(e: &SceneEvent) -> serde_json::Value {
 
 fn scene_name(kind: SceneKind, sport: &str) -> &'static str {
     match (kind, sport) {
-        (SceneKind::TipOff, _) => "Sprungball/Startball",
-        (SceneKind::Kickoff, "handball") => "Anwurf",
-        (SceneKind::Kickoff, _) => "Anstoß",
-        (SceneKind::FreeThrow, _) => "Freiwurf",
-        (SceneKind::ThrowIn, "basketball") => "Einwurf (Inbound)",
-        (SceneKind::ThrowIn, _) => "Einwurf",
-        (SceneKind::Corner, _) => "Ecke",
-        (SceneKind::Penalty, _) => "Elfmeter/Strafstoß",
-        (SceneKind::SevenMeter, _) => "7-Meter",
-        (SceneKind::ShotTwo, _) => "Wurfversuch 2 Punkte",
-        (SceneKind::ShotThree, _) => "Wurfversuch 3 Punkte",
+        (SceneKind::TipOff, _) => trs!("Sprungball/Startball", "tip-off", "entre-deux", "salto inicial"),
+        (SceneKind::Kickoff, "handball") => trs!("Anwurf", "throw-off", "engagement", "saque de centro"),
+        (SceneKind::Kickoff, _) => trs!("Anstoß", "kick-off", "coup d'envoi", "saque inicial"),
+        (SceneKind::FreeThrow, _) => trs!("Freiwurf", "free throw", "lancer franc", "tiro libre"),
+        (SceneKind::ThrowIn, "basketball") => trs!("Einwurf (Inbound)", "throw-in (inbound)", "remise en jeu", "saque de banda"),
+        (SceneKind::ThrowIn, _) => trs!("Einwurf", "throw-in", "touche", "saque de banda"),
+        (SceneKind::Corner, _) => trs!("Ecke", "corner", "corner", "córner"),
+        (SceneKind::Penalty, _) => trs!("Elfmeter/Strafstoß", "penalty", "penalty", "penalti"),
+        (SceneKind::SevenMeter, _) => trs!("7-Meter", "7 m throw", "jet de 7 m", "lanzamiento de 7 m"),
+        (SceneKind::ShotTwo, _) => trs!("Wurfversuch 2 Punkte", "2-point attempt", "tir à 2 points", "tiro de 2 puntos"),
+        (SceneKind::ShotThree, _) => trs!("Wurfversuch 3 Punkte", "3-point attempt", "tir à 3 points", "tiro de 3 puntos"),
     }
 }
 
 fn log_scenes(sc: &[SceneEvent], sport: &str) {
     for e in sc {
-        let side = match e.side { Some('l') => " links", Some('r') => " rechts", _ => "" };
+        let side = match e.side { Some('l') => trs!(" links", " left", " à gauche", " izquierda"), Some('r') => trs!(" rechts", " right", " à droite", " derecha"), _ => "" };
         let team = match e.team { Some(t) => format!(" ({})", team_name(t)), None => String::new() };
-        eprintln!("\n  SITUATION {}{}{} bei {}  (Sicherheit {:.2}{})", scene_name(e.kind, sport), side, team, fmt_clock(e.t), e.confidence, if e.borderline { ", knapp an der Linie" } else { "" });
+        eprintln!("{}", tr!("\n  SITUATION {}{}{} bei {}  (Sicherheit {:.2}{})", "\n  SITUATION {}{}{} at {}  (confidence {:.2}{})", "\n  SITUATION {}{}{} à {}  (confiance {:.2}{})", "\n  SITUACIÓN {}{}{} en {}  (confianza {:.2}{})", scene_name(e.kind, sport), side, team, fmt_clock(e.t), e.confidence, if e.borderline { trs!(", knapp an der Linie", ", close to the line", ", près de la ligne", ", cerca de la línea") } else { "" }));
     }
 }
 
@@ -995,15 +934,15 @@ fn fmt_clock(t: f64) -> String {
 }
 
 fn team_name(t: Team) -> &'static str {
-    match t { Team::Home => "Heim", Team::Away => "Gast", Team::Unknown => "?" }
+    match t { Team::Home => trs!("Heim", "home", "domicile", "local"), Team::Away => trs!("Gast", "away", "visiteurs", "visitante"), Team::Unknown => "?" }
 }
 
 fn log_events(events: &[reco_minimap::SubEvent]) {
     let num = |n: Option<u8>| n.map(|x| format!("#{x}")).unwrap_or_else(|| "?".into());
     for e in events {
         match e.kind {
-            reco_minimap::SubKind::Confirmed => eprintln!("\n  WECHSEL {} bei {}: {} -> {} (Platz {})", team_name(e.team), fmt_clock(e.t), num(e.out_number), num(e.in_number), e.slot),
-            reco_minimap::SubKind::Possible => eprintln!("\n  möglicher Wechsel {} bei {}: {} verlässt das Feld, jemand kommt am Rand (Platz {})", team_name(e.team), fmt_clock(e.t), num(e.out_number), e.slot),
+            reco_minimap::SubKind::Confirmed => eprintln!("{}", tr!("\n  WECHSEL {} bei {}: {} -> {} (Platz {})", "\n  SUBSTITUTION {} at {}: {} -> {} (slot {})", "\n  CHANGEMENT {} à {} : {} -> {} (place {})", "\n  CAMBIO {} en {}: {} -> {} (puesto {})", team_name(e.team), fmt_clock(e.t), num(e.out_number), num(e.in_number), e.slot)),
+            reco_minimap::SubKind::Possible => eprintln!("{}", tr!("\n  möglicher Wechsel {} bei {}: {} verlässt das Feld, jemand kommt am Rand (Platz {})", "\n  possible substitution {} at {}: {} leaves the field, someone enters at the sideline (slot {})", "\n  changement possible {} à {} : {} quitte le terrain, quelqu'un entre par la touche (place {})", "\n  posible cambio {} en {}: {} sale del campo, alguien entra por la banda (puesto {})", team_name(e.team), fmt_clock(e.t), num(e.out_number), e.slot)),
         }
     }
 }
@@ -1012,19 +951,19 @@ fn numbers_summary(nm: &Numbers, mm: &Minimap) {
     let tr = mm.tracker().tracks();
     let known = |team: Team| tr.iter().filter(|x| !x.referee && x.team == team && x.confirmed.is_some()).count();
     let list = |team: Team| tr.iter().filter(|x| !x.referee && x.team == team).map(|x| x.confirmed.map(|n| format!("#{n}")).unwrap_or_else(|| "?".into())).collect::<Vec<_>>().join(" ");
-    eprintln!("Trikotnummern: {} Leseversuche, {} angenommen; bestätigt Heim {} / Gast {} ({} | {})", nm.tries, nm.accepted, known(Team::Home), known(Team::Away), list(Team::Home), list(Team::Away));
+    eprintln!("{}", tr!("Trikotnummern: {} Leseversuche, {} angenommen; bestätigt Heim {} / Gast {} ({} | {})", "Jersey numbers: {} reading attempts, {} accepted; confirmed home {} / away {} ({} | {})", "Numéros de maillot : {} tentatives de lecture, {} acceptées ; confirmés domicile {} / visiteurs {} ({} | {})", "Dorsales: {} intentos de lectura, {} aceptados; confirmados local {} / visitante {} ({} | {})", nm.tries, nm.accepted, known(Team::Home), known(Team::Away), list(Team::Home), list(Team::Away)));
     let mut hs = nm.heights.clone();
     if let Some(med) = median(&mut hs) {
         let q75 = { hs.sort_by(|a, b| a.partial_cmp(b).unwrap()); hs[(hs.len() * 3 / 4).min(hs.len() - 1)] };
-        eprintln!("Spielerhöhe in der Nummern-Quelle: Median {med:.0} px, obere 25 % ab {q75:.0} px -> Ziffern etwa {:.0} px bzw. {:.0} px hoch (lesbar ab ca. 10 px)", med * 0.12, q75 * 0.12);
+        eprintln!("{}", tr!("Spielerhöhe in der Nummern-Quelle: Median {med:.0} px, obere 25 % ab {q75:.0} px -> Ziffern etwa {:.0} px bzw. {:.0} px hoch (lesbar ab ca. 10 px)", "Player height in the number source: median {med:.0} px, top 25 % from {q75:.0} px -> digits about {:.0} px and {:.0} px tall (readable from about 10 px)", "Hauteur des joueurs dans la source des numéros : médiane {med:.0} px, les 25 % les plus grands à partir de {q75:.0} px -> chiffres d'environ {:.0} px et {:.0} px de haut (lisibles à partir d'environ 10 px)", "Altura de jugador en la fuente de dorsales: mediana {med:.0} px, 25 % superior desde {q75:.0} px -> cifras de unos {:.0} px y {:.0} px de alto (legibles desde unos 10 px)", med * 0.12, q75 * 0.12));
         if q75 * 0.12 < 9.0 {
-            eprintln!("  ! Auch die nahen Spieler sind für Nummern zu klein: ein höher aufgelöstes Panorama mit --hires verwenden (Spieler ab ca. 80 px Höhe).");
+            eprintln!("{}", trs!("  ! Auch die nahen Spieler sind für Nummern zu klein: ein höher aufgelöstes Panorama mit --hires verwenden (Spieler ab ca. 80 px Höhe).", "  ! Even the near players are too small for numbers: use a higher-resolution panorama with --hires (players of about 80 px or more).", "  ! Même les joueurs proches sont trop petits pour les numéros : utiliser un panorama de plus haute résolution avec --hires (joueurs d'environ 80 px ou plus).", "  ! Incluso los jugadores cercanos son demasiado pequeños para los dorsales: usa un panorama de mayor resolución con --hires (jugadores de unos 80 px o más)."));
         } else if med * 0.12 < 9.0 {
-            eprintln!("  ! Nur die nahen Spieler sind groß genug; Nummern der entfernten Spieler kommen nur, wenn sie nah an der Kamera vorbeilaufen (oder mit --hires).");
+            eprintln!("{}", trs!("  ! Nur die nahen Spieler sind groß genug; Nummern der entfernten Spieler kommen nur, wenn sie nah an der Kamera vorbeilaufen (oder mit --hires).", "  ! Only the near players are large enough; numbers of far players only come when they pass close to the camera (or with --hires).", "  ! Seuls les joueurs proches sont assez grands ; les numéros des joueurs éloignés n'apparaissent que lorsqu'ils passent près de la caméra (ou avec --hires).", "  ! Solo los jugadores cercanos son lo bastante grandes; los dorsales de los lejanos solo salen cuando pasan cerca de la cámara (o con --hires)."));
         }
     }
     let ev = mm.events_log();
-    eprintln!("Wechsel: {} bestätigt, {} möglich", ev.iter().filter(|e| e.kind == reco_minimap::SubKind::Confirmed).count(), ev.iter().filter(|e| e.kind == reco_minimap::SubKind::Possible).count());
+    eprintln!("{}", tr!("Wechsel: {} bestätigt, {} möglich", "Substitutions: {} confirmed, {} possible", "Changements : {} confirmés, {} possibles", "Cambios: {} confirmados, {} posibles", ev.iter().filter(|e| e.kind == reco_minimap::SubKind::Confirmed).count(), ev.iter().filter(|e| e.kind == reco_minimap::SubKind::Possible).count()));
 }
 
 // ---------------------------------------------------------------- live
@@ -1041,13 +980,13 @@ fn cmd_live(o: &Opts, input: &str) {
     use std::sync::Arc;
     let info = open_info(o, input);
     if info.w == 0 {
-        fail::<()>("--size WxH angeben, z.B. --size 1920x1080 (Live-Quellen werden nicht vorab geprüft)");
+        fail::<()>(trs!("--size WxH angeben, z.B. --size 1920x1080 (Live-Quellen werden nicht vorab geprüft)", "pass --size WxH, e.g. --size 1920x1080 (live sources are not probed beforehand)", "indiquer --size LxH, p. ex. --size 1920x1080 (les sources en direct ne sont pas analysées au préalable)", "indica --size AnxAl, p. ej. --size 1920x1080 (las fuentes en directo no se analizan antes)"));
     }
     let mut model = load_model(o);
     model.cfg.thr_player = thr_players(o).0;
     let tiles = plan(o, &info);
-    let (cal, profile) = load_court(o.s("court").unwrap_or_else(|| fail("--court court.json fehlt")));
-    let projector = cal.projector().unwrap_or_else(|| fail("court.json: Homographie nicht lösbar"));
+    let (cal, profile) = load_court(o.s("court").unwrap_or_else(|| fail(trs!("--court court.json fehlt", "--court court.json is missing", "--court court.json manquant", "falta --court court.json"))));
+    let projector = cal.projector().unwrap_or_else(|| fail(trs!("court.json: Homographie nicht lösbar", "court.json: the homography cannot be solved", "court.json : l'homographie ne peut pas être résolue", "court.json: no se puede resolver la homografía")));
     let (home, away) = read_teams(o);
     // shirt colours the torso sample may snap to (teams, and the referees' if given)
     let shirts: Vec<[u8; 3]> = [Some(home), Some(away), o.s("ref-color").and_then(parse_hex)].into_iter().flatten().collect();
@@ -1066,9 +1005,9 @@ fn cmd_live(o: &Opts, input: &str) {
         "sport": profile.id, "numbers": o.has("numbers"), "field": [profile.field.length, profile.field.width], "lines": profile.lines.iter().map(|pl| pl.iter().map(|p| [(p.x * 100.0).round() / 100.0, (p.y * 100.0).round() / 100.0]).collect::<Vec<_>>()).collect::<Vec<_>>()}).to_string());
     let host = o.s("host").unwrap_or("127.0.0.1").to_string();
     let addr = live::serve(hub.clone(), &host, o.u("port", 8765) as u16).unwrap_or_else(|e| fail(e));
-    eprintln!("\nLive-Overlay: http://{addr}/");
-    eprintln!("  OBS: Quelle hinzufügen -> Browser -> URL oben, Breite 1400 / Höhe 800 (oder passend), Hintergrund bleibt transparent.");
-    eprintln!("  Zum Testen im Browser: http://{addr}/?floor=1&debug=1      Daten: http://{addr}/state.json\n");
+    eprintln!("{}", tr!("\nLive-Overlay: http://{addr}/", "\nLive overlay: http://{addr}/", "\nIncrustation en direct : http://{addr}/", "\nSuperposición en directo: http://{addr}/"));
+    eprintln!("{}", trs!("  OBS: Quelle hinzufügen -> Browser -> URL oben, Breite 1400 / Höhe 800 (oder passend), Hintergrund bleibt transparent.", "  OBS: add a source -> Browser -> the URL above, width 1400 / height 800 (or as needed); the background stays transparent.", "  OBS : ajouter une source -> Navigateur -> l'URL ci-dessus, largeur 1400 / hauteur 800 (ou selon besoin) ; le fond reste transparent.", "  OBS: añade una fuente -> Navegador -> la URL de arriba, ancho 1400 / alto 800 (o lo que convenga); el fondo queda transparente."));
+    eprintln!("{}", tr!("  Zum Testen im Browser: http://{addr}/?floor=1&debug=1      Daten: http://{addr}/state.json\n", "  To test in a browser: http://{addr}/?floor=1&debug=1      data: http://{addr}/state.json\n", "  Pour tester dans un navigateur : http://{addr}/?floor=1&debug=1      données : http://{addr}/state.json\n", "  Para probar en un navegador: http://{addr}/?floor=1&debug=1      datos: http://{addr}/state.json\n"));
 
     let mut jsonl = o.s("json").map(|p| std::io::BufWriter::new(std::fs::File::create(p).unwrap_or_else(|e| fail(format!("{p}: {e}")))));
     let reader = FrameReader::open_with(input, &info, t_start(o), None, 1, true, o.has("realtime"), &o.s("in-args").map(|a| a.split_whitespace().map(|x| x.to_string()).collect::<Vec<_>>()).unwrap_or_default()).unwrap_or_else(|e| fail(e));
@@ -1099,7 +1038,7 @@ fn cmd_live(o: &Opts, input: &str) {
                     break x;
                 }
                 if latest.eof.load(Ordering::SeqCst) {
-                    eprintln!("\nQuelle beendet.");
+                    eprintln!("{}", trs!("\nQuelle beendet.", "\nThe source has ended.", "\nLa source est terminée.", "\nLa fuente ha terminado."));
                     return;
                 }
                 g = latest.cv.wait_timeout(g, std::time::Duration::from_millis(500)).unwrap().0;
@@ -1131,7 +1070,7 @@ fn cmd_live(o: &Opts, input: &str) {
         sum_age += age_ms as f32;
         if last_report.elapsed().as_secs_f32() > 3.0 {
             let el = last_report.elapsed().as_secs_f32();
-            eprint!("\r  {:.1} Updates/s · Latenz Bild->Ergebnis {:.0} ms · verworfene Bilder {} · {} Spieler, {} Schiris   ", n as f32 / el, sum_age / n.max(1) as f32, latest.dropped.load(Ordering::Relaxed), state.players.len(), state.referees.len());
+            eprint!("{}", tr!("\r  {:.1} Updates/s · Latenz Bild->Ergebnis {:.0} ms · verworfene Bilder {} · {} Spieler, {} Schiris   ", "\r  {:.1} updates/s · latency frame->result {:.0} ms · dropped frames {} · {} players, {} referees   ", "\r  {:.1} mises à jour/s · latence image->résultat {:.0} ms · images ignorées {} · {} joueurs, {} arbitres   ", "\r  {:.1} actualizaciones/s · latencia imagen->resultado {:.0} ms · imágenes descartadas {} · {} jugadores, {} árbitros   ", n as f32 / el, sum_age / n.max(1) as f32, latest.dropped.load(Ordering::Relaxed), state.players.len(), state.referees.len()));
             last_report = Instant::now();
             n = 0;
             sum_age = 0.0;
@@ -1151,7 +1090,7 @@ fn read_teams(o: &Opts) -> ([u8; 3], [u8; 3]) {
             return (h, a);
         }
     }
-    fail("Trikotfarben fehlen: --teams teams.json oder --home #rrggbb --away #rrggbb (Farben ermitteln: `reco-minimap colors`)")
+    fail(trs!("Trikotfarben fehlen: --teams teams.json oder --home #rrggbb --away #rrggbb (Farben ermitteln: `reco-minimap colors`)", "Shirt colours are missing: --teams teams.json or --home #rrggbb --away #rrggbb (detect them with `reco-minimap colors`)", "Couleurs de maillot manquantes : --teams teams.json ou --home #rrggbb --away #rrggbb (les détecter avec `reco-minimap colors`)", "Faltan los colores de camiseta: --teams teams.json o --home #rrggbb --away #rrggbb (detéctalos con `reco-minimap colors`)"))
 }
 
 fn ball_json(s: &FrameState) -> serde_json::Value {
@@ -1178,20 +1117,20 @@ fn cmd_run(o: &Opts, input: &str) {
     let mut model = load_model(o);
     model.cfg.thr_player = thr_players(o).0;
     let tiles = plan(o, &info);
-    let (cal, profile) = load_court(o.s("court").unwrap_or_else(|| fail("--court court.json fehlt (erst `reco-minimap calibrate`)")));
+    let (cal, profile) = load_court(o.s("court").unwrap_or_else(|| fail(trs!("--court court.json fehlt (erst `reco-minimap calibrate`)", "--court court.json is missing (run `reco-minimap calibrate` first)", "--court court.json manquant (lancer d'abord `reco-minimap calibrate`)", "falta --court court.json (ejecuta antes `reco-minimap calibrate`)"))));
     if cal.pano_w > 0 && cal.pano_h > 0 {
         let (a, b) = (cal.pano_w as f32 / cal.pano_h as f32, info.w as f32 / info.h as f32);
         if (a - b).abs() / a > 0.02 {
-            eprintln!("Warnung: court.json wurde für {}x{} erstellt, das Video ist {}x{} (anderes Seitenverhältnis) – neu kalibrieren!", cal.pano_w, cal.pano_h, info.w, info.h);
+            eprintln!("{}", tr!("Warnung: court.json wurde für {}x{} erstellt, das Video ist {}x{} (anderes Seitenverhältnis) – neu kalibrieren!", "Warning: court.json was made for {}x{}, the video is {}x{} (different aspect ratio) – calibrate again!", "Attention : court.json a été créé pour {}x{}, la vidéo fait {}x{} (autre rapport d'aspect) – recalibrer !", "Aviso: court.json se creó para {}x{}, el vídeo es {}x{} (otra relación de aspecto) – ¡vuelve a calibrar!", cal.pano_w, cal.pano_h, info.w, info.h));
         }
     }
-    let projector = cal.projector().unwrap_or_else(|| fail("court.json: Homographie nicht lösbar"));
+    let projector = cal.projector().unwrap_or_else(|| fail(trs!("court.json: Homographie nicht lösbar", "court.json: the homography cannot be solved", "court.json : l'homographie ne peut pas être résolue", "court.json: no se puede resolver la homografía")));
     let (home, away) = read_teams(o);
     // shirt colours the torso sample may snap to (teams, and the referees' if given)
     let shirts: Vec<[u8; 3]> = [Some(home), Some(away), o.s("ref-color").and_then(parse_hex)].into_iter().flatten().collect();
     let torso = torso_band(o);
     let shirt_match = o.has("shirt-match");
-    eprintln!("Heim {}  Gast {}  | Kalibrierfehler {:.2} m", hex(home), hex(away), cal.rms_m);
+    eprintln!("{}", tr!("Heim {}  Gast {}  | Kalibrierfehler {:.2} m", "Home {}  away {}  | calibration error {:.2} m", "Domicile {}  visiteurs {}  | erreur de calibrage {:.2} m", "Local {}  visitante {}  | error de calibración {:.2} m", hex(home), hex(away), cal.rms_m));
 
     let every = o.u("every", 1).max(1);
     let out_fps = info.fps / every as f64;
@@ -1245,7 +1184,7 @@ fn cmd_run(o: &Opts, input: &str) {
     }
     let mut dets_out = o.s("dets").map(|p| std::io::BufWriter::new(std::fs::File::create(p).unwrap_or_else(|e| fail(format!("{p}: {e}")))));
     if w_min.is_none() && w_alpha.is_none() && w_pip.is_none() && jsonl.is_none() && dets_out.is_none() {
-        fail::<()>("kein Ausgang gewählt: --minimap, --alpha, --pip, --json und/oder --dets");
+        fail::<()>(trs!("kein Ausgang gewählt: --minimap, --alpha, --pip, --json und/oder --dets", "no output chosen: --minimap, --alpha, --pip, --json and/or --dets", "aucune sortie choisie : --minimap, --alpha, --pip, --json et/ou --dets", "no se ha elegido ninguna salida: --minimap, --alpha, --pip, --json y/o --dets"));
     }
     if let Some(w) = dets_out.as_mut() {
         let head = serde_json::json!({"reco_minimap_dets": 1, "video": input, "w": info.w, "h": info.h, "fps": info.fps, "every": every, "start": t_start(o),
@@ -1257,14 +1196,14 @@ fn cmd_run(o: &Opts, input: &str) {
     // optional second, higher-resolution version of the same panorama for reading numbers
     let mut hires = o.s("hires").map(|p| {
         let hi = video::probe(p).unwrap_or_else(|e| fail(format!("--hires: {e}")));
-        eprintln!("Nummern aus {} ({}x{}), Erkennung aus dem kleineren Panorama", p, hi.w, hi.h);
+        eprintln!("{}", tr!("Nummern aus {} ({}x{}), Erkennung aus dem kleineren Panorama", "Numbers from {} ({}x{}), detection from the smaller panorama", "Numéros depuis {} ({}x{}), détection sur le panorama plus petit", "Dorsales desde {} ({}x{}), detección en el panorama más pequeño", p, hi.w, hi.h));
         FrameReader::open(p, &hi, t_start(o), t_duration(o), every as u32).unwrap_or_else(|e| fail(e))
     });
     let t_start = t_start(o);
     let (mut idx, mut done) = (0u64, 0u64);
     let t0 = Instant::now();
     let mut last_report = Instant::now();
-    eprintln!("Verarbeite {}x{}, {} Kacheln/Bild, jedes {}. Bild …  (Strg+C beendet; Datei wird dann evtl. unvollständig)", info.w, info.h, tiles.len(), every);
+    eprintln!("{}", tr!("Verarbeite {}x{}, {} Kacheln/Bild, jedes {}. Bild …  (Strg+C beendet; Datei wird dann evtl. unvollständig)", "Processing {}x{}, {} tiles/frame, every {}. frame …  (Ctrl+C stops; the file may then be incomplete)", "Traitement de {}x{}, {} tuiles/image, une image sur {} …  (Ctrl+C arrête ; le fichier peut alors être incomplet)", "Procesando {}x{}, {} teselas/imagen, una de cada {} imágenes …  (Ctrl+C detiene; el archivo puede quedar incompleto)", info.w, info.h, tiles.len(), every));
     let mut prev_state: Option<FrameState> = None;
     let (mut d_decode, mut d_track, mut d_out) = (std::time::Duration::ZERO, std::time::Duration::ZERO, std::time::Duration::ZERO);
     loop {
@@ -1344,15 +1283,15 @@ fn cmd_run(o: &Opts, input: &str) {
             let fps = done as f32 / el;
             let speed = fps * every as f32 / info.fps as f32; // source seconds per wall second
             let end = t_duration(o).map(|d| t_start + d).or(info.duration);
-            let eta = end.map(|d| format!("  Rest ~{:.0} s", ((d - t).max(0.0) as f32) / speed.max(0.001))).unwrap_or_default();
-            eprint!("\r  t={t:7.1}s  {fps:4.1} Bilder/s (Quelle {:.1}/s){eta}   ", info.fps / every as f64);
+            let eta = end.map(|d| tr!("  Rest ~{:.0} s", "  ~{:.0} s left", "  reste ~{:.0} s", "  quedan ~{:.0} s", ((d - t).max(0.0) as f32) / speed.max(0.001))).unwrap_or_default();
+            eprint!("{}", tr!("\r  t={t:7.1}s  {fps:4.1} Bilder/s (Quelle {:.1}/s){eta}   ", "\r  t={t:7.1}s  {fps:4.1} frames/s (source {:.1}/s){eta}   ", "\r  t={t:7.1}s  {fps:4.1} images/s (source {:.1}/s){eta}   ", "\r  t={t:7.1}s  {fps:4.1} imágenes/s (fuente {:.1}/s){eta}   ", info.fps / every as f64));
         }
     }
-    eprintln!("\n{done} Bilder in {:.1} s ({:.2} Bilder/s).", t0.elapsed().as_secs_f32(), done as f32 / t0.elapsed().as_secs_f32().max(0.001));
+    eprintln!("{}", tr!("\n{done} Bilder in {:.1} s ({:.2} Bilder/s).", "\n{done} frames in {:.1} s ({:.2} frames/s).", "\n{done} images en {:.1} s ({:.2} images/s).", "\n{done} imágenes en {:.1} s ({:.2} imágenes/s).", t0.elapsed().as_secs_f32(), done as f32 / t0.elapsed().as_secs_f32().max(0.001)));
     let per = |d: std::time::Duration| d.as_secs_f32() * 1000.0 / done.max(1) as f32;
-    eprintln!("Zeit pro Bild (ms): Decode {:.0}, Kachel-Vorverarbeitung {:.0}, Inferenz {:.0}, Tracking {:.0}, Rendern/Schreiben {:.0}", per(d_decode), per(model.t_prep), per(model.t_infer), per(d_track), per(d_out));
+    eprintln!("{}", tr!("Zeit pro Bild (ms): Decode {:.0}, Kachel-Vorverarbeitung {:.0}, Inferenz {:.0}, Tracking {:.0}, Rendern/Schreiben {:.0}", "Time per frame (ms): decode {:.0}, tile preprocessing {:.0}, inference {:.0}, tracking {:.0}, render/write {:.0}", "Temps par image (ms) : décodage {:.0}, prétraitement des tuiles {:.0}, inférence {:.0}, suivi {:.0}, rendu/écriture {:.0}", "Tiempo por imagen (ms): decodificación {:.0}, preprocesado de teselas {:.0}, inferencia {:.0}, seguimiento {:.0}, render/escritura {:.0}", per(d_decode), per(model.t_prep), per(model.t_infer), per(d_track), per(d_out)));
     let ts = mm.tracker().team_stats;
-    eprintln!("Team-Zuordnung: {} Erkennungen trotz anderer Trikotfarbe über die Position zugeordnet, {} Teamwechsel eines Tracks", ts.cross_matches, ts.flips);
+    eprintln!("{}", tr!("Team-Zuordnung: {} Erkennungen trotz anderer Trikotfarbe über die Position zugeordnet, {} Teamwechsel eines Tracks", "Team assignment: {} detections assigned by position despite another shirt colour, {} team changes of a track", "Attribution des équipes : {} détections attribuées par la position malgré une autre couleur de maillot, {} changements d'équipe d'une piste", "Asignación de equipo: {} detecciones asignadas por posición pese a otro color de camiseta, {} cambios de equipo de una pista", ts.cross_matches, ts.flips));
     if let Some(nm) = numbers.as_ref() {
         numbers_summary(nm, &mm);
     }
@@ -1361,9 +1300,9 @@ fn cmd_run(o: &Opts, input: &str) {
         for e in &scene_log {
             *counts.entry(scene_name(e.kind, &profile.id)).or_default() += 1;
         }
-        eprintln!("Situationen: {}", if counts.is_empty() { "keine erkannt".to_string() } else { counts.iter().map(|(k, v)| format!("{k} {v}×")).collect::<Vec<_>>().join(", ") });
+        eprintln!("{}", tr!("Situationen: {}", "Situations: {}", "Situations : {}", "Situaciones: {}", if counts.is_empty() { trs!("keine erkannt", "none found", "aucune détectée", "ninguna detectada").to_string() } else { counts.iter().map(|(k, v)| format!("{k} {v}×")).collect::<Vec<_>>().join(", ") }));
     }
-    eprintln!("Erkennungen gesamt: Spieler {n_player} (davon {n_unknown} ohne Teamfarbe, {n_refcolor} in Schiri-Farbe), Schiri-Klasse {n_ref}, Ball {n_ball} (≈{:.1} pro Bild)", n_ball as f32 / done.max(1) as f32);
+    eprintln!("{}", tr!("Erkennungen gesamt: Spieler {n_player} (davon {n_unknown} ohne Teamfarbe, {n_refcolor} in Schiri-Farbe), Schiri-Klasse {n_ref}, Ball {n_ball} (≈{:.1} pro Bild)", "Detections in total: players {n_player} ({n_unknown} of them without a team colour, {n_refcolor} in the referee colour), referee class {n_ref}, ball {n_ball} (≈{:.1} per frame)", "Détections au total : joueurs {n_player} (dont {n_unknown} sans couleur d'équipe, {n_refcolor} à la couleur des arbitres), classe arbitre {n_ref}, ballon {n_ball} (≈{:.1} par image)", "Detecciones en total: jugadores {n_player} ({n_unknown} sin color de equipo, {n_refcolor} con el color de árbitro), clase árbitro {n_ref}, balón {n_ball} (≈{:.1} por imagen)", n_ball as f32 / done.max(1) as f32));
     // hold the last state for the frames after the final detection
     if smooth {
         if let Some(last) = &prev_state {
@@ -1426,17 +1365,17 @@ fn dets_from_json(v: &serde_json::Value) -> Option<(f64, Vec<Det>)> {
 fn cmd_replay(o: &Opts, path: &str) {
     let text = std::fs::read_to_string(path).unwrap_or_else(|e| fail(format!("{path}: {e}")));
     let mut lines = text.lines().filter(|l| !l.trim().is_empty());
-    let head: serde_json::Value = lines.next().and_then(|l| serde_json::from_str(l).ok()).filter(|v: &serde_json::Value| v["reco_minimap_dets"].as_u64() == Some(1)).unwrap_or_else(|| fail(format!("{path}: keine Erkennungs-Datei (erzeugen mit `run … --dets <datei>`)")));
+    let head: serde_json::Value = lines.next().and_then(|l| serde_json::from_str(l).ok()).filter(|v: &serde_json::Value| v["reco_minimap_dets"].as_u64() == Some(1)).unwrap_or_else(|| fail(tr!("{path}: keine Erkennungs-Datei (erzeugen mit `run … --dets <datei>`)", "{path}: not a detections file (create one with `run … --dets <file>`)", "{path} : ce n'est pas un fichier de détections (en créer un avec `run … --dets <fichier>`)", "{path}: no es un archivo de detecciones (créalo con `run … --dets <archivo>`)")));
     let rate = head["fps"].as_f64().unwrap_or(25.0) / head["every"].as_f64().unwrap_or(1.0).max(1.0);
     let rec = |k: &str| head["thr"][k].as_f64().unwrap_or(0.0) as f32;
     let (thr_ball, thr_player, thr_ref) = (o.f("thr-ball", 0.30) as f32, thr_players(o).0, o.f("thr-ref", 0.50) as f32);
     for (name, want, have) in [("--thr-ball", thr_ball, rec("ball")), ("--thr-player(-low)", thr_player, rec("player")), ("--thr-ref", thr_ref, rec("referee"))] {
         if want < have - 1e-6 {
-            eprintln!("Hinweis: {name} {want} liegt unter der Aufnahme-Schwelle {have}; es gilt {have}.");
+            eprintln!("{}", tr!("Hinweis: {name} {want} liegt unter der Aufnahme-Schwelle {have}; es gilt {have}.", "Note: {name} {want} is below the recording threshold {have}; {have} applies.", "Remarque : {name} {want} est sous le seuil d'enregistrement {have} ; {have} s'applique.", "Nota: {name} {want} está por debajo del umbral de grabación {have}; se aplica {have}."));
         }
     }
-    let (cal, profile) = load_court(o.s("court").unwrap_or_else(|| fail("--court court.json fehlt")));
-    let projector = cal.projector().unwrap_or_else(|| fail("court.json: Homographie nicht lösbar"));
+    let (cal, profile) = load_court(o.s("court").unwrap_or_else(|| fail(trs!("--court court.json fehlt", "--court court.json is missing", "--court court.json manquant", "falta --court court.json"))));
+    let projector = cal.projector().unwrap_or_else(|| fail(trs!("court.json: Homographie nicht lösbar", "court.json: the homography cannot be solved", "court.json : l'homographie ne peut pas être résolue", "court.json: no se puede resolver la homografía")));
     let (home, away) = read_teams(o);
     let mut mcfg = game_config(o, &profile, home, away);
     mcfg.referee_rgb = o.s("ref-color").and_then(parse_hex);
@@ -1454,7 +1393,7 @@ fn cmd_replay(o: &Opts, path: &str) {
     let t0 = Instant::now();
     let (mut n, mut n_scene) = (0u64, 0usize);
     for line in lines {
-        let (t, mut dets) = serde_json::from_str(line).ok().and_then(|v| dets_from_json(&v)).unwrap_or_else(|| fail(format!("{path}: Zeile {} unlesbar", n + 2)));
+        let (t, mut dets) = serde_json::from_str(line).ok().and_then(|v| dets_from_json(&v)).unwrap_or_else(|| fail(tr!("{path}: Zeile {} unlesbar", "{path}: line {} cannot be read", "{path} : ligne {} illisible", "{path}: la línea {} no se puede leer", n + 2)));
         if from.map(|f| t < f).unwrap_or(false) || to.map(|e| t >= e).unwrap_or(false) {
             continue;
         }
@@ -1479,10 +1418,10 @@ fn cmd_replay(o: &Opts, path: &str) {
         let _ = j.flush();
     }
     let ts = mm.tracker().team_stats;
-    eprintln!("{n} Bilder in {:.2} s wiedergegeben ({:.1} Bilder/s in der Aufnahme).", t0.elapsed().as_secs_f32(), rate);
-    eprintln!("Team-Zuordnung: {} Erkennungen trotz anderer Trikotfarbe über die Position zugeordnet, {} Teamwechsel eines Tracks", ts.cross_matches, ts.flips);
+    eprintln!("{}", tr!("{n} Bilder in {:.2} s wiedergegeben ({:.1} Bilder/s in der Aufnahme).", "{n} frames replayed in {:.2} s ({:.1} frames/s in the recording).", "{n} images rejouées en {:.2} s ({:.1} images/s dans l'enregistrement).", "{n} imágenes reproducidas en {:.2} s ({:.1} imágenes/s en la grabación).", t0.elapsed().as_secs_f32(), rate));
+    eprintln!("{}", tr!("Team-Zuordnung: {} Erkennungen trotz anderer Trikotfarbe über die Position zugeordnet, {} Teamwechsel eines Tracks", "Team assignment: {} detections assigned by position despite another shirt colour, {} team changes of a track", "Attribution des équipes : {} détections attribuées par la position malgré une autre couleur de maillot, {} changements d'équipe d'une piste", "Asignación de equipo: {} detecciones asignadas por posición pese a otro color de camiseta, {} cambios de equipo de una pista", ts.cross_matches, ts.flips));
     if scenes.is_some() {
-        eprintln!("Situationen: {n_scene}");
+        eprintln!("{}", tr!("Situationen: {n_scene}", "Situations: {n_scene}", "Situations : {n_scene}", "Situaciones: {n_scene}"));
     }
 }
 

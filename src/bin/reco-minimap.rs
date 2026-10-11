@@ -36,7 +36,8 @@ reco-minimap – Minimap (Court, Spieler, Schiris, Ball) aus einem Reco-Panorama
   reco-minimap scales    <video> --model <ordner|.onnx> [--court court.json] [--samples 12] [--out scales.json]
   reco-minimap live      <quelle> --model <..> --court court.json --teams teams.json   Live-Minimap für OBS/Spieldock (Browser-Overlay)
   reco-minimap import-model <ordner|.onnx> --to <modelle-ordner>   Reco-Trainer-Modell prüfen und kopieren
-  reco-minimap ui [--port 8788] [--no-open]                          Oberfläche im Browser (Deutsch/English/Français/Español)
+  reco-minimap ui [--port 8788] [--no-open] [--no-update-check]                          Oberfläche im Browser (Deutsch/English/Français/Español)
+  reco-minimap update [--check] [--yes]                              nach einer neueren Version auf GitHub sehen; --yes baut und installiert sie
   reco-minimap fetch-ocr                                            OCR-Modell für Trikotnummern laden (ca. 11 MB, Apache-2.0)
   reco-minimap ocr-bench <manifest.tsv> [--roster 4,5,7]            Zahlenleser an Ausschnitt-Bildern messen (Zeile: Pfad<TAB>Nummer<TAB>Gruppe)
   reco-minimap replay    <erkennungen.jsonl> --court court.json --teams teams.json [--json out.jsonl] [--minimap out.mp4]
@@ -320,8 +321,12 @@ fn main() {
         }
         return;
     }
+    if args[0] == "update" {
+        cmd_update(&o);
+        return;
+    }
     if args[0] == "ui" {
-        let url = reco_minimap::tools::ui::serve(o.u("port", 8788) as u16, !o.has("no-open"), false).unwrap_or_else(|e| fail(e));
+        let url = reco_minimap::tools::ui::serve(o.u("port", 8788) as u16, !o.has("no-open"), false, !o.has("no-update-check")).unwrap_or_else(|e| fail(e));
         eprintln!("Oberfläche: {url}\n(Strg+C beendet das Programm; laufende Aufträge werden dabei abgebrochen.)");
         loop {
             std::thread::sleep(std::time::Duration::from_secs(3600));
@@ -341,6 +346,32 @@ fn main() {
         "live" => cmd_live(&o, &input),
         other => fail(format!("unbekannter Befehl '{other}' (calibrate | selfcheck | colors | run)")),
     }
+}
+
+// ---------------------------------------------------------------- update
+
+/// `update`: look for a newer version on GitHub; with `--yes` build and install it.
+fn cmd_update(o: &Opts) {
+    use reco_minimap::tools::update;
+    println!("Installiert: {}   (Quelle: https://github.com/{})", update::CURRENT, update::REPO);
+    let latest = match update::latest() {
+        Ok(Some(l)) => l,
+        Ok(None) => return println!("Auf GitHub ist noch keine Version veröffentlicht."),
+        Err(e) => fail(e),
+    };
+    if !update::is_newer(&latest.version, update::CURRENT) {
+        return println!("Aktuell: die neueste veröffentlichte Version ist {}.", latest.version);
+    }
+    println!("Neue Version {} verfügbar: {}", latest.version, latest.url);
+    if o.has("check") {
+        return;
+    }
+    if !o.has("yes") {
+        return println!("Installieren mit:  reco-minimap update --yes   (baut aus dem Quelltext, dauert einige Minuten)");
+    }
+    println!("Installiere {} …", latest.version);
+    update::install(&latest).unwrap_or_else(|e| fail(e));
+    println!("Version {} ist installiert. Laufende Programme (z. B. die Oberfläche) bitte neu starten.", latest.version);
 }
 
 // ---------------------------------------------------------------- calibrate

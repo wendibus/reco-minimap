@@ -29,6 +29,9 @@ struct Ui {
     exe: PathBuf,
     jobs: Mutex<HashMap<u64, Arc<Job>>>,
     next: AtomicU64,
+    /// Result of the update check started with the server: `None` while it runs (or when it is
+    /// switched off), then `{"checked": true, "latest": ..}` with `latest` set if one is newer.
+    update: Mutex<Option<Value>>,
 }
 
 fn respond(s: &mut TcpStream, code: &str, ctype: &str, body: &[u8]) {
@@ -340,6 +343,7 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
             }
         }
         "fetch_ocr" => pushs(&mut a, &["fetch-ocr"]),
+        "update" => pushs(&mut a, &["update", "--yes"]),
         "stats" => {
             let f = get_s(p, "file");
             need(&f, "Datei")?;
@@ -410,6 +414,10 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
             let ort = super::infer::ensure_ort_runtime().err();
             jres(&mut s, json!({"ok": true, "home": home_dir().to_string_lossy(), "default_dir": default_project_dir().to_string_lossy(), "sports": sports,
                                 "coreml": cfg!(feature = "coreml"), "ocr": {"path": super::ocr::default_model_path().to_string_lossy(), "exists": super::ocr::default_model_path().exists()}, "ort_error": ort, "version": env!("CARGO_PKG_VERSION"), "dialogs": cfg!(target_os = "macos") || Command::new("zenity").arg("--version").output().is_ok()}));
+        }
+        ("GET", "/api/update") => {
+            let u = ui.update.lock().unwrap().clone();
+            jres(&mut s, json!({"ok": true, "current": super::update::CURRENT, "update": u}));
         }
         ("POST", "/api/project/load") => {
             let dir = get_s(&b, "dir");
@@ -494,7 +502,7 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
 }
 
 /// Start the UI server; returns the URL (blocks forever if `block`).
-pub fn serve(port: u16, open: bool, block: bool) -> Result<String, String> {
+pub fn serve(port: u16, open: bool, block: bool, update_check: bool) -> Result<String, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let mut listener = None;
     for p in port..port.saturating_add(10) {
@@ -505,7 +513,15 @@ pub fn serve(port: u16, open: bool, block: bool) -> Result<String, String> {
     }
     let listener = listener.ok_or("Kein freier Port (--port ändern)")?;
     let url = format!("http://127.0.0.1:{}/", listener.local_addr().map_err(|e| e.to_string())?.port());
-    let ui = Arc::new(Ui { exe, jobs: Mutex::new(HashMap::new()), next: AtomicU64::new(1) });
+    let ui = Arc::new(Ui { exe, jobs: Mutex::new(HashMap::new()), next: AtomicU64::new(1), update: Mutex::new(None) });
+    if update_check && std::env::var_os("RECO_MINIMAP_NO_UPDATE_CHECK").is_none() {
+        // in the background: the page must not wait for the network
+        let u = ui.clone();
+        std::thread::spawn(move || {
+            let found = super::update::available().ok().flatten();
+            *u.update.lock().unwrap() = Some(json!({"checked": true, "latest": found.map(|l| json!({"version": l.version, "url": l.url}))}));
+        });
+    }
     let accept = move || {
         for s in listener.incoming().flatten() {
             let u = ui.clone();

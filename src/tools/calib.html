@@ -19,6 +19,8 @@ button{background:#2c323c;color:var(--fg);border:1px solid #3a4250;border-radius
 button.primary{background:var(--acc);color:#000;border-color:var(--acc);font-weight:600}
 button:disabled{opacity:.4;cursor:default}
 #q{padding:8px 10px;border-radius:6px;background:#242a33}
+#legendbox{position:sticky;top:-14px;z-index:1;background:var(--panel);padding:6px 0 2px}
+canvas#legend{display:block;width:100%;border:1px solid var(--line);border-radius:6px;background:#262c34}
 .good{color:var(--ok)}.warn{color:var(--bad)}
 </style></head><body>
 <div id="app">
@@ -28,6 +30,7 @@ button:disabled{opacity:.4;cursor:default}
   <p id="t_intro"></p>
   <p id="t_sides"></p>
   <div id="q"></div>
+  <div id="legendbox"><p id="t_legend" style="font-size:12px;margin-bottom:4px"></p><canvas id="legend"></canvas><p id="t_cam" style="font-size:11px;text-align:center"></p></div>
   <div id="list"></div>
   <div style="display:flex;gap:8px"><button id="undo"></button><button id="skip"></button></div>
   <button class="primary" id="save" disabled></button>
@@ -42,9 +45,22 @@ const $=id=>document.getElementById(id);
 let info,img=new Image(),pts={},cur=0,scale=1,ox=0,oy=0,overlay=[],resid={},rms=null,mouse={x:0,y:0,in:false};
 const cv=$('cv'),ctx=cv.getContext('2d'),lp=$('loupe'),lctx=lp.getContext('2d');
 function texts(){document.title=T('calp.title');$('t_title').textContent=T('calp.title');$('t_intro').textContent=T('calp.intro');$('t_sides').textContent=T('calp.sides');
- $('undo').textContent=T('calp.undo');$('skip').textContent=T('calp.skip');$('save').textContent=T('calp.save');$('t_priv').textContent=T('calp.privacy');
+ $('t_legend').textContent=T('calp.legend');$('t_cam').textContent='▲ '+T('calp.camera');$('undo').textContent=T('calp.undo');$('skip').textContent=T('calp.skip');$('save').textContent=T('calp.save');$('t_priv').textContent=T('calp.privacy');
  if(info)$('t_scaled').textContent=T('calp.scaled',{l:info.field[0],w:info.field[1]});}
-async function init(){info=await (await fetch('/api/info')).json();if(info.lang)setLang(info.lang);texts();img.onload=()=>{resize();build();draw();};img.src='/frame.png';}
+async function init(){info=await (await fetch('/api/info')).json();if(info.lang)setLang(info.lang);texts();img.onload=()=>{resize();build();draw();};img.src='/frame.png';requestAnimationFrame(legend);}
+// Small top-down field: every landmark as a dot (green = set), the one to click next blinking.
+// "far" is at the top and the camera at the bottom, as in the landmark names.
+function legend(now){requestAnimationFrame(legend);const c=$('legend');if(!info||!c.clientWidth)return;
+ const [L,W]=info.field,pad=14,dpr=devicePixelRatio||1,cw=c.clientWidth,k=(cw-2*pad)/L,ch=Math.round(W*k+2*pad);
+ if(c.width!==Math.round(cw*dpr)||c.height!==Math.round(ch*dpr)){c.width=Math.round(cw*dpr);c.height=Math.round(ch*dpr);c.style.height=ch+'px';}
+ const g=c.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,cw,ch);
+ const X=x=>pad+x*k,Y=y=>pad+y*k;
+ g.strokeStyle='#e1e4e8';g.lineWidth=1;(info.lines||[]).forEach(pl=>{g.beginPath();pl.forEach(([x,y],i)=>i?g.lineTo(X(x),Y(y)):g.moveTo(X(x),Y(y)));g.stroke();});
+ info.landmarks.forEach((m,i)=>{if(i===cur)return;g.fillStyle=pts[i]?'#4cd964':'#6b7482';g.beginPath();g.arc(X(m.x),Y(m.y),3,0,7);g.fill();});
+ const m=info.landmarks[cur];if(!m)return;const ph=(now%1000)/1000,on=ph<0.55,x=X(m.x),y=Y(m.y);
+ g.strokeStyle='rgba(255,140,0,'+(1-ph).toFixed(2)+')';g.lineWidth=2;g.beginPath();g.arc(x,y,5+ph*11,0,7);g.stroke();
+ g.fillStyle=on?'#ff8c00':'#5a3a10';g.beginPath();g.arc(x,y,5,0,7);g.fill();
+ g.fillStyle='#fff';g.font='bold 11px sans-serif';g.textAlign=x>cw-30?'right':'left';g.fillText(cur+1,x+(x>cw-30?-9:9),y+(y<24?14:-7));}
 function resize(){cv.width=cv.clientWidth;cv.height=cv.clientHeight;fit();}
 function fit(){scale=Math.min(cv.width/img.width,cv.height/img.height);ox=(cv.width-img.width*scale)/2;oy=(cv.height-img.height*scale)/2;draw();}
 addEventListener('resize',()=>{resize()});

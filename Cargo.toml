@@ -1,6 +1,6 @@
 [package]
 name = "reco-minimap"
-version = "0.2.0"
+version = "0.3.0"
 # Beim Einhängen in den reco-Workspace: edition/rust-version/license per `.workspace = true`.
 edition = "2021"
 license = "AGPL-3.0-only"

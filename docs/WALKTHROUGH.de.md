@@ -19,6 +19,36 @@ Der Browser öffnet `http://127.0.0.1:8788/`. Oben rechts wählst du die Sprache
 
 > Tipp: Nimm pro Halle und Kameraposition einen eigenen Projektordner. Die Kalibrierung hängt davon ab, wo die Kamera steht.
 
+## So ist die Bedienung gedacht
+
+Die Arbeit teilt sich in zwei Teile: **einmal einrichten**, dann **pro Spiel verarbeiten**.
+
+**Einmal pro Halle und Kameraposition** (Schritte 1 bis 3)
+
+1. Sportart wählen und das Modell importieren.
+2. Ein Panoramavideo aus dieser Halle wählen.
+3. Kalibrieren: Feldpunkte anklicken, Spielergrößen messen, Trikotfarben festlegen.
+
+Das Ergebnis liegt im Projektordner (`court.json`, `scales.json`, `teams.json`) und gilt, solange die Kamera am selben Platz steht und das Panorama gleich exportiert wird. Ändert sich eines davon, wiederholst du Schritt 3.
+
+**Pro Spiel** (Schritte 2, 3c, 4 und 6)
+
+1. Das neue Video wählen (Schritt 2).
+2. Die Trikotfarben neu ermitteln oder von Hand setzen, wenn andere Teams spielen (Schritt 3c).
+3. Einen **kurzen Probelauf** von 20 bis 60 Sekunden mit dem Kontrollvideo machen und ansehen (Schritt 4).
+4. Passt es, das ganze Spiel in Abschnitten verarbeiten.
+5. Die Zahlen in Schritt 6 ansehen, wenn dir etwas seltsam vorkommt.
+
+**Was das Programm selbst entscheidet und was du vorgibst**
+
+* Es findet Spieler, Schiedsrichter und Ball, verfolgt sie und hält pro Team eine feste Zahl von Plätzen. Ein verdeckter Spieler bleibt an seiner geschätzten Position, statt zu verschwinden.
+* Du gibst vor: wo das Feld liegt, welche Farben die Teams tragen und welchen Zeitraum es verarbeiten soll. Diese drei Angaben entscheiden über die Qualität; alles andere hat brauchbare Standardwerte.
+* Das Kontrollvideo (*Panorama mit Boxen und Minimap*) ist dein Prüfwerkzeug. Sieh es dir beim ersten Abschnitt an, bevor du ein ganzes Spiel rechnen lässt.
+
+**Unten auf der Seite** steht das Protokoll. Es zeigt jeden Befehl, den die Oberfläche ausführt, und dessen Ausgabe. Alles, was die Oberfläche kann, geht auch auf der Kommandozeile; einige Feineinstellungen gibt es nur dort ([README → Command-line reference](../README.md#command-line-reference)).
+
+**Neue Versionen** meldet die Oberfläche oben mit einem blauen Hinweis, siehe [Aktualisieren](#aktualisieren).
+
 ---
 
 ## Schritt 1 · Sportart & Modell
@@ -47,6 +77,7 @@ Die Kalibrierung bringt dem Programm bei, wo das Spielfeld im Bild liegt. Hier p
 3. **Klicke die Punkte in der Reihenfolge der Liste rechts an** (Ecken, Mittellinie, Mittelpunkt, Zonen-/Strafraum-Ecken …). Die Liste ist in deiner Sprache.
    * „hinten“ und „vorn“ bezeichnen die beiden Seitenlinien (hinten = weiter von der Kamera weg), „links/rechts“ wie im Bild.
    * Du musst nicht alles anklicken. Nicht sichtbare Punkte überspringst du mit der **Leertaste**.
+   * Rechts über der Liste zeigt ein **kleines Feld von oben**, wo der gerade verlangte Punkt liegt: Er **blinkt orange**. Schon gesetzte Punkte sind grün, offene grau. Die Kamera steht in dieser Zeichnung unten, „hinten“ ist oben.
    * Mausrad = Zoom, Ziehen = Verschieben, **Rücktaste** = letzten Punkt entfernen, **F** = ganzes Bild. Das kleine Fenster oben rechts vergrößert die Stelle unter dem Mauszeiger.
 4. Ab dem 4. Punkt erscheint ein **grünes Feld** über dem Bild, und die Seite zeigt den **Fehler in Metern**. Ergänze Punkte, bis die grünen Linien auf den echten Linien liegen. Ziel: **8 oder mehr Punkte, über das ganze Feld verteilt**, Fehler **unter 0,5 m** (grün). Punkte an verschiedenen Stellen sind wichtiger als hochgenaues Klicken.
 5. Klicke *Speichern*. In der Oberfläche steht danach z. B. `15 Punkte, Fehler 0.21 m`.
@@ -66,6 +97,10 @@ Klicke *Messen*. Das Programm schaut sich etwa ein Dutzend Bilder an und lernt, 
    * **Heim / Gast (Erkennung)** – die Farben, wie die Kamera sie sieht. Sie werden automatisch gesetzt; mit *Tauschen* drehst du Heim und Gast um, falls sie vertauscht sind. Schlägt es fehl („Teams nicht unterscheidbar“), wähle die zwei Farben von Hand mit den Farbfeldern.
    * **Heim / Gast (Darstellung)** – die Farben, in denen die Scheiben gezeichnet werden. Nimm, was gut aussieht, z. B. Weiß und ein helles Blau. Eine sehr dunkle Farbe ist auf der dunklen Minimap schlecht zu sehen.
    * **Schiedsrichter-Farbe** – die Trikotfarbe der Schiedsrichter (meist Schwarz oder Gelb). Damit findet das Programm Schiedsrichter auch dann, wenn das Modell sie nicht erkennt.
+3. **Figuren und Trikots** (nur bei Bedarf ändern):
+   * **Trikot-Bereich oben / unten** – welcher Teil der Spieler-Box das Trikot zeigt, als Anteil der Boxhöhe von oben. Für Menschen passt der Standard 0,18 bis 0,5. Bei Figuren mit anderen Proportionen (Maskottchen, Animationen) anpassen und danach *Farben ermitteln* erneut ausführen.
+   * **Farbprobe an die Trikotfarben anlehnen** – hilft bei kräftigen, klar verschiedenen Farben (Rot gegen Blau) und wenn Flächen des Spielfelds in einer Teamfarbe gestrichen sind. Bei Hell gegen Dunkel ausgeschaltet lassen: Dort ordnet es mehr Spieler falsch zu.
+   * **Spiel ohne Schiedsrichter** – dann wird niemand wegen einer unpassenden Trikotfarbe für einen Schiedsrichter gehalten.
 
 ## Schritt 4 · Verarbeiten
 
@@ -148,6 +183,16 @@ Wähle eine `.jsonl`-Datei aus `out/` und klicke *Auswerten*. Der Bericht im Pro
 
 ---
 
+## Aktualisieren
+
+Beim Start fragt die Oberfläche einmal bei GitHub nach, ob es eine neuere Version gibt. Dabei wird nur die Anfrage selbst gesendet, keine Videos, Bilder oder Projektdaten.
+
+* Gibt es eine, erscheint oben ein **blauer Hinweis** mit der Versionsnummer, einem Link *Was ist neu?* und dem Knopf *Jetzt installieren*.
+* *Jetzt installieren* lädt den Quelltext dieser Version und baut das Programm neu. Das dauert einige Minuten und braucht dieselbe Rust-Installation, mit der du das Programm installiert hast. Den Fortschritt siehst du im Protokoll.
+* Danach das Programm im Terminal mit **Strg+C** beenden und neu starten.
+
+Auf der Kommandozeile: `reco-minimap update` zeigt, ob es etwas Neues gibt; `reco-minimap update --yes` installiert es. Die Prüfung beim Start schaltest du mit `reco-minimap ui --no-update-check` ab.
+
 ## Ergebnisse verwenden
 
 **Minimap mit ffmpeg in ein Spielvideo einblenden** (`abschnitt1.mov` über `spiel.mp4`, unten rechts, 480 px breit):
@@ -174,7 +219,9 @@ Das Overlay beginnt zur Startzeit des Abschnitts; nimm `-ss` beim Spielvideo, we
 | *Durchsuchen …* tut nichts | Die Dateidialoge brauchen macOS (oder `zenity` unter Linux). Füge stattdessen den Pfad ein. |
 | `zsh: command not found: #…` | Zeilen, die mit `#` beginnen, nicht ins Terminal einfügen – zsh behandelt sie dort nicht als Kommentar. |
 | *Farben ermitteln* schlägt fehl | Kalibrierung prüfen (nur Spieler innerhalb des kalibrierten Felds zählen) und die Farben von Hand setzen. |
-| Wenige Spieler erkannt | *Messen* (3b) ausführen; Schwelle senken (`--thr-player 0.35` auf der Kommandozeile); ein kleines oder unscharfes Bild begrenzt das Modell. |
+| Wenige Spieler erkannt | *Messen* (3b) ausführen. Das Programm folgt einem Spieler schon mit unsicheren Erkennungen (ab 0,30), startet einen Punkt aber erst bei einer sicheren (ab 0,60); ist das Modell auf deinem Material durchgehend unsicher, senke `--thr-player` auf der Kommandozeile (z. B. 0,5). Ein kleines oder unscharfes Bild begrenzt das Modell. |
+| Teamfarben falsch oder Scheiben in der falschen Farbe | Farben in 3c von Hand setzen. Bei kräftigen Farben oder farbigen Feldflächen *Farbprobe an die Trikotfarben anlehnen* einschalten. |
+| Zwei „Schiedsrichter“, obwohl keine da sind | *Spiel ohne Schiedsrichter* in 3c einschalten. |
 | Scheiben an falscher Stelle | Neu kalibrieren, mit mehr Punkten über das ganze Feld; das grüne Feld muss auf den echten Linien liegen. |
 | Schiedsrichter fehlen | Schiedsrichter-Trikotfarbe setzen (3c). |
 | Sehr langsam | *Erkennung bei jedem N-ten Bild* mit höherem N; *Rechner* auf CoreML; *Messen* ausführen, damit weniger Kacheln nötig sind. |

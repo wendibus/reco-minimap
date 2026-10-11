@@ -1,6 +1,6 @@
 # reco-minimap
 
-**Turn a sports panorama video into a top-down minimap** – players in their shirt colours, referees, the ball, jersey numbers and substitutions – with a browser-based interface in English, German, French and Spanish.
+**Turn a sports panorama video into a top-down minimap** – players in their shirt colours, referees, the ball, jersey numbers and substitutions – with a browser-based interface, program messages and guides in English, German, French and Spanish.
 
 It is built to work with panoramas from [Reco](https://github.com/reco-project/video-stitcher) (two cameras stitched into one wide picture) and with detection models trained in **Reco Trainer**, but it works on any full-field panorama video plus an RF-DETR ONNX model with the same output layout.
 
@@ -40,7 +40,7 @@ Everything runs locally. No video, frame or model leaves your computer. The only
 15. [Development](#development)
 16. [License and credits](#license-and-credits)
 
-Step-by-step guides: [Walkthrough (English)](docs/WALKTHROUGH.md) · [Anleitung (Deutsch)](docs/WALKTHROUGH.de.md) · Game situations per sport: [Scenarios (English)](docs/SCENARIOS.md) · [Szenarien (Deutsch)](docs/SZENARIEN.de.md)
+Step-by-step guides: [Walkthrough (English)](docs/WALKTHROUGH.md) · [Anleitung (Deutsch)](docs/WALKTHROUGH.de.md) · [Guide (Français)](docs/WALKTHROUGH.fr.md) · [Guía (Español)](docs/WALKTHROUGH.es.md) · Game situations per sport: [Scenarios (English)](docs/SCENARIOS.md) · [Szenarien (Deutsch)](docs/SZENARIEN.de.md) · [Scénarios (Français)](docs/SCENARIOS.fr.md) · [Escenarios (Español)](docs/SCENARIOS.es.md)
 
 ---
 
@@ -285,12 +285,13 @@ Common options (see `reco-minimap --help` for all):
 | `--minimap f.mp4 --alpha f.mov --pip f.mp4 --json f.jsonl` | Outputs of `run` (`--alpha-bg 0.6` adds a dark backing) |
 | `--draw-home #fff --draw-away #2f6bff --ref-color #000` | Display colours, referee shirt colour |
 | `--min-alpha 1` | Keep undetected players fully opaque (default 0.8) |
+| `--lang de\|en\|fr\|es` | Language of all messages (default: `RECO_MINIMAP_LANG`, else the system language, else English) |
 | `--torso 0.18,0.50` | Part of a player box (top, bottom as shares of its height) that shows the shirt; adjust for figures with other proportions (`colors`, `run`, `live`) |
 | `--shirt-match` | Take the torso colour from the pixels that match a known shirt colour. Helps with strong, distinct colours and with court areas painted in a team colour; leave off for light against dark |
 | `--referees N` | Number of referee slots (default from the calibration); `0` for a game without referees |
 | `--no-field-mask` | With `--tile auto`: tile the full picture width and only the measured rows instead of following the calibrated field |
 
-> The command-line messages are currently in German; the interface is available in four languages.
+> Interface, program messages and `--help` are available in German, English, French and Spanish. `--lang de|en|fr|es` selects the language of the messages; without it the program follows `RECO_MINIMAP_LANG`, then the system language, then English. The interface passes its own language to every job it starts.
 
 `scripts/run_game.sh` processes a whole game in segments (for example quarters) and can composite the minimap into a broadcast video with ffmpeg.
 
@@ -359,7 +360,7 @@ Lower cost with `--every N` and by keeping the calibration current, so that only
 * **Game situations** are rule-based and verified on constructed formations only. Ball-dependent ones (2/3-point attempts) fire only when the ball is tracked at the right moment, and whether a shot scored is not detected. Throw-ins can false-trigger when a player happens to stand still at the line during play.
 * **Detection of other sports** was not tested with trained models; the field geometry is.
 * Live input from real SRT/RTMP sources and the Neural Engine path are untested; a growing `.mkv` follows with a latency set by the muxer's cluster length.
-* Command-line text is German only.
+* This README is in English only. The walkthrough and the scenario catalogue exist in all four languages and include the installation steps.
 
 ## Use as a Rust library
 
@@ -385,8 +386,9 @@ Implement `geom::Projector` on top of your own panorama projection if a plain ho
 ## Development
 
 ```bash
-cargo test --features tools              # 48 tests (core, tools, number decoding, substitutions, game situations, tiling, update check)
+cargo test --features tools              # 50 tests (core, tools, number decoding, substitutions, game situations, tiling, update check, languages)
 python3 scripts/gen_i18n.py              # regenerate src/tools/i18n.js (all keys in all 4 languages)
+                                         # program messages: tr!/trs! carry de, en, fr, es at the call site (src/tools/i18n.rs)
 python3 scripts/make_test_assets.py      # synthetic panorama + stand-in ONNX for smoke tests
 python3 scripts/coreml_probe.py <model>  # CoreML partitions and per-unit timing
 node scripts/ui_test.js                  # drives the interface in jsdom (see the header of the file)

@@ -21,7 +21,7 @@ Switch it on with `--scenes` (command line) or the checkbox *Detect game situati
 |---|---|---|
 | Basketball | Throw-in (inbound) | ✅ |
 | Basketball | Free throw | ✅ |
-| Basketball | Substitution | ✅ (numbers or leave/re-enter at the edge) |
+| Basketball | Substitution | ✅ (numbers, or leaving and re-entering at a sideline) |
 | Basketball | Tip-off (jump ball) | ✅ |
 | Basketball | 2- and 3-point attempts | 🟡 (needs the ball leaving the shooter's hands; not whether it went in) |
 | Football | Kick-off | ✅ |
@@ -56,7 +56,7 @@ Switch it on with `--scenes` (command line) or the checkbox *Detect game situati
 
 Scenes appear in three places:
 
-* **Log:** `SITUATION Freiwurf links (Heim) bei 12:34 (Sicherheit 0.85)` and a summary at the end of a run.
+* **Log:** `SITUATION free throw left (home) at 12:34 (confidence 0.85)` and a summary at the end of a run. The wording follows the chosen language.
 * **JSON** (`--json`): in the `events` array of the frame in which the scene fired:
 
 ```json
@@ -78,7 +78,7 @@ Scenes appear in three places:
 | **Tip-off / jump ball** | ✅ | Two opponents inside the centre circle (≤ 1.5 m), close together, standing still; nobody else within 2.4 m of the centre; the others (≥ 6 tracked) mostly calm. Holds 1 s. | A third player in the circle (a scramble) cancels it. |
 | **Free throw** | ✅ | One player standing still at the free-throw line (≤ 1.1 m), ≥ 3 players in the lane region, at most one in five players moving fast. Holds 2 s. | Reports the end (`l`/`r`) and the shooter's team. |
 | **Throw-in (inbound)** | ✅ | One player standing still at the sideline or baseline (≤ 0.8 m from the edge, inside or just outside), nobody else within 1.2 m, ≥ 3 players within 9 m. Holds 1.2 s. | Confidence 0.8 if the ball is in his hands or next to him, else 0.5. A player standing at the line during play can trigger it. |
-| **Substitution** | ✅ | The confirmed jersey number of a slot changes, or a slot lost for > 2 s is re-taken near the edge ("possible"). See [README](../README.md#jersey-numbers-and-substitutions). | Strongest with numbers and a squad list. |
+| **Substitution** | ✅ | The confirmed jersey number of a slot changes, or a player last tracked at a sideline is gone for at least 3 s and someone appears at a sideline ("possible"). See [README](../README.md#jersey-numbers-and-substitutions). | Strongest with numbers and a squad list. |
 | **2- or 3-point attempt** | 🟡 | The ball leaves the holder's hands (state *held* → *in flight*) and travels towards a basket (ends ≥ 2 m closer, or within 2.5 m). Classified by the shooter's position at release: ≥ 6.8 m from the basket, or in the corner strip, is a 3. Free-throw releases are excluded. | `borderline: true` if the release is within 0.8 m of the arc – the position error is about that large. Missed when the ball is not tracked at the release; with a weak ball model that is common. |
 | Made or missed | ❌ | Not visible from positions. | Needs the scoreboard. A made basket is usually followed by a baseline inbound of the *other* team within seconds – a hint, not proof. |
 | Timeout | 🔧 | Everybody standing still and gathered near the bench side for > 20 s. | |
@@ -189,6 +189,6 @@ The detector lives in [`src/scenes.rs`](../src/scenes.rs). A scene is a function
 1. Add a `SceneKind` variant, its `key()` string and its `hold()` time.
 2. Write the pattern function (see `free_throws` or `corners` as templates) and call it for the right sports in `patterns()`.
 3. Add a test in `tests/scenes.rs`: one positive formation and the closest look-alike that must **not** fire.
-4. Add the names to `scripts/gen_i18n.py` (`scene.<kind>`) and run it.
+4. Add the names to `scripts/gen_i18n.py` (`scene.<kind>`) and to `scene_name` in `src/bin/reco-minimap.rs`, in all four languages, and run the script.
 
 Useful building blocks: `profile.landmark("spot_l")`, `profile.zone_rect('l', 1)` (penalty area / key), `profile.field.edge_dist(pos)`, `AgentOut.vel`, and the ball state in the frame.

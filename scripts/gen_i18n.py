@@ -109,6 +109,7 @@ add("upd.install", "Jetzt installieren", "Install now", "Installer maintenant", 
 add("upd.restart", "Version {v} ist installiert. Bitte das Programm im Terminal beenden (Strg+C) und neu starten.", "Version {v} is installed. Please stop the program in the terminal (Ctrl+C) and start it again.", "La version {v} est installée. Arrêtez le programme dans le terminal (Ctrl+C) puis relancez-le.", "La versión {v} está instalada. Detén el programa en el terminal (Ctrl+C) y vuelve a iniciarlo.")
 add("calp.legend", "Wo liegt der Punkt? (blinkt)", "Where is the point? (blinking)", "Où se trouve le point ? (clignote)", "¿Dónde está el punto? (parpadea)")
 add("calp.camera", "Kamera", "Camera", "Caméra", "Cámara")
+add("run.segname", "abschnitt", "segment", "segment", "segmento")
 add("cal.figures", "Figuren und Trikots", "Figures and shirts", "Silhouettes et maillots", "Figuras y camisetas")
 add("cal.torso_top", "Trikot-Bereich oben", "Shirt area, top", "Zone du maillot, haut", "Zona de la camiseta, arriba")
 add("cal.torso_bottom", "Trikot-Bereich unten", "Shirt area, bottom", "Zone du maillot, bas", "Zona de la camiseta, abajo")

@@ -51,7 +51,7 @@ function sportId(x){if(!x)return null;const k=String(x).toLowerCase().trim();con
 function sportName(x){const id=sportId(x);return id?T('sport.'+id):String(x);}
 function mergeDefaults(t,d){for(const k in d){if(t[k]===undefined)t[k]=d[k];else if(d[k]&&typeof d[k]==='object'&&!Array.isArray(d[k]))mergeDefaults(t[k],d[k]);}}
 const defaults=()=>({lang:LANG,sport:'basketball',custom:{length:40,width:20,team_size:5,referees:2},model_id:'',video:'',calib_time:60,
-  colors:{draw_home:'#ffffff',draw_away:'#2f6bff',ref_color:'#000000'},segments:[{name:'abschnitt1',start:0,duration:0}],figures:{torso_top:0.18,torso_bottom:0.5,shirt_match:false,no_referees:false},
+  colors:{draw_home:'#ffffff',draw_away:'#2f6bff',ref_color:'#000000'},segments:[{name:T('run.segname')+'1',start:0,duration:0}],figures:{torso_top:0.18,torso_bottom:0.5,shirt_match:false,no_referees:false},
   run:{every:5,outputs:{minimap:true,alpha:false,pip:false,json:true},alpha_bg:0.6,min_alpha:1,ep:'auto',units:'all',scenes:false,numbers:{enabled:false,hires:'',roster_home:'',roster_away:''}},live:{source:'',size:'1920x1080',fps:25,port:8765,realtime:false}});
 function ensureDefaults(){mergeDefaults(S.project,defaults());}
 async function save(){await api('/api/project/save',{dir:S.dir,project:S.project});}
@@ -134,8 +134,8 @@ function renderRun(){const r=P().run,o=r.outputs,seg=P().segments;
  ${outs?`<section class="card"><table>${outs}</table></section>`:''}`;}
 function bindRun(){if(!ready()||!S.files.court||!S.files.teams)return;bindInputs();bindNumbers(true);
  document.querySelectorAll('[data-seg]').forEach(el=>el.onchange=()=>{const[i,k]=el.dataset.seg.split('.'),g=P().segments[+i];if(k==='name')g.name=el.value;else{const end=g.duration>0?g.start+g.duration:0,v=secs(el.value);if(k==='start'){g.start=v;g.duration=end>v?end-v:0;}else g.duration=v>g.start?v-g.start:0;}save();if(k!=='name')render();});
- document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{P().segments.splice(+b.dataset.del,1);if(!P().segments.length)P().segments.push({name:'abschnitt1',start:0,duration:0});save();render();});
- $('addseg').onclick=()=>{P().segments.push({name:'abschnitt'+(P().segments.length+1),start:0,duration:600});save();render();};
+ document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{P().segments.splice(+b.dataset.del,1);if(!P().segments.length)P().segments.push({name:T('run.segname')+'1',start:0,duration:0});save();render();});
+ $('addseg').onclick=()=>{P().segments.push({name:T('run.segname')+(P().segments.length+1),start:0,duration:600});save();render();};
  document.querySelectorAll('[data-rev]').forEach(b=>b.onclick=()=>api('/api/reveal',{path:b.dataset.rev}));
  $('brun').onclick=()=>{queue={i:0,list:P().segments.slice()};nextSegment();};}
 function nextSegment(){if(!queue)return;if(queue.i>=queue.list.length){queue=null;log(T('status.done'));refresh();return;}const s=queue.list[queue.i],r=P().run,c=P().colors;

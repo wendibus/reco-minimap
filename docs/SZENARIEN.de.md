@@ -21,7 +21,7 @@ Einschalten mit `--scenes` (Kommandozeile) oder dem Häkchen *Spielsituationen e
 |---|---|---|
 | Basketball | Einwurf (Inbound) | ✅ |
 | Basketball | Freiwurf | ✅ |
-| Basketball | Wechsel | ✅ (Nummern oder Verlassen/Wiederbetreten am Rand) |
+| Basketball | Wechsel | ✅ (Nummern oder Verlassen und Wiederbetreten an einer Seitenlinie) |
 | Basketball | Startball (Sprungball) | ✅ |
 | Basketball | 2er und 3er | 🟡 (braucht den Ball, der die Hände des Werfers verlässt; nicht, ob er getroffen hat) |
 | Fußball | Anstoß | ✅ |
@@ -56,7 +56,7 @@ Einschalten mit `--scenes` (Kommandozeile) oder dem Häkchen *Spielsituationen e
 
 Szenen erscheinen an drei Stellen:
 
-* **Protokoll:** `SITUATION Freiwurf links (Heim) bei 12:34 (Sicherheit 0.85)` und eine Zusammenfassung am Ende eines Laufs.
+* **Protokoll:** `SITUATION Freiwurf links (Heim) bei 12:34 (Sicherheit 0.85)` und eine Zusammenfassung am Ende eines Laufs. Der Wortlaut folgt der gewählten Sprache.
 * **JSON** (`--json`): im Feld `events` des Bildes, in dem die Szene ausgelöst hat:
 
 ```json
@@ -78,7 +78,7 @@ Szenen erscheinen an drei Stellen:
 | **Startball / Sprungball** | ✅ | Zwei Gegner im Mittelkreis (≤ 1,5 m), dicht beieinander, still; sonst niemand näher als 2,4 m am Mittelpunkt; die übrigen (≥ 6 getrackt) überwiegend ruhig. Hält 1 s. | Ein dritter Spieler im Kreis (Gerangel) hebt es auf. |
 | **Freiwurf** | ✅ | Ein Spieler steht still an der Freiwurflinie (≤ 1,1 m), ≥ 3 Spieler in der Zone, höchstens jeder fünfte Spieler schnell in Bewegung. Hält 2 s. | Meldet das Feldende (`l`/`r`) und das Team des Werfers. |
 | **Einwurf (Inbound)** | ✅ | Ein Spieler steht still an Seiten- oder Grundlinie (≤ 0,8 m vom Rand, innen oder knapp außerhalb), niemand sonst innerhalb von 1,2 m, ≥ 3 Spieler innerhalb von 9 m. Hält 1,2 s. | Sicherheit 0,8, wenn der Ball in seinen Händen oder daneben ist, sonst 0,5. Ein Spieler, der im Spiel an der Linie steht, kann es auslösen. |
-| **Wechsel** | ✅ | Die bestätigte Trikotnummer eines Platzes ändert sich, oder ein Platz, der > 2 s verloren war, wird am Rand wieder besetzt („möglich“). Siehe [README](../README.md#jersey-numbers-and-substitutions). | Am stärksten mit Nummern und Kaderliste. |
+| **Wechsel** | ✅ | Die bestätigte Trikotnummer eines Platzes ändert sich, oder ein Spieler, der zuletzt an einer Seitenlinie verfolgt wurde, ist mindestens 3 s weg und jemand taucht an einer Seitenlinie auf („möglich“). Siehe [README](../README.md#jersey-numbers-and-substitutions). | Am stärksten mit Nummern und Kaderliste. |
 | **2er- oder 3er-Versuch** | 🟡 | Der Ball verlässt die Hände des Ballhalters (Zustand *gehalten* → *Flug*) und fliegt auf einen Korb zu (endet ≥ 2 m näher oder innerhalb von 2,5 m). Eingeordnet nach der Position des Werfers beim Abwurf: ≥ 6,8 m vom Korb oder im Eckstreifen zählt als 3. Freiwurf-Abwürfe sind ausgenommen. | `borderline: true`, wenn der Abwurf innerhalb von 0,8 m der Bogenlinie liegt – so groß ist etwa der Positionsfehler. Verpasst, wenn der Ball beim Abwurf nicht verfolgt wird; mit einem schwachen Ballmodell ist das häufig. |
 | Treffer oder nicht | ❌ | Aus Positionen nicht sichtbar. | Braucht die Anzeigetafel. Auf einen Korb folgt meist ein Einwurf des *anderen* Teams an der Grundlinie – ein Hinweis, kein Beweis. |
 | Auszeit | 🔧 | Alle stehen still und sammeln sich > 20 s auf der Bankseite. | |
@@ -189,6 +189,6 @@ Der Detektor liegt in [`src/scenes.rs`](../src/scenes.rs). Eine Szene ist eine F
 1. Eine `SceneKind`-Variante samt `key()`-Text und `hold()`-Zeit ergänzen.
 2. Die Musterfunktion schreiben (Vorlagen: `free_throws`, `corners`) und in `patterns()` für die passenden Sportarten aufrufen.
 3. Einen Test in `tests/scenes.rs` ergänzen: eine positive Aufstellung und die nächste Verwechslung, bei der **nichts** auslösen darf.
-4. Die Namen in `scripts/gen_i18n.py` (`scene.<kind>`) ergänzen und das Skript ausführen.
+4. Die Namen in `scripts/gen_i18n.py` (`scene.<kind>`) und in `scene_name` in `src/bin/reco-minimap.rs` in allen vier Sprachen ergänzen und das Skript ausführen.
 
 Nützliche Bausteine: `profile.landmark("spot_l")`, `profile.zone_rect('l', 1)` (Strafraum / Zone), `profile.field.edge_dist(pos)`, `AgentOut.vel` und der Ballzustand im Bild.

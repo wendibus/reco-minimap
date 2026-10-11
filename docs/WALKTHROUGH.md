@@ -4,7 +4,7 @@ This guide takes you from "I have a panorama video and a trained model" to "I ha
 
 **What you need before you start**
 
-* The reco-minimap program installed ([README → Install](../README.md#install)).
+* The reco-minimap program installed, see [Installation](#installation) below.
 * A **panorama video of the whole field** – the stitched picture from Reco, not the AI-cropped view. If you only have a left and a right camera video, stitch them with Reco first. A 1920×1080 export is enough for the minimap; for jersey numbers you want a larger one (see step 4).
 * A **model exported by Reco Trainer** (a folder with `runtime.json`, `model-card.json` and an `.onnx` file).
 * Optional: the shirt numbers of both squads, if you want numbers on the dots.
@@ -15,9 +15,42 @@ Start the interface:
 reco-minimap ui
 ```
 
-Your browser opens at `http://127.0.0.1:8788/`. Pick your language at the top right (Deutsch · English · Français · Español). At the top you also see the **project folder** – everything for one venue or season is stored there. The default is `~/reco-minimap-projekte/standard`; use *Browse …* to choose another folder.
+Your browser opens at `http://127.0.0.1:8788/`. Pick your language at the top right (Deutsch · English · Français · Español); the program's messages in the log follow that choice. At the top you also see the **project folder** – everything for one venue or season is stored there. The default is `~/reco-minimap-projekte/standard`; use *Browse …* to choose another folder.
 
 > Tip: use one project folder per venue and camera position. The calibration depends on where the camera stands.
+
+## Installation
+
+| | |
+|---|---|
+| Rust | stable toolchain (built and tested with **1.91**) |
+| ffmpeg + ffprobe | on your `PATH` (`brew install ffmpeg`) |
+| ONNX Runtime | shared library **1.24 or newer** |
+| A detection model | an RF-DETR ONNX export, e.g. from Reco Trainer |
+
+**macOS**
+
+```bash
+brew install ffmpeg
+python3 -m venv ~/ortvenv
+~/ortvenv/bin/pip install onnxruntime
+find ~/ortvenv -name "libonnxruntime*.dylib"
+export ORT_DYLIB_PATH="<the path shown>"
+cargo install --path . --features tools,coreml
+```
+
+The library from the Python package includes CoreML; the Homebrew one does not. Put the `export ORT_DYLIB_PATH=…` line into `~/.zshrc` so it holds in new terminal windows.
+
+**Linux**
+
+```bash
+sudo apt install ffmpeg
+python3 -m venv ~/ortvenv && ~/ortvenv/bin/pip install onnxruntime
+export ORT_DYLIB_PATH=$(find ~/ortvenv -name "libonnxruntime.so*" | head -1)
+cargo install --path . --features tools
+```
+
+Tested on macOS (Apple silicon); the test suite runs on Linux; Windows is untested.
 
 ## How it is meant to be used
 
@@ -45,7 +78,7 @@ The result lives in the project folder (`court.json`, `scales.json`, `teams.json
 * You provide where the field is, which colours the teams wear and which time span to process. These three decide the quality; everything else has usable defaults.
 * The check video (*Panorama with boxes and minimap*) is your inspection tool. Watch it for the first segment before you let a whole game run.
 
-**At the bottom of the page** is the log. It shows every command the interface runs and its output. Everything the interface does also works on the command line; a few fine settings exist only there ([README → Command-line reference](../README.md#command-line-reference)).
+**At the bottom of the page** is the log. It shows every command the interface runs and its output. Everything the interface does also works on the command line; a few fine settings exist only there (`reco-minimap --help`).
 
 **New versions** are announced at the top with a blue notice, see [Updating](#updating).
 
@@ -115,7 +148,7 @@ Click *Measure*. The program looks at a dozen frames and learns how tall a playe
 5. **Compute.** *automatic* picks CoreML on a Mac. Leave *CoreML* on `all`.
 6. Click **Start**. The log at the bottom shows progress and, at the end, a summary: frames processed, detections, time per stage. *Cancel* stops the run.
 
-**Where are my files?** In `<project folder>/out/`, named after the segment (`abschnitt1.mp4`, `abschnitt1.mov`, `abschnitt1_pip.mp4`, `abschnitt1.jsonl`). The list below the settings shows the newest files with *Show in folder*.
+**Where are my files?** In `<project folder>/out/`, named after the segment (`segment1.mp4`, `segment1.mov`, `segment1_pip.mp4`, `segment1.jsonl`). The list below the settings shows the newest files with *Show in folder*.
 
 **Do a quick first run.** Use a segment of 20–60 seconds with *Panorama with boxes and minimap* ticked. Open `…_pip.mp4` and check:
 
@@ -135,7 +168,7 @@ In step 4 there is a section *Read and show jersey numbers*.
 4. **Size matters.** A number is readable from roughly 10 px digit height, which means players about **80 px tall**. At the end of the run the log says how tall players are in your video and whether that is enough. If not, export a larger version of the same panorama with Reco (same timeline, same frame rate) and enter it as *Higher-resolution panorama for the numbers*. Detection keeps using the smaller video.
 5. Numbers appear on the dots as soon as they are confirmed. Players whose back is never visible stay without a number.
 
-**Substitutions** show up in the log (`WECHSEL Heim bei 12:34: #7 -> #12` for a confirmed change, "möglicher Wechsel" when someone left and someone entered at the sideline but numbers are unknown), in `events` of the data file and in step 6.
+**Substitutions** show up in the log (`SUBSTITUTION home at 12:34: #7 -> #12` for a confirmed change, "possible substitution" when someone left and someone entered at the sideline but numbers are unknown), in `events` of the data file and in step 6.
 
 ### Game situations (optional)
 
@@ -148,7 +181,7 @@ Tick *Detect game situations* (in step 4, also available in step 5). The program
 
 What to expect:
 
-* A situation is reported when the formation has held for a moment – for example a player at the free-throw line, three players in the lane, everybody else standing still. The log then says e.g. `SITUATION Freiwurf links (Heim) bei 12:34 (Sicherheit 0.85)`.
+* A situation is reported when the formation has held for a moment – for example a player at the free-throw line, three players in the lane, everybody else standing still. The log then says e.g. `SITUATION free throw left (home) at 12:34 (confidence 0.85)`.
 * **Check it on a short segment first** and compare with the video. Thresholds are first estimates; a throw-in can be reported when a player simply stands at the line, and a situation is missed when many players are not detected.
 * **2- and 3-point attempts** need the ball to be found when it leaves the shooter's hands. They tell you the type of attempt, not whether it scored. A "close to the line" note means the position error is as large as the distance to the 3-point line.
 * The scenes appear in the data file as events with `"type": "scene"` and in step 6.
@@ -195,10 +228,10 @@ On the command line: `reco-minimap update` tells you whether there is something 
 
 ## Using the results
 
-**Put the minimap into a game video with ffmpeg** (overlay `abschnitt1.mov` onto `game.mp4`, bottom right, 480 px wide):
+**Put the minimap into a game video with ffmpeg** (overlay `segment1.mov` onto `game.mp4`, bottom right, 480 px wide):
 
 ```bash
-ffmpeg -i game.mp4 -i out/abschnitt1.mov \
+ffmpeg -i game.mp4 -i out/segment1.mov \
   -filter_complex "[1:v]scale=480:-1[m];[0:v][m]overlay=W-w-30:H-h-30:format=auto" \
   -c:v libx264 -crf 18 -pix_fmt yuv420p -c:a copy game_with_minimap.mp4
 ```

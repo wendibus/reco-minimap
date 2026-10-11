@@ -4,7 +4,7 @@ Diese Anleitung führt dich von „Ich habe ein Panoramavideo und ein trainierte
 
 **Das brauchst du vorher**
 
-* Das installierte Programm ([README → Install](../README.md#install), auf Englisch).
+* Das installierte Programm, siehe [Installation](#installation) unten.
 * Ein **Panoramavideo des ganzen Spielfelds** – das gestitchte Bild aus Reco, **nicht** der KI-Bildausschnitt. Hast du nur ein linkes und ein rechtes Video, stitche sie zuerst mit Reco. Für die Minimap reicht ein Export mit 1920×1080; für Trikotnummern brauchst du einen größeren (siehe Schritt 4).
 * Ein **Modell aus Reco Trainer** (Ordner mit `runtime.json`, `model-card.json` und einer `.onnx`-Datei).
 * Optional: die Rückennummern beider Kader, wenn Nummern auf den Scheiben stehen sollen.
@@ -15,9 +15,42 @@ Oberfläche starten:
 reco-minimap ui
 ```
 
-Der Browser öffnet `http://127.0.0.1:8788/`. Oben rechts wählst du die Sprache (Deutsch · English · Français · Español). Oben stehen auch der **Projektordner** – dort liegt alles zu einer Halle oder Saison. Standard ist `~/reco-minimap-projekte/standard`; mit *Durchsuchen …* wählst du einen anderen.
+Der Browser öffnet `http://127.0.0.1:8788/`. Oben rechts wählst du die Sprache (Deutsch · English · Français · Español); die Meldungen des Programms im Protokoll folgen dieser Wahl. Oben stehen auch der **Projektordner** – dort liegt alles zu einer Halle oder Saison. Standard ist `~/reco-minimap-projekte/standard`; mit *Durchsuchen …* wählst du einen anderen.
 
 > Tipp: Nimm pro Halle und Kameraposition einen eigenen Projektordner. Die Kalibrierung hängt davon ab, wo die Kamera steht.
+
+## Installation
+
+| | |
+|---|---|
+| Rust | stabile Toolchain (gebaut und getestet mit **1.91**) |
+| ffmpeg + ffprobe | im `PATH` (`brew install ffmpeg`) |
+| ONNX Runtime | dynamische Bibliothek **1.24 oder neuer** |
+| Ein Erkennungsmodell | ein RF-DETR-Export im ONNX-Format, z. B. aus Reco Trainer |
+
+**macOS**
+
+```bash
+brew install ffmpeg
+python3 -m venv ~/ortvenv
+~/ortvenv/bin/pip install onnxruntime
+find ~/ortvenv -name "libonnxruntime*.dylib"
+export ORT_DYLIB_PATH="<der angezeigte Pfad>"
+cargo install --path . --features tools,coreml
+```
+
+Die Bibliothek aus dem Python-Paket enthält CoreML, die von Homebrew nicht. Trage die Zeile `export ORT_DYLIB_PATH=…` in `~/.zshrc` ein, damit sie in neuen Terminalfenstern gilt.
+
+**Linux**
+
+```bash
+sudo apt install ffmpeg
+python3 -m venv ~/ortvenv && ~/ortvenv/bin/pip install onnxruntime
+export ORT_DYLIB_PATH=$(find ~/ortvenv -name "libonnxruntime.so*" | head -1)
+cargo install --path . --features tools
+```
+
+Getestet auf macOS (Apple Silicon); die Tests laufen unter Linux; Windows ist ungetestet.
 
 ## So ist die Bedienung gedacht
 
@@ -45,7 +78,7 @@ Das Ergebnis liegt im Projektordner (`court.json`, `scales.json`, `teams.json`) 
 * Du gibst vor: wo das Feld liegt, welche Farben die Teams tragen und welchen Zeitraum es verarbeiten soll. Diese drei Angaben entscheiden über die Qualität; alles andere hat brauchbare Standardwerte.
 * Das Kontrollvideo (*Panorama mit Boxen und Minimap*) ist dein Prüfwerkzeug. Sieh es dir beim ersten Abschnitt an, bevor du ein ganzes Spiel rechnen lässt.
 
-**Unten auf der Seite** steht das Protokoll. Es zeigt jeden Befehl, den die Oberfläche ausführt, und dessen Ausgabe. Alles, was die Oberfläche kann, geht auch auf der Kommandozeile; einige Feineinstellungen gibt es nur dort ([README → Command-line reference](../README.md#command-line-reference)).
+**Unten auf der Seite** steht das Protokoll. Es zeigt jeden Befehl, den die Oberfläche ausführt, und dessen Ausgabe. Alles, was die Oberfläche kann, geht auch auf der Kommandozeile; einige Feineinstellungen gibt es nur dort (`reco-minimap --help`).
 
 **Neue Versionen** meldet die Oberfläche oben mit einem blauen Hinweis, siehe [Aktualisieren](#aktualisieren).
 

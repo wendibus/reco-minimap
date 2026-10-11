@@ -15,7 +15,7 @@ Everything runs locally. No video, frame or model leaves your computer. The only
 | **Live** | Browser overlay for OBS plus a JSON event stream |
 | **Jersey numbers** | Optional OCR on the player's back, constrained to your squad list, with substitution detection |
 | **Game situations** | Optional recognition of tip-off, free throw, throw-in, kick-off, corner, penalty, 7 m throw and basketball 2/3-point attempts, from formations on the field ([per sport](docs/SCENARIOS.md)) |
-| **Interface** | `reco-minimap ui` – six steps from model import to evaluation, with a notice when a newer version is available |
+| **Interface** | `reco-minimap ui` – six steps from model import to evaluation, with a notice when a newer version is available; the header shows the installed version and opens the built-in guide in your language (`reco-minimap --version` on the command line) |
 
 > **Status:** the pipeline, interface, calibration, tracking and live mode are tested end to end. Detection quality with a real Reco Trainer model was checked on basketball footage only; the other sports are supported by their field geometry. Jersey-number reading has only been measured on synthetic digits (see [Jersey numbers](#jersey-numbers-and-substitutions)). Details in [Known limitations](#known-limitations).
 

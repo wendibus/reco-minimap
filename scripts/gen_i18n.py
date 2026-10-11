@@ -306,6 +306,10 @@ add("live.adaptive", "Adaptive Kachelauswahl (experimentell; vollständige Suche
 add("run.workers", "Parallele Modell-Sitzungen (mehr Speicher; 2 auf M4 Pro getestet)", "Parallel model sessions (more memory; 2 tested on M4 Pro)", "Sessions de modèle parallèles (plus de mémoire ; 2 testées sur M4 Pro)", "Sesiones de modelo paralelas (más memoria; 2 probadas en M4 Pro)")
 add("nav.review", "Review", "Review", "Revue", "Revisión")
 
+add("nav.guide", "Anleitung", "Guide", "Guide", "Guía")
+add("nav.back", "zur Oberfläche", "back to the interface", "retour à l'interface", "volver a la interfaz")
+add("btn.open_file", "Datei öffnen", "Open file", "Ouvrir le fichier", "Abrir el archivo")
+
 # --- consistency checks
 for k, d in T.items():
     assert set(d) == set(LANGS), k

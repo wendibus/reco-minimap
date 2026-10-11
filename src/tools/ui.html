@@ -33,7 +33,7 @@ footer{border-top:1px solid var(--ln);background:#0f1115;padding:8px 14px;max-he
 a{color:#7fb7ff}
 </style></head><body>
 <div id="app">
-<header><h1>reco-minimap</h1><a href="/review" target="_blank" rel="noopener" id="navReview">Review</a><span class="tag" id="tag"></span><span class="sp"></span>
+<header><h1>reco-minimap</h1><span class="mu small" id="ver"></span><a href="/guide" target="_blank" rel="noopener" id="navGuide"></a><a href="/review" target="_blank" rel="noopener" id="navReview">Review</a><span class="tag" id="tag"></span><span class="sp"></span>
  <div class="row" style="min-width:380px;flex:1;max-width:620px"><span class="mu" id="h_proj"></span><input type="text" id="dir" class="grow"><button class="b" id="dirbrowse"></button><button class="b" id="dirOpen"></button></div>
  <div class="row"><span class="mu" id="h_lang"></span><select id="lang"></select></div></header>
 <main><nav id="nav"></nav><div id="panel"></div></main>
@@ -64,7 +64,7 @@ function numbersBlock(withHires){const n=P().run.numbers,ok=INIT.ocr&&INIT.ocr.e
 function bindNumbers(withHires){const b=$('bocr');if(b)b.onclick=()=>runJob('fetch_ocr',{},async()=>{INIT=await api('/api/init');render();});if(withHires){bindBrowse((id,p)=>{P().run.numbers.hires=p;save();});const h=$('hpath');if(h)h.onchange=e=>{P().run.numbers.hires=e.target.value;save();};}}
 
 // ---------- i18n chrome
-function chrome(){document.title='reco-minimap';$('navReview').textContent=T('nav.review');$('tag').textContent=T('app.tagline');$('h_proj').textContent=T('project.folder');$('h_lang').textContent=T('lang.label');
+function chrome(){document.title='reco-minimap';$('navReview').textContent=T('nav.review');$('navGuide').textContent=T('nav.guide');$('navGuide').href='/guide?lang='+LANG;$('ver').textContent=INIT?'v'+INIT.version:'';$('tag').textContent=T('app.tagline');$('h_proj').textContent=T('project.folder');$('h_lang').textContent=T('lang.label');
  $('dirbrowse').textContent=T('btn.browse');$('dirOpen').textContent=T('project.open');$('logt').textContent=T('log.title');$('lognote').textContent=T('log.note');$('cancel').textContent=T('btn.cancel');
  $('nav').innerHTML=STEPS.map(s=>`<button data-s="${s}" class="${s===step?'on':''}">${T('step.'+s)}</button>`).join('');
  $('nav').querySelectorAll('button').forEach(b=>b.onclick=()=>{step=b.dataset.s;chrome();render();});
@@ -125,20 +125,19 @@ function renderRun(){const r=P().run,o=r.outputs,seg=P().segments;
  if(!ready()||!S.files.court||!S.files.teams)return `<section class="card"><div class="bad">${!ready()?T('cal.need_setup'):T('run.need_cal')}</div></section>`;
  const rows=seg.map((s,i)=>`<tr><td><input type="text" data-seg="${i}.name" value="${esc(s.name)}"></td><td><input type="text" data-seg="${i}.start" value="${clock(s.start)}" placeholder="0:00"></td><td><input type="text" data-seg="${i}.end" value="${s.duration>0?clock(s.start+s.duration):''}" placeholder="${T('run.whole')}"></td><td><button class="b" data-del="${i}">✕</button></td></tr>`).join('');
  const ck=(k,l)=>`<label style="display:flex;gap:8px;align-items:center;color:var(--fg);font-size:14px"><input type="checkbox" data-k="run.outputs.${k}" ${o[k]?'checked':''}> ${l}</label>`;
- const outs=(S.files.out||[]).slice(0,8).map(x=>`<tr><td>${esc(x.name)}</td><td class="mu">${x.mb} MB</td><td><button class="b" data-rev="${esc(x.path)}">${T('btn.reveal')}</button></td></tr>`).join('');
+ const outs=(S.files.out||[]).slice(0,8).map(x=>`<tr><td><a href="#" data-open="${esc(x.path)}" title="${T('btn.open_file')}">${esc(x.name)}</a></td><td class="mu">${x.mb} MB</td><td><button class="b" data-rev="${esc(x.path)}">${T('btn.reveal')}</button></td></tr>`).join('');
  return `<section class="card"><h2>${T('run.segments')}</h2><table><tr><th>${T('run.name')}</th><th>${T('run.start')}</th><th>${T('run.end')}</th><th></th></tr>${rows}</table><button class="b" id="addseg" style="margin-top:8px">+ ${T('run.add')}</button></section>
  <section class="card"><h2>${T('run.outputs')}</h2>${ck('minimap',T('run.out_minimap'))}${ck('alpha',T('run.out_alpha'))}${ck('pip',T('run.out_pip'))}${ck('json',T('run.out_json'))}
  <div class="grid3"><div><label>${T('run.every')}</label><input type="number" data-k="run.every" value="${r.every}" min="1"></div><div><label>${T('run.alpha_bg')}</label><input type="number" step="0.1" data-k="run.alpha_bg" value="${r.alpha_bg}"></div><div><label>${T('run.min_alpha')}</label><input type="number" step="0.1" data-k="run.min_alpha" value="${r.min_alpha}"></div></div><div class="mu small">${T('run.every_hint')}</div>
  <div class="grid2"><div><label>${T('run.ep')}</label><select data-k="run.ep"><option value="auto" ${r.ep==='auto'?'selected':''}>${T('run.ep_auto')}</option><option value="coreml" ${r.ep==='coreml'?'selected':''}>CoreML (macOS)</option><option value="cpu" ${r.ep==='cpu'?'selected':''}>CPU</option></select></div><div><label>CoreML</label><select data-k="run.units">${['all','gpu','ane','cpu'].map(u=>`<option value="${u}" ${r.units===u?'selected':''}>${u}</option>`).join('')}</select></div></div>
  ${workerControl()}
- <div class="row" style="margin-top:12px"><button class="b p" id="brun">${T('run.start_btn')}</button><span class="mu small">${T('run.output_dir')}: ${esc(S.dir)}/out</span></div></section>
+ <div class="row" style="margin-top:12px"><button class="b p" id="brun">${T('run.start_btn')}</button><span class="mu small">${T('run.output_dir')}: <a href="#" data-rev="${esc(S.dir)}/out">${esc(S.dir)}/out</a></span></div></section>
  ${numbersBlock(true)}
  ${outs?`<section class="card"><table>${outs}</table></section>`:''}`;}
 function bindRun(){if(!ready()||!S.files.court||!S.files.teams)return;bindInputs();bindNumbers(true);
  document.querySelectorAll('[data-seg]').forEach(el=>el.onchange=()=>{const[i,k]=el.dataset.seg.split('.'),g=P().segments[+i];if(k==='name')g.name=el.value;else{const end=g.duration>0?g.start+g.duration:0,v=secs(el.value);if(k==='start'){g.start=v;g.duration=end>v?end-v:0;}else g.duration=v>g.start?v-g.start:0;}save();if(k!=='name')render();});
  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{P().segments.splice(+b.dataset.del,1);if(!P().segments.length)P().segments.push({name:T('run.segname')+'1',start:0,duration:0});save();render();});
  $('addseg').onclick=()=>{P().segments.push({name:T('run.segname')+(P().segments.length+1),start:0,duration:600});save();render();};
- document.querySelectorAll('[data-rev]').forEach(b=>b.onclick=()=>api('/api/reveal',{path:b.dataset.rev}));
  $('brun').onclick=()=>{queue={i:0,list:P().segments.slice()};nextSegment();};}
 function nextSegment(){if(!queue)return;if(queue.i>=queue.list.length){queue=null;log(T('status.done'));refresh();return;}const s=queue.list[queue.i],r=P().run,c=P().colors;
  log(T('run.queue',{i:queue.i+1,n:queue.list.length,name:s.name}));
@@ -156,8 +155,11 @@ function bindLive(){if(!activeModel()||!S.files.court||!S.files.teams)return;bin
  $('blive').onclick=()=>{const l=P().live,c=P().colors;runJob('live',{...common(),source:l.source,size:l.size,fps:l.fps,port:l.port,realtime:l.realtime,adaptive:l.adaptive===true,draw_home:c.draw_home,draw_away:c.draw_away,ref_color:c.ref_color},()=>render());setTimeout(render,400);};
  $('bstop').onclick=()=>{if(JOB)api('/api/job/'+JOB.id+'/cancel',{});};}
 function renderEval(){const outs=(S.files.out||[]).filter(x=>x.name.endsWith('.jsonl'));
- return `<section class="card"><h2>${T('eval.title')}</h2><label>${T('eval.file')}</label><select id="evf">${outs.map(x=>`<option value="${esc(x.path)}">${esc(x.name)}</option>`).join('')}</select><div style="margin-top:10px"><button class="b p" id="bev" ${outs.length?'':'disabled'}>${T('eval.btn')}</button></div></section>`;}
-function bindEval(){const b=$('bev');if(b)b.onclick=()=>runJob('stats',{file:$('evf').value});}
+ return `<section class="card"><h2>${T('eval.title')}</h2><label>${T('eval.file')}</label><select id="evf">${outs.map(x=>`<option value="${esc(x.path)}">${esc(x.name)}</option>`).join('')}</select><div class="row" style="margin-top:10px"><button class="b p" id="bev" ${outs.length?'':'disabled'}>${T('eval.btn')}</button><button class="b" id="bevrev" ${outs.length?'':'disabled'}>${T('btn.reveal')}</button></div></section>`;}
+function bindEval(){const b=$('bev');if(b)b.onclick=()=>runJob('stats',{file:$('evf').value});const r=$('bevrev');if(r)r.onclick=()=>showFile($('evf').value,false);}
+// result files: show in the file manager, or open with the default program; says why if it cannot
+async function showFile(path,open){const r=await api('/api/reveal',{path,open});if(!r.ok)log(T('status.error',{m:r.error}));}
+document.addEventListener('click',e=>{const el=e.target.closest&&e.target.closest('[data-rev],[data-open]');if(!el)return;e.preventDefault();if(el.dataset.open!==undefined)showFile(el.dataset.open,true);else showFile(el.dataset.rev,false);});
 function render(){if(!INIT)return;const R={setup:[renderSetup,bindSetup],video:[renderVideo,bindVideo],calib:[renderCalib,bindCalib],run:[renderRun,bindRun],live:[renderLive,bindLive],eval:[renderEval,bindEval]}[step];
  $('panel').innerHTML=(INIT.ort_error?`<div class="banner">${esc(INIT.ort_error)}</div>`:'')+updateBanner()+R[0]();R[1]();
  const bu=$('bupd');if(bu)bu.onclick=()=>runJob('update',{},()=>{UPD={version:UPD.version,url:UPD.url,installed:true};render();});}

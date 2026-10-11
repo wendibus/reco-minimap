@@ -59,11 +59,11 @@ panorama video ──► tiles (sized by distance) ──► RF-DETR detector (O
                   renderer ──► minimap video / transparent overlay / panorama + minimap / JSON / live overlay
 ```
 
-* **Tiling.** A panorama is much wider than the detector's 512 px input, and players far from the camera are small. `reco-minimap scales` measures how tall players appear at each image row and `--tile auto` then cuts each band with the tile size that makes a player about 28 px tall for the model. With a calibration the bands cover the field from the far to the near sideline and only span the part of the picture where the field is, so stands and ceiling are not searched.
+* **Tiling.** A panorama is much wider than the detector's 512 px input, and players far from the camera are small. `reco-minimap scales` measures how tall players appear at each image row and `--tile auto` then cuts each band with the tile size that makes a player about 28 px tall for the model. With a calibration the bands cover the field from the far to the near sideline and only span the part of the picture where the field is, so stands and ceiling are not searched. All depth bands are covered (there is no band limit any more), and `--roi` also restricts `--tile auto`; see [tiling fix and benchmark (German)](docs/TILING_FIX.de.md).
 * **Calibration.** You click known field points (corners, centre, penalty-area corners …) once per camera position; a small top-down field shows which one is asked for. The program fits a homography from panorama pixels to field metres and shows the field lines over the picture so you can judge the fit; it reports the error in metres.
 * **Two confidence levels.** Only confident player detections start a dot or bring back a lost one; weaker ones are used to keep following a player who is already tracked.
 * **Tracking.** Each team has a fixed number of slots (5 for basketball, 11 for football …). Both teams are matched in one step: the shirt colour decides between candidates, but a detection right where a player is expected stays his even if one colour sample disagrees. A hidden player keeps moving with damped velocity and cannot leave the field; a returning player re-takes his slot instead of creating a sixth dot.
-* **Ball.** States *held*, *in flight*, *loose* and *unknown*. A ball hidden in hands stays *held*; detections far from the tracked ball are ignored unless they are clearly confident; a ball that does not move for 3 s (a spare ball beside the court) is ignored.
+* **Ball.** States *held*, *in flight*, *loose* and *unknown*. For hand-control sports, a ball hidden in hands stays *held* for a configurable grace period (default 1.5 seconds), then becomes *unknown*. Other sports do not infer individual possession from body-box overlap. Detections far from the tracked ball are ignored unless they are clearly confident; a ball that does not move for 3 s (a spare ball beside the court) is ignored.
 * **Smooth video.** Detection can run on every Nth frame (`--every N`); the minimap video is still written at the full frame rate by interpolating between detections.
 
 ## Install
@@ -248,6 +248,18 @@ reco-minimap live <source> --model … --court court.json --teams teams.json \
 * URL parameters: `?floor=1` dark floor for testing, `?lead=0.2` predict further ahead (negative = less, to match the stream delay), `?minalpha=1`, `?debug=1`.
 * Use `--host 0.0.0.0` to reach it from another computer.
 
+Opt-in `--adaptive-live` selects tiles near recent observations between full
+searches (`--sweep-secs 2`). Four rotating recovery tiles per update also search
+away from known players (`--ball-search-tiles 4`, `0` disables this). Live OCR
+runs in a bounded background worker (`--ocr-secs 2`), rejecting stale/reused-track
+results. `--workers 2` enables parallel model sessions; worker count is also
+selectable in the UI. The JSON `performance` object reports
+tile counts, inference time and dropped frames; `?debug=1` displays the counters.
+This prioritizes fresh updates, **not exhaustive frame processing**. Latency is
+measured from decoded-frame arrival, not from the camera. Adaptive search can
+miss fast objects between sweeps; it remains experimental and does not affect
+`run`. See [implementation and limitations](docs/ADAPTIVE_LIVE.de.md).
+
 Important: the minimap needs the **same full panorama you calibrated on**. The AI-panned view that `reco camera` writes is a moving crop and cannot be used.
 
 ## Command-line reference
@@ -317,9 +329,9 @@ Common options (see `reco-minimap --help` for all):
 }
 ```
 
-* `id` is a **slot**, stable while the slot exists. `state` is `visible`, `occluded` or `lost` (position then is an estimate).
+* `id` is a **slot**, not a person. Pair it with `segment` to identify a continuous tracking section. `identity.status` is `unknown`, `candidate` or `conflict`; `identity.player` contains a provisional `{team, number}` key or `null`. `state` is `visible`, `occluded` or `lost` (position then is an estimate).
 * `ball.state`: `held` (with `holder`), `flight`, `loose`, `unknown`.
-* `events.kind`: `confirmed` (number changed) or `possible` (leave and re-enter at a sideline).
+* `events.kind`: `confirmed` (fresh number differs after re-entry; still a heuristic) or `possible` (leave and re-enter at a sideline). An OCR correction without re-entry no longer emits a substitution.
 * Live records additionally carry `age_ms` (time from camera frame to result).
 
 ## Project folder
@@ -403,3 +415,26 @@ Layout: `src/` core library (geometry, sport profiles, detection decoding, track
 * The number-reading model is the **PP-OCRv4** recognition network from [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR), ONNX export from [RapidOCR](https://github.com/RapidAI/RapidOCR), **Apache-2.0**. It is downloaded on request, not bundled.
 * Detection models come from [Reco Trainer](https://reco.cam); check that you have the rights to the training material before sharing weights.
 * Built on [ONNX Runtime](https://onnxruntime.ai) through the [`ort`](https://github.com/pykeio/ort) crate and [ffmpeg](https://ffmpeg.org).
+
+## Architecture update
+
+Sport-specific scene and possession policies are now explicit and separate from
+field geometry. Unsupported sports no longer inherit throw-in events or hand
+possession; unseen hand possession expires after a configurable timeout (1.5 s
+by default). See [architecture and migration notes (German)](docs/ARCHITECTURE.de.md)
+for implemented boundaries, compatibility and the remaining roadmap.
+
+Identity output now separates reusable tracking slots (`id`), continuous segments
+(`segment`) and provisional team/number candidates (`identity`). Re-acquired slots
+require fresh OCR evidence; duplicate teammate numbers are reported as conflicts
+instead of being displayed as certain identities. These are candidates, not full
+person re-identification. See the migration notes above for Rust API additions.
+
+Offline roster names and segment/time-scoped manual corrections are available via
+`review-identities states.jsonl --annotations review.json --out reviewed.jsonl`.
+The source stays unchanged and is verified by SHA-256. See
+[identity review instructions (German)](docs/IDENTITY_REVIEW.de.md). This currently
+updates JSONL without re-rendering videos. The **Review** link in the browser UI
+now opens a local video/map player, event navigation and roster/correction editor.
+It exports the same annotation document for the CLI; see the instructions above
+for browser limits, time alignment and saving your edits.

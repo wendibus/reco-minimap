@@ -1,8 +1,9 @@
 //! Ball state machine: Held / InFlight / Loose / Unknown.
 //!
 //! The ball is tiny and often hidden in hands, so "ball not detected while
-//! held" is normal and does NOT release it. A release needs a ball
-//! detection that stays outside the holder's box.
+//! held" is normal for short occlusions. Sport policy bounds how long this
+//! assumption survives without evidence; expiry becomes Unknown, not a release.
+//! A release needs a ball detection that stays outside the holder's box.
 //!
 //! Caveat: a flying ball is above the floor, so projecting it onto the floor
 //! plane displaces it (mostly along the camera's depth axis). The minimap
@@ -12,6 +13,7 @@
 
 use crate::geom::{Field, Vec2};
 use crate::tracker::{BBox, Track, TrackState};
+use crate::sport::rules::PossessionRules;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BallState {
@@ -31,6 +33,8 @@ pub struct BallOut {
 
 #[derive(Clone, Debug)]
 pub struct BallCfg {
+    /// Sport-specific interpretation; `None` still tracks the free ball.
+    pub possession: PossessionRules,
     pub field: Field,
     /// Grow player boxes by this fraction when testing "ball in hands".
     pub hold_expand: f32,
@@ -55,7 +59,7 @@ pub struct BallCfg {
 
 impl Default for BallCfg {
     fn default() -> Self {
-        Self { field: Field::basketball(), hold_expand: 0.15, hold_frames: 2, release_frames: 2, flight_frames: 2, flight_speed: 3.0, coast_secs: 0.7, smooth_tau: 0.06, park_secs: 3.0, park_radius: 0.6, park_forget_secs: 10.0 }
+        Self { possession: PossessionRules::HandControl { hidden_timeout_secs: 1.5 }, field: Field::basketball(), hold_expand: 0.15, hold_frames: 2, release_frames: 2, flight_frames: 2, flight_speed: 3.0, coast_secs: 0.7, smooth_tau: 0.06, park_secs: 3.0, park_radius: 0.6, park_forget_secs: 10.0 }
     }
 }
 
@@ -156,7 +160,7 @@ impl BallTracker {
         if let Some(o) = obs {
             let mut best = f32::INFINITY;
             for p in players {
-                if p.state == TrackState::Lost {
+                if self.cfg.possession == PossessionRules::None || p.state == TrackState::Lost {
                     continue;
                 }
                 if let Some(b) = &p.bbox {
@@ -243,7 +247,18 @@ impl BallTracker {
                 self.state = if self.fast_count >= self.cfg.flight_frames { BallState::InFlight } else { BallState::Loose };
             }
             // ---- ball not seen
-            (BallState::Held { .. }, false, _) => {} // hidden in hands: stay
+            (BallState::Held { .. }, false, _) => {
+                // Short occlusions are normal, indefinite possession is not evidence.
+                // Use elapsed video time so frame skipping does not change expiry.
+                let timeout = match self.cfg.possession {
+                    PossessionRules::HandControl { hidden_timeout_secs } => hidden_timeout_secs,
+                    PossessionRules::None => 0.0,
+                };
+                if (t - self.last_seen) as f32 > timeout {
+                    self.state = BallState::Unknown;
+                    self.cand = None;
+                }
+            }
             (_, false, _) => {
                 self.cand = None;
                 self.fast_count = 0;

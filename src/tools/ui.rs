@@ -244,6 +244,8 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
         _ => None,
     };
     let engine = |a: &mut Vec<String>| {
+        let workers=get_s(p,"workers").parse::<usize>().unwrap_or(1).clamp(1,4);
+        pushs(a,&["--workers",&workers.to_string()]);
         a.push("--ep".into());
         a.push(if ep == "cpu" { "cpu".into() } else { "coreml".into() });
         if !units.is_empty() && units != "all" {
@@ -341,6 +343,9 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
                 if p["realtime"].as_bool() == Some(true) {
                     pushs(&mut a, &["--realtime"]);
                 }
+                if p["adaptive"].as_bool() == Some(true) {
+                    pushs(&mut a, &["--adaptive-live"]);
+                }
             }
         }
         "fetch_ocr" => pushs(&mut a, &["fetch-ocr"]),
@@ -419,6 +424,12 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
     }
     match (method.as_str(), path.as_str()) {
         ("GET", "/") => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("ui.html").as_bytes()),
+        ("GET", "/review") => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("review.html").as_bytes()),
+        ("GET", "/review.js") => respond(&mut s, "200 OK", "application/javascript; charset=utf-8", include_str!("review.js").as_bytes()),
+        ("GET", "/api/review/sports") => {
+            let sports: Vec<Value> = BUILTIN_IDS.iter().filter_map(|id| SportProfile::builtin(id)).map(|p| json!({"id":p.id,"field":[p.field.length,p.field.width],"lines":p.lines.iter().map(|line| line.iter().map(|v| [v.x,v.y]).collect::<Vec<_>>()).collect::<Vec<_>>()})).collect();
+            jres(&mut s, json!({"sports":sports}));
+        }
         ("GET", "/i18n.js") => respond(&mut s, "200 OK", "application/javascript; charset=utf-8", include_str!("i18n.js").as_bytes()),
         ("GET", "/api/init") => {
             let sports: Vec<Value> = BUILTIN_IDS.iter().filter_map(|id| SportProfile::builtin(id)).map(|p| json!({"id": p.id, "field": [p.field.length, p.field.width], "team_size": p.team_size, "referees": p.referees})).collect();

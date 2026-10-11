@@ -14,6 +14,7 @@ reco-minimap – minimapa (campo, jugadores, árbitros, balón) a partir de un p
                          volver a pasar detecciones grabadas (run … --dets <archivo>) por el seguimiento, el balón y las
                          situaciones sin el vídeo: segundos en vez de minutos, p. ej. para comparar --thr-player o los colores
   reco-minimap stats     <states.jsonl>            informe con cifras de un proceso (puestos, saltos, balón)
+  reco-minimap review-identities <states.jsonl> --annotations review.json --out reviewed.jsonl   aplicar la plantilla y las correcciones manuales
   reco-minimap colors    <vídeo> --model <carpeta|.onnx> [--court court.json] [--home-hint #rrggbb] [--out teams.json]
   reco-minimap run       <vídeo> --model <carpeta|.onnx> --court court.json (--teams teams.json | --home #hex --away #hex)
                          [--minimap out.mp4] [--alpha out.mov] [--pip out.mp4] [--json out.jsonl]
@@ -52,6 +53,10 @@ Opciones de live:
                       archivo que sigue creciendo (Reco aún escribe):   live file:live.mkv --in-args '-follow 1' --size ...
                       OBS Virtual Camera / capturadora (macOS): live 'OBS Virtual Camera' --in-args '-f avfoundation -framerate 25' --size ...
   --realtime        reproducir un archivo en tiempo real (para probar sin fuente en directo), con --start S desde el segundo S
+  --adaptive-live   live: teselas dirigidas entre búsquedas completas (experimental)
+  --ball-search-tiles N  live adaptativo: N teselas de búsqueda rotatorias adicionales, independientes de los jugadores (por defecto 4, 0 = desactivado)
+  --sweep-secs S    búsqueda completa como máximo tras S segundos de tiempo de entrada (por defecto 2)
+  --ocr-secs S      live: intervalo mínimo entre llamadas de OCR (por defecto 2)
   parámetros del navegador: ?floor=1 suelo oscuro para probar, ?lead=0.2 predecir más adelante, ?minalpha=1, ?debug=1
 
 Dorsales (run/live; ejecuta antes `fetch-ocr`):

@@ -14,6 +14,7 @@ reco-minimap – minimap (terrain, joueurs, arbitres, ballon) à partir d'un pan
                          repasser des détections enregistrées (run … --dets <fichier>) dans le suivi, le ballon et les
                          situations, sans la vidéo : des secondes au lieu de minutes, p. ex. pour comparer --thr-player ou les couleurs
   reco-minimap stats     <states.jsonl>            rapport chiffré d'un traitement (places, sauts, ballon)
+  reco-minimap review-identities <states.jsonl> --annotations review.json --out reviewed.jsonl   appliquer l'effectif et les corrections manuelles
   reco-minimap colors    <vidéo> --model <dossier|.onnx> [--court court.json] [--home-hint #rrggbb] [--out teams.json]
   reco-minimap run       <vidéo> --model <dossier|.onnx> --court court.json (--teams teams.json | --home #hex --away #hex)
                          [--minimap out.mp4] [--alpha out.mov] [--pip out.mp4] [--json out.jsonl]
@@ -52,6 +53,10 @@ Options de live :
                       fichier en cours d'écriture (Reco écrit encore) :   live file:live.mkv --in-args '-follow 1' --size ...
                       OBS Virtual Camera / carte de capture (macOS) : live 'OBS Virtual Camera' --in-args '-f avfoundation -framerate 25' --size ...
   --realtime        lire un fichier en temps réel (pour tester sans source en direct), avec --start S à partir de la seconde S
+  --adaptive-live   live : tuiles ciblées entre les recherches complètes (expérimental)
+  --ball-search-tiles N  live adaptatif : N tuiles de recherche tournantes supplémentaires, indépendantes des joueurs (4 par défaut, 0 = désactivé)
+  --sweep-secs S    recherche complète au plus tard après S secondes de temps d'entrée (2 par défaut)
+  --ocr-secs S      live : intervalle minimal entre les appels OCR (2 par défaut)
   paramètres du navigateur : ?floor=1 sol sombre pour tester, ?lead=0.2 prédire plus loin, ?minalpha=1, ?debug=1
 
 Numéros de maillot (run/live ; lancer d'abord `fetch-ocr`) :

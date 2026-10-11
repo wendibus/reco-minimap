@@ -25,7 +25,7 @@ use reco_minimap::tools::calib::{self, CourtCalib};
 use reco_minimap::tools::colors::{hex, kmeans, lab_dist, parse_hex, pick_teams};
 use reco_minimap::tools::infer::{Ep, RfDetr, Units};
 use reco_minimap::tools::live::{self, Hub};
-use reco_minimap::tools::scales::{floor_points, plan_auto, plan_auto_field, Scales};
+use reco_minimap::tools::scales::{floor_points, plan_auto, plan_auto_field_roi, plan_auto_roi, Scales};
 use reco_minimap::tools::video::{self, Codec, Frame, FrameReader, FrameWriter, VideoInfo};
 use reco_minimap::{ball::BallState, Config, FrameState, Minimap};
 
@@ -114,6 +114,27 @@ fn t_duration(o: &Opts) -> Option<f64> {
     Some(end - t_start(o))
 }
 
+/// Wall-clock duration, not a time of day: hours intentionally exceed 24.
+/// Round estimates to seconds before splitting so minute carries stay correct.
+fn duration_hms(seconds: f64) -> String {
+    if !seconds.is_finite() { return "?".into(); }
+    let total = seconds.max(0.0).round() as u64;
+    format!("{:02}:{:02}:{:02}", total / 3600, (total / 60) % 60, total % 60)
+}
+
+#[cfg(test)]
+mod duration_tests {
+    use super::duration_hms;
+    #[test]
+    fn duration_handles_boundaries_and_long_runs() {
+        for (seconds, expected) in [(0.0,"00:00:00"),(-1.0,"00:00:00"),(59.6,"00:01:00"),(3599.6,"01:00:00"),(33250.0,"09:14:10"),(170304.0,"47:18:24"),(360001.0,"100:00:01")] {
+            assert_eq!(duration_hms(seconds), expected);
+        }
+        assert_eq!(duration_hms(f64::NAN), "?");
+        assert_eq!(duration_hms(f64::INFINITY), "?");
+    }
+}
+
 fn open_info(o: &Opts, input: &str) -> VideoInfo {
     // With --size the source is not probed: ffprobe would consume a one-shot live connection (srt/rtmp listener).
     let mut info = if o.s("size").is_some() {
@@ -133,23 +154,33 @@ fn open_info(o: &Opts, input: &str) -> VideoInfo {
 }
 
 fn plan(o: &Opts, info: &VideoInfo) -> Vec<Tile> {
-    let r: Vec<f32> = o.s("roi").map(|s| s.split(',').filter_map(|v| v.trim().parse().ok()).collect()).unwrap_or_default();
+    let r: Vec<f32> = o.s("roi").map(|s| s.split(',').map(|v| v.trim().parse::<f32>().unwrap_or_else(|_| fail(trs!("--roi: vier Zahlen x0,y0,x1,y1 erwartet", "--roi: four numbers x0,y0,x1,y1 expected", "--roi : quatre nombres x0,y0,x1,y1 attendus", "--roi: se esperan cuatro números x0,y0,x1,y1")))).collect()).unwrap_or_default();
+    if o.has("roi") && (r.len() != 4 || r.iter().any(|v| !v.is_finite() || *v < 0.0 || *v > 1.0) || r[2] <= r[0] || r[3] <= r[1]) {
+        fail::<()>(trs!("--roi: 0 <= x0 < x1 <= 1 und 0 <= y0 < y1 <= 1 erforderlich", "--roi: 0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1 required", "--roi : 0 <= x0 < x1 <= 1 et 0 <= y0 < y1 <= 1 requis", "--roi: se requiere 0 <= x0 < x1 <= 1 y 0 <= y0 < y1 <= 1"));
+    }
     let (x0, y0, x1, y1) = if r.len() == 4 { (r[0], r[1], r[2], r[3]) } else { (0.0, 0.0, 1.0, 1.0) };
     let (w, h) = (info.w as f32, info.h as f32);
-    let roi = Tile { x: (x0 * w) as u32, y: (y0 * h) as u32, w: (((x1 - x0) * w) as u32).max(32), h: (((y1 - y0) * h) as u32).max(32) };
+    let x = (x0 * w).floor() as u32;
+    let y = (y0 * h).floor() as u32;
+    let roi = Tile { x, y, w: (x1 * w).ceil() as u32 - x, h: (y1 * h).ceil() as u32 - y };
     if o.s("tile") == Some("auto") {
         let sc = Scales::load(o.s("scales").unwrap_or("scales.json")).unwrap_or_else(|e| fail(e));
         let overlap = o.f("overlap", 0.25) as f32;
         // with a calibration at hand, only tile where the field is (ball detections are used up to 3 m outside)
-        if let Some(c) = o.s("court").filter(|_| !o.has("no-field-mask")) {
+        let field = o.s("court").filter(|_| !o.has("no-field-mask")).and_then(|c| {
             let (cal, profile) = load_court(c);
-            if let Some(inv) = cal.projector().and_then(|p| p.pano_to_court.inverse()) {
-                // columns: where the ball is still used (3 m outside); rows: where players are tracked (1 m)
-                let feet = floor_points(&inv, &profile.field, 1.0, info.w, info.h);
-                return plan_auto_field(&sc, info.w, info.h, overlap, &floor_points(&inv, &profile.field, 3.0, info.w, info.h), Some(&feet));
-            }
+            let inv = cal.projector().and_then(|p| p.pano_to_court.inverse())?;
+            // columns: where the ball is still used (3 m outside); rows: where players are tracked (1 m)
+            Some((floor_points(&inv, &profile.field, 3.0, info.w, info.h), floor_points(&inv, &profile.field, 1.0, info.w, info.h)))
+        });
+        let tiles = match &field {
+            Some((floor, feet)) => plan_auto_field_roi(&sc, info.w, info.h, overlap, roi, floor, Some(feet)),
+            None => plan_auto_roi(&sc, info.w, info.h, overlap, roi),
+        };
+        if tiles.is_empty() {
+            fail::<()>(trs!("Keine Auto-Kacheln: scales.json und --roi prüfen", "No auto tiles: check scales.json and --roi", "Aucune tuile automatique : vérifiez scales.json et --roi", "Sin teselas automáticas: revise scales.json y --roi"));
         }
-        return plan_auto(&sc, info.w, info.h, overlap);
+        return tiles;
     }
     let sizes: Vec<u32> = o.s("tile").unwrap_or("512").split(',').filter_map(|v| v.trim().parse().ok()).collect();
     let mut all = Vec::new();
@@ -277,6 +308,12 @@ fn main() {
         "selfcheck" => cmd_selfcheck(&o, &input),
         "scales" => cmd_scales(&o, &input),
         "stats" => cmd_stats(&o, &input),
+        "review-identities" => {
+            let annotations = o.s("annotations").unwrap_or_else(|| fail(trs!("--annotations fehlt", "--annotations is missing", "--annotations manquant", "falta --annotations")));
+            let output = o.s("out").unwrap_or_else(|| fail(trs!("--out fehlt", "--out is missing", "--out manquant", "falta --out")));
+            let n = reco_minimap::tools::review::run(std::path::Path::new(&input), std::path::Path::new(annotations), std::path::Path::new(output)).unwrap_or_else(|e| fail(e));
+            println!("{}", tr!("{n} Bilder geprüft: {output} (Original unverändert)", "{n} frames reviewed: {output} (original unchanged)", "{n} images vérifiées : {output} (original inchangé)", "{n} fotogramas revisados: {output} (original sin cambios)"));
+        }
         "import-model" => cmd_import_model(&o, &input),
         "ocr-bench" => cmd_ocr_bench(&o, &input),
         "colors" => cmd_colors(&o, &input),
@@ -901,7 +938,9 @@ fn read_numbers(nm: &mut Numbers, mm: &mut Minimap, src: &Frame, t: f64) {
 fn scene_json(e: &SceneEvent) -> serde_json::Value {
     serde_json::json!({"type": "scene", "kind": e.kind.key(), "team": match e.team { Some(Team::Home) => "home", Some(Team::Away) => "away", _ => "none" },
         "side": e.side.map(|c| c.to_string()), "x": (e.pos.x * 100.0).round() / 100.0, "y": (e.pos.y * 100.0).round() / 100.0,
-        "confidence": (e.confidence * 100.0).round() / 100.0, "borderline": e.borderline, "t": (e.t * 1000.0).round() / 1000.0})
+        "confidence": (e.confidence * 100.0).round() / 100.0, "borderline": e.borderline, "t": (e.t * 1000.0).round() / 1000.0,
+        "started_at":e.started_at,"evidence":e.evidence,"phase":if e.kind==SceneKind::FreeThrow && e.evidence.contains(&"ball_release_towards_basket") {"attempt"} else if matches!(e.kind,SceneKind::ShotTwo|SceneKind::ShotThree) {"attempt"} else {"formation"},
+        "related_substitutions":e.related_substitutions.iter().map(|sub|serde_json::json!({"t":sub.t,"slot":sub.slot,"team":match sub.team {Team::Home=>"home",Team::Away=>"away",Team::Unknown=>"unknown"},"status":match sub.kind {reco_minimap::SubKind::Possible=>"possible",reco_minimap::SubKind::Confirmed=>"confirmed"},"out_number":sub.out_number,"in_number":sub.in_number})).collect::<Vec<_>>()})
 }
 
 fn scene_name(kind: SceneKind, sport: &str) -> &'static str {
@@ -924,8 +963,14 @@ fn log_scenes(sc: &[SceneEvent], sport: &str) {
     for e in sc {
         let side = match e.side { Some('l') => trs!(" links", " left", " à gauche", " izquierda"), Some('r') => trs!(" rechts", " right", " à droite", " derecha"), _ => "" };
         let team = match e.team { Some(t) => format!(" ({})", team_name(t)), None => String::new() };
-        eprintln!("{}", tr!("\n  SITUATION {}{}{} bei {}  (Sicherheit {:.2}{})", "\n  SITUATION {}{}{} at {}  (confidence {:.2}{})", "\n  SITUATION {}{}{} à {}  (confiance {:.2}{})", "\n  SITUACIÓN {}{}{} en {}  (confianza {:.2}{})", scene_name(e.kind, sport), side, team, fmt_clock(e.t), e.confidence, if e.borderline { trs!(", knapp an der Linie", ", close to the line", ", près de la ligne", ", cerca de la línea") } else { "" }));
+        eprintln!("{}", tr!("\n  SITUATION {}{}{} bei {}  (Sicherheit {:.2}{})", "\n  SITUATION {}{}{} at {}  (confidence {:.2}{})", "\n  SITUATION {}{}{} à {}  (confiance {:.2}{})", "\n  SITUACIÓN {}{}{} en {}  (confianza {:.2}{})", scene_label(e, sport), side, team, fmt_clock(e.t), e.confidence, if e.borderline { trs!(", knapp an der Linie", ", close to the line", ", près de la ligne", ", cerca de la línea") } else { "" }));
     }
+}
+
+fn scene_label(e:&SceneEvent,sport:&str)-> &'static str {
+    if e.kind==SceneKind::FreeThrow {
+        if e.evidence.contains(&"ball_release_towards_basket") { trs!("Freiwurfversuch", "free-throw attempt", "tentative de lancer franc", "intento de tiro libre") } else { trs!("Freiwurfaufstellung", "free-throw line-up", "alignement de lancer franc", "formación de tiro libre") }
+    } else {scene_name(e.kind,sport)}
 }
 
 fn fmt_clock(t: f64) -> String {
@@ -976,6 +1021,7 @@ struct Latest {
 }
 
 fn cmd_live(o: &Opts, input: &str) {
+    use reco_minimap::tools::async_ocr::{BackgroundOcr, Identity, Job};
     use std::sync::atomic::Ordering;
     use std::sync::Arc;
     let info = open_info(o, input);
@@ -995,7 +1041,7 @@ fn cmd_live(o: &Opts, input: &str) {
     let mut mcfg = game_config(o, &profile, home, away);
     mcfg.referee_rgb = o.s("ref-color").and_then(parse_hex);
     mcfg.tracker.spawn_conf = { let (low, high) = thr_players(o); if low < high { high } else { 0.0 } };
-    let mut numbers = numbers_setup(o, &mut mcfg);
+    let mut numbers = numbers_setup(o, &mut mcfg).map(|nm| BackgroundOcr::new(nm.reader,nm.min_h,nm.max_reads));
     let mut scenes = o.has("scenes").then(|| SceneDetector::new(profile.clone()));
     let mut mm = Minimap::new(mcfg, Box::new(projector));
 
@@ -1010,7 +1056,10 @@ fn cmd_live(o: &Opts, input: &str) {
     eprintln!("{}", tr!("  Zum Testen im Browser: http://{addr}/?floor=1&debug=1      Daten: http://{addr}/state.json\n", "  To test in a browser: http://{addr}/?floor=1&debug=1      data: http://{addr}/state.json\n", "  Pour tester dans un navigateur : http://{addr}/?floor=1&debug=1      données : http://{addr}/state.json\n", "  Para probar en un navegador: http://{addr}/?floor=1&debug=1      datos: http://{addr}/state.json\n"));
 
     let mut jsonl = o.s("json").map(|p| std::io::BufWriter::new(std::fs::File::create(p).unwrap_or_else(|e| fail(format!("{p}: {e}")))));
-    let reader = FrameReader::open_with(input, &info, t_start(o), None, 1, true, o.has("realtime"), &o.s("in-args").map(|a| a.split_whitespace().map(|x| x.to_string()).collect::<Vec<_>>()).unwrap_or_default()).unwrap_or_else(|e| fail(e));
+    let reader = FrameReader::open_with(input, &info, t_start(o), t_duration(o), 1, true, o.has("realtime"), &o.s("in-args").map(|a| a.split_whitespace().map(|x| x.to_string()).collect::<Vec<_>>()).unwrap_or_default()).unwrap_or_else(|e| fail(e));
+    // Set the clock before the producer starts, so its first arrival never
+    // precedes the origin. Queue capacity remains exactly one newest frame.
+    let t0 = Instant::now();
     let latest = Arc::new(Latest { slot: Default::default(), cv: Default::default(), eof: Default::default(), dropped: Default::default() });
     {
         let latest = latest.clone();
@@ -1028,7 +1077,16 @@ fn cmd_live(o: &Opts, input: &str) {
         });
     }
 
-    let t0 = Instant::now();
+    let mut scheduler = reco_minimap::scheduler::TileScheduler::new(o.f("sweep-secs",2.0));
+    let mut ball_search = reco_minimap::scheduler::RecoverySweep::default();
+    let mut ball_boxes: Vec<reco_minimap::tracker::BBox> = Vec::new();
+    let mut ball_seen = f64::NEG_INFINITY;
+    let mut person_boxes: Vec<reco_minimap::tracker::BBox> = Vec::new();
+    let mut persons_seen = f64::NEG_INFINITY;
+    let mut last_ocr = f64::NEG_INFINITY;
+    let (mut ocr_applied,mut ocr_stale,mut ocr_errors)=(0usize,0usize,0usize);
+    let ocr_interval = o.f("ocr-secs",2.0);
+    if !ocr_interval.is_finite() || ocr_interval < 0.0 { fail::<()>(trs!("--ocr-secs muss endlich und >= 0 sein", "--ocr-secs must be finite and >= 0", "--ocr-secs doit être fini et >= 0", "--ocr-secs debe ser finito y >= 0")); }
     let (mut n, mut last_report, mut sum_age) = (0u64, Instant::now(), 0f32);
     loop {
         let (arrival, mut frame) = {
@@ -1045,13 +1103,55 @@ fn cmd_live(o: &Opts, input: &str) {
             }
         };
         let t = arrival.duration_since(t0).as_secs_f64();
-        let mut dets = model.detect(&frame, &tiles).unwrap_or_else(|e| fail(e));
+        // Search around ALL detections, including unknown teams and people not
+        // assigned a tracker slot. Identity uncertainty must not hide a player
+        // from the next detector pass.
+        let mut targets = if t-persons_seen <= 1.0 { person_boxes.clone() } else { Vec::new() };
+        if t-ball_seen <= 0.5 { targets.extend_from_slice(&ball_boxes); }
+        let (mut indices,full_sweep) = if o.has("adaptive-live") { scheduler.select(t,&tiles,info.w,info.h,&targets) } else { ((0..tiles.len()).collect(),true) };
+        let person_tile_count=indices.len();
+        // Ball recovery must not depend solely on player/previous-ball boxes.
+        // Rotate through unobserved areas using the same calibrated scales and
+        // parallel inference pool, then merge once on this frame's timestamp.
+        if !full_sweep {
+            indices.extend(ball_search.select(tiles.len(),o.u("ball-search-tiles",4)));
+            indices.sort_unstable(); indices.dedup();
+        }
+        let recovery_tiles=indices.len()-person_tile_count;
+        let selected: Vec<_> = indices.iter().map(|&i|tiles[i]).collect();
+        let inference_start = Instant::now();
+        let mut dets = model.detect(&frame, &selected).unwrap_or_else(|e| fail(e));
+        let inference_ms = inference_start.elapsed().as_secs_f64()*1000.0;
+        person_boxes = dets.iter().filter(|d|d.class!=Class::Ball).map(|d|reco_minimap::tracker::BBox{cx:d.cx,cy:d.cy,w:d.w,h:d.h}).collect();
+        if !person_boxes.is_empty() { persons_seen=t; }
+        ball_boxes = dets.iter().filter(|d|d.class==Class::Ball).map(|d|reco_minimap::tracker::BBox{cx:d.cx,cy:d.cy,w:d.w,h:d.h}).collect();
+        if !ball_boxes.is_empty() { ball_seen=t; }
         for d in dets.iter_mut().filter(|d| d.class == Class::Player) {
             d.color = if shirt_match { frame.torso_color_matching(d, torso, &shirts) } else { frame.torso_color_in(d, torso) };
         }
+        // Apply completed OCR before building this frame's public identity state.
+        // No mutable tracker references are sent to the worker.
+        if let Some(result)=numbers.as_mut().and_then(|nm|nm.poll()) {
+            ocr_errors+=result.errors;
+            for (key,reading) in result.readings {
+                if mm.tracker().tracks().iter().any(|tr|key.matches(tr,t)) {
+                    if mm.add_number_probs(key.id,&reading.probs,reading.steps).is_some() { ocr_applied+=1; }
+                } else { ocr_stale+=1; }
+            }
+        }
         let state = mm.process(t, &dets);
         if let Some(nm) = numbers.as_mut() {
-            read_numbers(nm, &mut mm, &frame, t);
+            if nm.ready() && t-last_ocr >= ocr_interval {
+                let mut candidates: Vec<_>=mm.tracker().tracks().iter().filter(|tr|!tr.referee && tr.state==reco_minimap::tracker::TrackState::Visible && (tr.last_seen-t).abs()<1e-6)
+                    .filter_map(|tr|tr.bbox.map(|bb|(tr,bb))).filter(|(_,bb)|bb.h*frame.h as f32>=nm.min_h).collect();
+                candidates.sort_by(|(a,ab),(b,bb)|a.confirmed.is_some().cmp(&b.confirmed.is_some()).then(bb.h.total_cmp(&ab.h)));
+                let jobs=candidates.into_iter().take(nm.max_reads).filter_map(|(tr,bb)| {
+                    let (x0,y0,x1,y1)=ocr::torso_rect(&frame,&bb);
+                    let (w,h,rgb)=frame.crop_rgb(x0,y0,x1,y1);
+                    (w>=6 && h>=6).then_some(Job{identity:Identity{id:tr.id,segment:tr.segment,team:tr.team,observed_at:t},crop:ocr::Crop{w,h,rgb}})
+                }).collect();
+                if nm.submit(jobs) { last_ocr=t; }
+            }
         }
         log_events(&state.events);
         let sc = scenes.as_mut().map(|d| d.update(&state)).unwrap_or_default();
@@ -1060,6 +1160,9 @@ fn cmd_live(o: &Opts, input: &str) {
         let age_ms = arrival.elapsed().as_secs_f64() * 1000.0;
         let mut v = state_json_with(&state, &sc);
         v["age_ms"] = serde_json::json!((age_ms * 10.0).round() / 10.0);
+        v["ocr"] = serde_json::json!({"background":numbers.is_some(),"pending":numbers.as_ref().map(|n|!n.ready()).unwrap_or(false),"applied":ocr_applied,"stale":ocr_stale,"errors":ocr_errors});
+        v["performance"] = serde_json::json!({"tiles":selected.len(),"total_tiles":tiles.len(),"full_sweep":full_sweep,"inference_ms":inference_ms,"dropped_frames":latest.dropped.load(Ordering::Relaxed),"queue_capacity":1,"age_scope":"decoded_frame_to_result","recovery_tiles":recovery_tiles,"workers":model.workers(),
+            "detected_players":dets.iter().filter(|d|d.class==Class::Player).count(),"detected_balls":ball_boxes.len()});
         let line = v.to_string();
         if let Some(j) = jsonl.as_mut() {
             let _ = writeln!(j, "{line}");
@@ -1105,7 +1208,9 @@ fn ball_json(s: &FrameState) -> serde_json::Value {
 
 fn state_json_with(s: &FrameState, scenes: &[SceneEvent]) -> serde_json::Value {
     let agent = |a: &reco_minimap::AgentOut| {
-        serde_json::json!({"id": a.id, "team": match a.team { Team::Home => "home", Team::Away => "away", Team::Unknown => "none" },
+        serde_json::json!({"id": a.id, "segment": a.segment,
+            "identity": {"status": a.identity.status.key(), "player": a.identity.player.map(|p| serde_json::json!({"team": match p.team { Team::Home => "home", Team::Away => "away", Team::Unknown => "none" }, "number": p.number}))},
+            "team": match a.team { Team::Home => "home", Team::Away => "away", Team::Unknown => "none" },
             "x": (a.pos.x * 100.0).round() / 100.0, "y": (a.pos.y * 100.0).round() / 100.0, "vx": (a.vel.x * 100.0).round() / 100.0, "vy": (a.vel.y * 100.0).round() / 100.0, "state": format!("{:?}", a.state).to_lowercase(), "alpha": (a.alpha * 100.0).round() / 100.0, "jersey": a.jersey})
     };
     serde_json::json!({"t": (s.t * 1000.0).round() / 1000.0, "players": s.players.iter().map(agent).collect::<Vec<_>>(), "referees": s.referees.iter().map(agent).collect::<Vec<_>>(), "ball": ball_json(s),
@@ -1283,11 +1388,11 @@ fn cmd_run(o: &Opts, input: &str) {
             let fps = done as f32 / el;
             let speed = fps * every as f32 / info.fps as f32; // source seconds per wall second
             let end = t_duration(o).map(|d| t_start + d).or(info.duration);
-            let eta = end.map(|d| tr!("  Rest ~{:.0} s", "  ~{:.0} s left", "  reste ~{:.0} s", "  quedan ~{:.0} s", ((d - t).max(0.0) as f32) / speed.max(0.001))).unwrap_or_default();
+            let eta = end.map(|d| tr!("  Rest ~{}", "  ~{} left", "  reste ~{}", "  quedan ~{}", duration_hms((d - t).max(0.0) / speed.max(0.001) as f64))).unwrap_or_else(|| trs!("  Rest unbekannt", "  time left unknown", "  reste inconnu", "  resto desconocido").into());
             eprint!("{}", tr!("\r  t={t:7.1}s  {fps:4.1} Bilder/s (Quelle {:.1}/s){eta}   ", "\r  t={t:7.1}s  {fps:4.1} frames/s (source {:.1}/s){eta}   ", "\r  t={t:7.1}s  {fps:4.1} images/s (source {:.1}/s){eta}   ", "\r  t={t:7.1}s  {fps:4.1} imágenes/s (fuente {:.1}/s){eta}   ", info.fps / every as f64));
         }
     }
-    eprintln!("{}", tr!("\n{done} Bilder in {:.1} s ({:.2} Bilder/s).", "\n{done} frames in {:.1} s ({:.2} frames/s).", "\n{done} images en {:.1} s ({:.2} images/s).", "\n{done} imágenes en {:.1} s ({:.2} imágenes/s).", t0.elapsed().as_secs_f32(), done as f32 / t0.elapsed().as_secs_f32().max(0.001)));
+    eprintln!("{}", tr!("\n{done} Bilder in {} ({:.2} Bilder/s).", "\n{done} frames in {} ({:.2} frames/s).", "\n{done} images en {} ({:.2} images/s).", "\n{done} imágenes en {} ({:.2} imágenes/s).", duration_hms(t0.elapsed().as_secs_f64()), done as f32 / t0.elapsed().as_secs_f32().max(0.001)));
     let per = |d: std::time::Duration| d.as_secs_f32() * 1000.0 / done.max(1) as f32;
     eprintln!("{}", tr!("Zeit pro Bild (ms): Decode {:.0}, Kachel-Vorverarbeitung {:.0}, Inferenz {:.0}, Tracking {:.0}, Rendern/Schreiben {:.0}", "Time per frame (ms): decode {:.0}, tile preprocessing {:.0}, inference {:.0}, tracking {:.0}, render/write {:.0}", "Temps par image (ms) : décodage {:.0}, prétraitement des tuiles {:.0}, inférence {:.0}, suivi {:.0}, rendu/écriture {:.0}", "Tiempo por imagen (ms): decodificación {:.0}, preprocesado de teselas {:.0}, inferencia {:.0}, seguimiento {:.0}, render/escritura {:.0}", per(d_decode), per(model.t_prep), per(model.t_infer), per(d_track), per(d_out)));
     let ts = mm.tracker().team_stats;
@@ -1298,7 +1403,7 @@ fn cmd_run(o: &Opts, input: &str) {
     if scenes.is_some() {
         let mut counts: std::collections::BTreeMap<&str, usize> = Default::default();
         for e in &scene_log {
-            *counts.entry(scene_name(e.kind, &profile.id)).or_default() += 1;
+            *counts.entry(scene_label(e, &profile.id)).or_default() += 1;
         }
         eprintln!("{}", tr!("Situationen: {}", "Situations: {}", "Situations : {}", "Situaciones: {}", if counts.is_empty() { trs!("keine erkannt", "none found", "aucune détectée", "ninguna detectada").to_string() } else { counts.iter().map(|(k, v)| format!("{k} {v}×")).collect::<Vec<_>>().join(", ") }));
     }

@@ -14,6 +14,7 @@ reco-minimap – Minimap (Court, Spieler, Schiris, Ball) aus einem Reco-Panorama
                          Aufgezeichnete Erkennungen (run … --dets <datei>) ohne Video erneut durch Tracking, Ball und
                          Situationen schicken: Sekunden statt Minuten, z.B. um --thr-player oder Farben zu vergleichen
   reco-minimap stats     <states.jsonl>            Zahlen-Report zu einem run-Ergebnis (Slots, Sprünge, Ball)
+  reco-minimap review-identities <states.jsonl> --annotations review.json --out reviewed.jsonl   Kader und manuelle Korrekturen anwenden
   reco-minimap colors    <video> --model <ordner|.onnx> [--court court.json] [--home-hint #rrggbb] [--out teams.json]
   reco-minimap run       <video> --model <ordner|.onnx> --court court.json (--teams teams.json | --home #hex --away #hex)
                          [--minimap out.mp4] [--alpha out.mov] [--pip out.mp4] [--json out.jsonl]
@@ -51,6 +52,10 @@ live-Optionen:
                       wachsende Datei (Reco schreibt noch):   live file:live.mkv --in-args '-follow 1' --size ...
                       OBS Virtual Camera / Capture-Karte (macOS): live 'OBS Virtual Camera' --in-args '-f avfoundation -framerate 25' --size ...
   --realtime        Datei in Echtzeit abspielen (zum Testen ohne Live-Quelle), mit --start S ab Sekunde S
+  --adaptive-live   Live: gezielte Kacheln zwischen vollständigen Suchläufen (experimentell)
+  --ball-search-tiles N  Live adaptiv: N zusätzliche rotierende Suchkacheln, unabhängig von Spielern (Standard 4, 0 aus)
+  --sweep-secs S    Vollsuche spätestens nach S Sekunden Eingangszeit (Standard 2)
+  --ocr-secs S      Live: Mindestabstand der OCR-Aufrufe (Standard 2)
   Browser-Parameter: ?floor=1 dunkler Boden zum Testen, ?lead=0.2 weiter vorhersagen, ?minalpha=1, ?debug=1
 
 Trikotnummern (run/live; erst `fetch-ocr`):

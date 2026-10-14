@@ -7,6 +7,7 @@ reco-minimap – Minimap (Court, Spieler, Schiris, Ball) aus einem Reco-Panorama
   reco-minimap live      <quelle> --model <..> --court court.json --teams teams.json   Live-Minimap für OBS/Spieldock (Browser-Overlay)
   reco-minimap import-model <ordner|.onnx> --to <modelle-ordner>   Reco-Trainer-Modell prüfen und kopieren
   reco-minimap ui [--port 8788] [--no-open] [--no-update-check]                          Oberfläche im Browser (Deutsch/English/Français/Español)
+  reco-minimap --version                                              installierte Version anzeigen
   reco-minimap update [--check] [--yes]                              nach einer neueren Version auf GitHub sehen; --yes baut und installiert sie
   reco-minimap fetch-ocr                                            OCR-Modell für Trikotnummern laden (ca. 11 MB, Apache-2.0)
   reco-minimap ocr-bench <manifest.tsv> [--roster 4,5,7]            Zahlenleser an Ausschnitt-Bildern messen (Zeile: Pfad<TAB>Nummer<TAB>Gruppe)

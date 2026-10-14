@@ -2,6 +2,10 @@
 
 This guide takes you from "I have a panorama video and a trained model" to "I have a minimap video". It follows the six steps of the interface. Allow about 30 minutes the first time; later games take a few minutes of clicking plus processing time.
 
+<p><img src="media/demo-pip.webp" alt="Result" width="58%"> <img src="media/demo-minimap.webp" alt="Result" width="40%"></p>
+
+**This is what you get:** the first eight seconds of an animated test video (red cats against blue meerkats). Left the check video with boxes and the minimap inset, right the minimap on its own. As video: [check video (MP4)](media/demo-pip.mp4) · [minimap (MP4)](media/demo-minimap.mp4). All pictures in this guide come from this test project.
+
 **What you need before you start**
 
 * The reco-minimap program installed, see [Installation](#installation) below.
@@ -95,13 +99,22 @@ The result lives in the project folder (`court.json`, `scales.json`, `teams.json
    * `Wandzeit pro Bild` is the time per frame. On an M4 Pro with CoreML expect a few hundred milliseconds.
    * It tells you if the model's assumptions about its outputs are met ("boxes in 0..1", "most hits on `player`").
 
+![Step 1](img/en/step1.webp)
+*Step 1: sport chosen, model imported, checksum OK.*
+
 ## Step 2 · Video
 
 Choose the **panorama video** (*Browse …* or paste a path). The program reads size, frame rate and length and shows them in green, e.g. `1920×1080, 25 fps, 20:00 min`. A red message means the file could not be read – check that `ffmpeg` is installed.
 
+![Step 2](img/en/step2.webp)
+*Step 2: the video has been read – size, frame rate and length appear in green.*
+
 ## Step 3 · Calibration
 
 Calibration teaches the program where the field is in the picture. Three things happen here, in this order.
+
+![Step 3 at a glance](img/en/step3.webp)
+*Step 3 at a glance: calibration (15 points, error 0.30 m), measured player sizes and the shirt colours.*
 
 ### 3a · Calibrate the field
 
@@ -114,6 +127,9 @@ Calibration teaches the program where the field is in the picture. Three things 
    * Mouse wheel = zoom, drag = move, **Backspace** = remove the last point, **F** = show the whole picture. The small window top right magnifies the area under the cursor.
 4. After the 4th point a **green field drawing** appears over the picture and the page shows the **error in metres**. Add points until the green lines sit on the real lines. Aim for **8 or more points spread over the whole field** and an error **below 0.5 m** (green). More points on different sides matter more than clicking precisely.
 5. Click *Save*. Back in the interface the line reads e.g. `15 points, error 0.21 m`.
+
+![The calibration page](img/en/calibration.webp)
+*The calibration page: nine points set, the green lines lie on the field. In the small field sketch on the right, point 10 – the next one – is blinking; the loupe at the top shows the spot under the mouse pointer.*
 
 > An error of 0.00 m after exactly four points means nothing – four points always fit perfectly. Judge the green lines and use more points.
 
@@ -134,6 +150,9 @@ Click *Measure*. The program looks at a dozen frames and learns how tall a playe
    * **Shirt area, top / bottom** – which part of a player box shows the shirt, as a share of the box height from the top. The default 0.18 to 0.5 fits people. Adjust it for figures with other proportions (mascots, animations), then run *Detect colours* again.
    * **Match the colour sample to the shirt colours** – helps with strong, clearly different colours (red against blue) and when areas of the court are painted in a team colour. Leave it off for light against dark: there it assigns more players to the wrong team.
    * **Game without referees** – nobody is then taken for a referee because of an odd shirt colour.
+
+![Shirt colours and figures](img/en/step3-colours.webp)
+*Shirt colours and figures: for the cartoon figures of the test video the shirt band sits lower (0.3 to 0.65), and the colour sample leans on red and blue.*
 
 ## Step 4 · Process
 
@@ -157,6 +176,12 @@ Click *Measure*. The program looks at a dozen frames and learns how tall a playe
 * Are the referees marked? If not, check the referee colour (step 3c).
 
 Then process the whole game.
+
+![Step 4](img/en/step4.webp)
+*Step 4: one segment (0:00 to 0:08), all four outputs ticked. The log at the bottom shows the summary of the run.*
+
+![The finished files below the Start button](img/en/step4-results.webp)
+*The finished files below the Start button: the file name opens the file, *Show in folder* selects it in the Finder, the folder path opens the results folder.*
 
 ### Jersey numbers (optional)
 
@@ -199,20 +224,29 @@ The live mode serves a transparent overlay page for OBS while the video plays. I
 
 The live mode needs the same full panorama you calibrated on, not the AI-cropped view.
 
+![Step 5 during a live run](img/en/step5.webp)
+*Step 5 during a live run: *Overlay address* shows the address for OBS and a test link.*
+
+![Live overlay](img/overlay.webp)
+*The live overlay with `?floor=1` (dark floor for testing); in OBS the background is transparent. The orange ring marks who has the ball.*
+
 ## Step 6 · Evaluation
 
-Choose a `.jsonl` file from `out/` and click *Evaluate*. The report in the log (its lines are in German) answers:
+Choose a `.jsonl` file from `out/` and click *Evaluate*. The report in the log answers:
 
-| Line (German in the log) | Good looks like |
+| Line | Good looks like |
 |---|---|
-| exactly 5+5 players in …% of frames (`genau 5+5 in …%`, basketball) | above 70 % |
-| different player IDs per team (`Verschiedene Spieler-IDs`) | at most about 8 per team (more means slots are reassigned often) |
-| share of players visible (`Sichtbar`) | above 85 % |
-| steps at the speed limit (`Schritte an der Tempogrenze`) | under 3 % |
-| 2 referees in …% of frames (`2 Schiris in …%`) | high, if referees are on the field |
-| ball states (`Ball: gehalten / Flug / frei / unbekannt`) | the share of *unknown* shows how often the ball was not found; with a weak ball model it can be high |
-| substitutions (`Wechsel`) | the list of changes with time and numbers |
-| game situations (`Situationen`) | each detected situation with time, team and confidence – compare a few with the video |
+| `exactly 5+5 in …% of the frames` (basketball) | above 70 % |
+| `Distinct player IDs: home …, away …` | at most about 8 per team (more means slots are often reassigned) |
+| `Visible (not hidden/lost): …%` | above 85 % |
+| `steps at the speed limit` | under 3 % |
+| `2 referees in …%` | high, if referees are on the field |
+| `Ball: held / in flight / loose / unknown` | the share of *unknown* shows how often the ball was not found; with a weak ball model it can be high |
+| `Substitutions: …` | the list of substitutions with time and numbers |
+| `Situations: …` | each detected situation with time, team and confidence – compare a few with the video |
+
+![Step 6](img/en/step6.webp)
+*Step 6: the report on the data file in the log.*
 
 ---
 

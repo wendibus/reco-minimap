@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>reco-minimap</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#14171c;color:#e6e9ee;font:16px/1.55 system-ui}
+header{display:flex;gap:16px;align-items:center;padding:12px 20px;border-bottom:1px solid #343c48;position:sticky;top:0;background:#14171c}
+header h1{font-size:18px;margin:0}.sp{flex:1}.mu{color:#aab3c0;font-size:13px}select{font:inherit;color:inherit;background:#10141a;border:1px solid #515a68;border-radius:5px;padding:5px}
+main{max-width:860px;margin:auto;padding:8px 20px 60px}a{color:#7fb7ff}h1,h2,h3{line-height:1.25}h2{margin-top:36px;border-bottom:1px solid #343c48;padding-bottom:6px}h3{margin-top:26px}
+code{font:13px ui-monospace,Menlo,monospace;background:#1c2027;border:1px solid #343c48;border-radius:4px;padding:1px 5px}pre{background:#1c2027;border:1px solid #343c48;border-radius:8px;padding:12px;overflow:auto}pre code{border:0;padding:0;background:none}
+blockquote{margin:14px 0;padding:8px 14px;border-left:3px solid #ff8c00;background:#1c2027;border-radius:0 6px 6px 0}table{border-collapse:collapse;margin:12px 0;display:block;overflow:auto}td,th{border:1px solid #343c48;padding:6px 10px;text-align:left;vertical-align:top}li{margin:4px 0}img{max-width:100%;height:auto;border:1px solid #343c48;border-radius:8px;display:block;margin:6px 0 4px}p>img+img{margin-top:8px}p img[width]{display:inline-block;vertical-align:top}hr{border:0;border-top:1px solid #343c48;margin:28px 0}
+</style></head><body>
+<header><h1>reco-minimap</h1><span class="mu" id="ver"></span><a href="/" id="back"></a><span class="sp"></span><span class="mu" id="h_lang"></span><select id="lang"></select></header>
+<main id="doc"></main>
+<script src="/i18n.js"></script>
+<script>
+'use strict';
+const REPO='https://github.com/wendibus/reco-minimap/blob/main/';
+const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const slug=s=>s.toLowerCase().replace(/[`*_]/g,'').replace(/[^\p{L}\p{N}\s-]/gu,'').trim().replace(/\s+/g,'-');
+function href(u){if(u.startsWith('#')||/^https?:/.test(u))return u;if(/^(img|media)\//.test(u))return '/docs/'+u;return REPO+(u.startsWith('../')?u.slice(3):'docs/'+u);}
+function inline(t){const keep=[];
+  t=t.replace(/`([^`]+)`/g,(_,c)=>{keep.push('<code>'+esc(c)+'</code>');return '\u0001'+(keep.length-1)+'\u0002';});
+  t=esc(t).replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g,(_,a,u)=>`<img src="${esc(href(u.replace(/&amp;/g,'&')))}" alt="${a}" loading="lazy">`).replace(/\[([^\]]+)\]\(([^)\s]+)\)/g,(_,a,u)=>{u=u.replace(/&amp;/g,'&');const h=href(u);return `<a href="${esc(h)}"${h.startsWith('#')?'':' target="_blank" rel="noopener"'}>${a}</a>`;})
+    .replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/(^|[^*\w])\*([^*\s][^*]*)\*/g,'$1<i>$2</i>');
+  return t.replace(/\u0001(\d+)\u0002/g,(_,i)=>keep[+i]);}
+function list(lines,i,indent,out){const ordered=/^\s*\d+\.\s/.test(lines[i]);out.push(ordered?'<ol>':'<ul>');
+  while(i<lines.length){const m=lines[i].match(/^(\s*)([*-]|\d+\.)\s+(.*)$/);
+    if(!m){if(lines[i].trim()&&lines[i].match(/^\s*/)[0].length>indent){out[out.length-1]+=' '+inline(lines[i].trim());i++;continue;}break;}
+    if(m[1].length<indent)break;
+    if(m[1].length>indent){i=list(lines,i,m[1].length,out);out.push('</li>');continue;}
+    if(out[out.length-1]!==(ordered?'<ol>':'<ul>')&&!out[out.length-1].endsWith('</li>'))out.push('</li>');
+    out.push('<li>'+inline(m[3]));i++;}
+  if(!out[out.length-1].endsWith('</li>')&&!/^<[ou]l>$/.test(out[out.length-1]))out.push('</li>');
+  out.push(ordered?'</ol>':'</ul>');return i;}
+function md(text){const L=text.split(/\r?\n/),out=[];let i=0;
+  while(i<L.length){const l=L[i];
+    if(!l.trim()){i++;continue;}
+    // our own HTML (side-by-side demo films): kept, with local picture paths
+    if(/^<(p|img)[\s>]/.test(l)){out.push(l.replace(/src="((?:img|media)\/[^"]+)"/g,'src="/docs/$1"'));i++;continue;}
+    if(l.startsWith('```')){const c=[];i++;while(i<L.length&&!L[i].startsWith('```'))c.push(L[i++]);i++;out.push('<pre><code>'+esc(c.join('\n'))+'</code></pre>');continue;}
+    const h=l.match(/^(#{1,4})\s+(.*)$/);if(h){out.push(`<h${h[1].length} id="${esc(slug(h[2]))}">${inline(h[2])}</h${h[1].length}>`);i++;continue;}
+    if(/^(-{3,}|\*{3,})\s*$/.test(l)){out.push('<hr>');i++;continue;}
+    if(l.startsWith('>')){const q=[];while(i<L.length&&L[i].startsWith('>'))q.push(L[i++].replace(/^>\s?/,''));out.push('<blockquote>'+inline(q.join(' '))+'</blockquote>');continue;}
+    if(l.startsWith('|')){const rows=[];while(i<L.length&&L[i].startsWith('|'))rows.push(L[i++]);
+      const cells=r=>r.replace(/^\||\|\s*$/g,'').split('|').map(c=>c.trim());const head=cells(rows[0]),body=rows.slice(2).map(cells);
+      out.push('<table>'+(head.some(c=>c)?'<tr>'+head.map(c=>'<th>'+inline(c)+'</th>').join('')+'</tr>':'')+body.map(r=>'<tr>'+r.map(c=>'<td>'+inline(c)+'</td>').join('')+'</tr>').join('')+'</table>');continue;}
+    if(/^\s*([*-]|\d+\.)\s+/.test(l)){i=list(L,i,l.match(/^\s*/)[0].length,out);continue;}
+    const p=[];while(i<L.length&&L[i].trim()&&!/^(#{1,4}\s|```|>|\||\s*([*-]|\d+\.)\s+)/.test(L[i]))p.push(L[i++].trim());
+    out.push('<p>'+inline(p.join(' '))+'</p>');}
+  return out.join('\n');}
+async function show(){document.documentElement.lang=LANG;document.getElementById('back').textContent='← '+T('nav.back');document.getElementById('h_lang').textContent=T('lang.label');
+  const r=await fetch('/guide.md?lang='+LANG);document.getElementById('doc').innerHTML=md(await r.text());
+  const t=document.querySelector('#doc h1');document.title='reco-minimap · '+(t?t.textContent:T('nav.guide'));
+  if(location.hash){const e=document.getElementById(decodeURIComponent(location.hash.slice(1)));if(e)e.scrollIntoView();}}
+const sel=document.getElementById('lang');sel.innerHTML=Object.keys(I18N).map(l=>`<option value="${l}" ${l===LANG?'selected':''}>${I18N[l]['lang.name']}</option>`).join('');
+sel.onchange=()=>{setLang(sel.value);history.replaceState(null,'','/guide?lang='+LANG+location.hash);show();};
+fetch('/api/init').then(r=>r.json()).then(i=>{document.getElementById('ver').textContent='v'+i.version;}).catch(()=>{});
+show();
+</script></body></html>

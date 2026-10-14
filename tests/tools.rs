@@ -243,3 +243,26 @@ fn messages_come_in_four_languages() {
     }
     set_lang(before);
 }
+
+#[test]
+fn the_guide_is_built_in_for_every_language() {
+    use reco_minimap::tools::i18n::Lang;
+    let all: Vec<&str> = [Lang::De, Lang::En, Lang::Fr, Lang::Es].into_iter().map(reco_minimap::tools::ui::guide).collect();
+    for (i, g) in all.iter().enumerate() {
+        assert!(g.starts_with("# ") && g.len() > 5000);
+        assert!(all.iter().skip(i + 1).all(|o| o != g), "each language has its own text");
+    }
+}
+
+#[test]
+fn every_picture_of_the_guide_is_built_in() {
+    use reco_minimap::tools::i18n::Lang;
+    for lang in [Lang::De, Lang::En, Lang::Fr, Lang::Es] {
+        let text = reco_minimap::tools::ui::guide(lang);
+        let paths: Vec<&str> = text.split(['(', '"']).filter_map(|s| s.split([')', '"']).next()).filter(|p| p.starts_with("img/") || p.starts_with("media/")).collect();
+        assert!(paths.len() >= 12, "{lang:?}: {paths:?}");
+        for p in paths {
+            assert!(reco_minimap::tools::ui::guide_asset(p).is_some(), "{lang:?}: {p} is not built in");
+        }
+    }
+}

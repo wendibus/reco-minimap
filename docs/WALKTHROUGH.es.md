@@ -2,6 +2,10 @@
 
 Esta guía te lleva de «tengo un vídeo panorámico y un modelo entrenado» a «tengo un vídeo del minimapa». Sigue los seis pasos de la interfaz. La primera vez necesitarás unos 30 minutos; en los partidos siguientes, unos minutos de clics más el tiempo de cálculo.
 
+<p><img src="media/demo-pip.webp" alt="Resultado" width="58%"> <img src="media/demo-minimap.webp" alt="Resultado" width="40%"></p>
+
+**Así queda el resultado:** los primeros ocho segundos de un vídeo de prueba animado (gatos rojos contra suricatas azules). A la izquierda el vídeo de control con recuadros y el minimapa insertado, a la derecha el minimapa solo. En vídeo: [vídeo de control (MP4)](media/demo-pip.mp4) · [minimapa (MP4)](media/demo-minimap.mp4). Todas las imágenes de esta guía salen de este proyecto de prueba.
+
 **Qué necesitas**
 
 * El programa instalado, ver [Instalación](#instalación) más abajo.
@@ -95,13 +99,22 @@ El resultado queda en la carpeta del proyecto (`court.json`, `scales.json`, `tea
    * El tiempo real por imagen. En un M4 Pro con CoreML son unos cientos de milisegundos.
    * Indica si se cumplen los supuestos sobre la salida del modelo («los recuadros están en 0..1», «la mayoría de las detecciones están en 'player'»).
 
+![Paso 1](img/es/step1.webp)
+*Paso 1: deporte elegido, modelo importado, suma de comprobación correcta.*
+
 ## Paso 2 · Vídeo
 
 Elige el **vídeo panorámico** (*Examinar …* o pega la ruta). El programa lee tamaño, cadencia y duración y los muestra en verde, p. ej. `1920×1080, 25 imágenes/s, 20:00 min`. Un mensaje rojo significa que el archivo no se pudo leer – comprueba que `ffmpeg` esté instalado.
 
+![Paso 2](img/es/step2.webp)
+*Paso 2: el vídeo se ha leído; tamaño, fotogramas por segundo y duración aparecen en verde.*
+
 ## Paso 3 · Calibración
 
 La calibración le enseña al programa dónde está el campo en la imagen. Aquí ocurren tres cosas, en este orden.
+
+![El paso 3 de un vistazo](img/es/step3.webp)
+*El paso 3 de un vistazo: calibración (15 puntos, error 0,30 m), tamaños de jugadores medidos y colores de las camisetas.*
 
 ### 3a · Calibrar el campo
 
@@ -114,6 +127,9 @@ La calibración le enseña al programa dónde está el campo en la imagen. Aquí
    * Rueda del ratón = zoom, arrastrar = mover, **Retroceso** = quitar el último punto, **F** = imagen completa. La ventanita de arriba a la derecha amplía la zona bajo el cursor.
 4. A partir del 4.º punto aparece un **campo verde** sobre la imagen y la página muestra el **error en metros**. Añade puntos hasta que las líneas verdes coincidan con las reales. Objetivo: **8 puntos o más, repartidos por todo el campo**, error **inferior a 0,5 m** (verde). Importa más que los puntos estén en sitios distintos que hacer clic con gran precisión.
 5. Haz clic en *Guardar*. La interfaz muestra después p. ej. `15 puntos, error 0.21 m`.
+
+![La página de calibración](img/es/calibration.webp)
+*La página de calibración: nueve puntos colocados, las líneas verdes caen sobre el campo. En el pequeño esquema de la derecha parpadea el punto 10, el siguiente; la lupa de arriba muestra la zona bajo el puntero.*
 
 > Un error de 0,00 m tras exactamente cuatro puntos no dice nada – cuatro puntos siempre encajan a la perfección. Juzga por las líneas verdes y usa más puntos.
 
@@ -134,6 +150,9 @@ Haz clic en *Medir*. El programa mira una docena de imágenes y aprende qué tam
    * **Zona de la camiseta, arriba / abajo** – qué parte del recuadro del jugador muestra la camiseta, como proporción de la altura desde arriba. El valor por defecto, de 0,18 a 0,5, va bien para personas. Ajústalo para figuras con otras proporciones (mascotas, animaciones) y vuelve a ejecutar *Detectar colores*.
    * **Ajustar la muestra a los colores de camiseta** – ayuda con colores vivos y claramente distintos (rojo contra azul) y cuando hay zonas del campo pintadas en un color de equipo. Déjalo desactivado para claro contra oscuro: ahí asigna más jugadores al equipo equivocado.
    * **Partido sin árbitros** – así nadie se toma por árbitro por llevar un color de camiseta inusual.
+
+![Colores de camiseta y figuras](img/es/step3-colours.webp)
+*Colores de camiseta y figuras: para los personajes animados del vídeo de prueba la franja de la camiseta está más abajo (0,3 a 0,65) y la muestra de color se apoya en el rojo y el azul.*
 
 ## Paso 4 · Procesar
 
@@ -157,6 +176,12 @@ Haz clic en *Medir*. El programa mira una docena de imágenes y aprende qué tam
 * ¿Están marcados los árbitros? Si no, revisa el color de los árbitros (paso 3c).
 
 Después procesa el partido entero.
+
+![Paso 4](img/es/step4.webp)
+*Paso 4: un segmento (0:00 a 0:08), las cuatro salidas marcadas. El registro de abajo muestra el resumen del proceso.*
+
+![Los archivos terminados bajo el botón Iniciar](img/es/step4-results.webp)
+*Los archivos terminados bajo el botón Iniciar: el nombre abre el archivo, *Mostrar en la carpeta* lo selecciona en el Finder, la ruta abre la carpeta de resultados.*
 
 ### Dorsales (opcional)
 
@@ -199,6 +224,12 @@ El modo en vivo ofrece una página de superposición transparente para OBS mient
 
 El modo en vivo necesita el mismo panorama completo con el que calibraste, no el encuadre dirigido por IA.
 
+![Paso 5 durante una sesión en directo](img/es/step5.webp)
+*Paso 5 durante una sesión en directo: *Dirección del overlay* muestra la dirección para OBS y un enlace de prueba.*
+
+![Overlay en directo](img/overlay.webp)
+*El overlay en directo con `?floor=1` (fondo oscuro para probar); en OBS el fondo es transparente. El anillo naranja marca quién tiene el balón.*
+
 ## Paso 6 · Evaluación
 
 Elige un archivo `.jsonl` de `out/` y haz clic en *Evaluar*. El informe del registro responde a esto:
@@ -213,6 +244,9 @@ Elige un archivo `.jsonl` de `out/` y haz clic en *Evaluar*. El informe del regi
 | `Balón: retenido / en vuelo / suelto / desconocido` | la parte «desconocido» muestra cuántas veces no se encontró el balón; con un modelo de balón débil puede ser alta |
 | `Cambios: …` | la lista de cambios con hora y dorsales |
 | `Situaciones: …` | cada situación reconocida con hora, equipo y confianza – compara algunas con el vídeo |
+
+![Paso 6](img/es/step6.webp)
+*Paso 6: el informe del archivo de datos en el registro.*
 
 ---
 

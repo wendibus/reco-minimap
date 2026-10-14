@@ -7,3 +7,4 @@ court.json
 teams.json
 check/
 .DS_Store
+!docs/media/*.mp4

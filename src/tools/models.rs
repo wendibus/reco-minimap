@@ -36,7 +36,7 @@ impl ModelMeta {
         json!({
             "id": self.id, "dir": self.dir.to_string_lossy(), "onnx": self.onnx.to_string_lossy(), "sport": self.sport,
             "classes": self.classes, "input_size": self.input_size, "confidence": self.confidence, "contract": self.contract,
-            "sha": match self.sha { Sha::Ok => "ok", Sha::Bad => "bad", Sha::None => "none" }, "size_mb": (self.size_mb * 10.0).round() / 10.0,
+            "sha": match self.sha { Sha::Ok => "ok", Sha::Bad => "bad", Sha::None => "none" }, "size_mb": (self.size_mb as f64 * 10.0).round() / 10.0,
         })
     }
 }

@@ -2,6 +2,10 @@
 
 Ce guide vous mène de « j'ai une vidéo panoramique et un modèle entraîné » à « j'ai une vidéo de minimap ». Il suit les six étapes de l'interface. La première fois, comptez environ 30 minutes ; pour les matchs suivants, quelques minutes de clics plus le temps de calcul.
 
+<p><img src="media/demo-pip.webp" alt="Résultat" width="58%"> <img src="media/demo-minimap.webp" alt="Résultat" width="40%"></p>
+
+**Voici le résultat :** les huit premières secondes d'une vidéo de test animée (chats rouges contre suricates bleus). À gauche la vidéo de contrôle avec cadres et minimap incrustée, à droite la minimap seule. En vidéo : [vidéo de contrôle (MP4)](media/demo-pip.mp4) · [minimap (MP4)](media/demo-minimap.mp4). Toutes les images de ce guide viennent de ce projet de test.
+
 **Ce qu'il vous faut**
 
 * Le programme installé, voir [Installation](#installation) ci-dessous.
@@ -95,13 +99,22 @@ Le résultat se trouve dans le dossier du projet (`court.json`, `scales.json`, `
    * Le temps réel par image. Sur un M4 Pro avec CoreML, quelques centaines de millisecondes.
    * Il indique si les hypothèses sur la sortie du modèle sont vérifiées (« les boîtes sont dans 0..1 », « la plupart des détections sont sur 'player' »).
 
+![Étape 1](img/fr/step1.webp)
+*Étape 1 : sport choisi, modèle importé, somme de contrôle correcte.*
+
 ## Étape 2 · Vidéo
 
 Choisissez la **vidéo panoramique** (*Parcourir …* ou collez le chemin). Le programme lit la taille, la cadence et la durée et les affiche en vert, p. ex. `1920×1080, 25 images/s, 20:00 min`. Un message rouge signifie que le fichier est illisible – vérifiez que `ffmpeg` est installé.
 
+![Étape 2](img/fr/step2.webp)
+*Étape 2 : la vidéo est lue – taille, cadence et durée s'affichent en vert.*
+
 ## Étape 3 · Calibrage
 
 Le calibrage apprend au programme où se trouve le terrain dans l'image. Trois choses se passent ici, dans cet ordre.
+
+![L'étape 3 en un coup d'œil](img/fr/step3.webp)
+*L'étape 3 en un coup d'œil : calibrage (15 points, erreur 0,30 m), tailles de joueurs mesurées et couleurs des maillots.*
 
 ### 3a · Calibrer le terrain
 
@@ -114,6 +127,9 @@ Le calibrage apprend au programme où se trouve le terrain dans l'image. Trois c
    * Molette = zoom, glisser = déplacer, **Retour arrière** = retirer le dernier point, **F** = image entière. La petite fenêtre en haut à droite agrandit la zone sous le pointeur.
 4. À partir du 4ᵉ point, un **terrain vert** apparaît sur l'image et la page indique l'**erreur en mètres**. Ajoutez des points jusqu'à ce que les lignes vertes se superposent aux vraies lignes. Objectif : **8 points ou plus, répartis sur tout le terrain**, erreur **inférieure à 0,5 m** (vert). Des points à des endroits différents comptent plus qu'un clic très précis.
 5. Cliquez *Enregistrer*. L'interface affiche ensuite p. ex. `15 points, erreur 0.21 m`.
+
+![La page de calibrage](img/fr/calibration.webp)
+*La page de calibrage : neuf points placés, les lignes vertes tombent sur le terrain. Dans le petit schéma à droite, le point 10 – le suivant – clignote ; la loupe en haut montre l'endroit sous le pointeur.*
 
 > Une erreur de 0,00 m après exactement quatre points ne veut rien dire – quatre points s'ajustent toujours parfaitement. Jugez d'après les lignes vertes et ajoutez des points.
 
@@ -134,6 +150,9 @@ Cliquez *Mesurer*. Le programme examine une douzaine d'images et apprend quelle 
    * **Zone du maillot, haut / bas** – quelle partie de la boîte du joueur montre le maillot, en proportion de la hauteur depuis le haut. La valeur par défaut, 0,18 à 0,5, convient pour des personnes. Adaptez-la pour des silhouettes aux proportions différentes (mascottes, animations), puis relancez *Détecter les couleurs*.
    * **Rapprocher l'échantillon des couleurs de maillot** – utile pour des couleurs vives et nettement différentes (rouge contre bleu) et lorsque des zones du terrain sont peintes dans une couleur d'équipe. À laisser désactivé pour clair contre foncé : dans ce cas, davantage de joueurs sont mal attribués.
    * **Match sans arbitres** – personne n'est alors pris pour un arbitre à cause d'une couleur de maillot inhabituelle.
+
+![Couleurs des maillots et silhouettes](img/fr/step3-colours.webp)
+*Couleurs des maillots et silhouettes : pour les personnages animés de la vidéo de test, la zone du maillot est plus basse (0,3 à 0,65) et l'échantillon de couleur s'appuie sur le rouge et le bleu.*
 
 ## Étape 4 · Traitement
 
@@ -157,6 +176,12 @@ Cliquez *Mesurer*. Le programme examine une douzaine d'images et apprend quelle 
 * Les arbitres sont-ils marqués ? Sinon, vérifiez la couleur des arbitres (étape 3c).
 
 Traitez ensuite le match entier.
+
+![Étape 4](img/fr/step4.webp)
+*Étape 4 : un segment (0:00 à 0:08), les quatre sorties cochées. Le journal en bas montre le résumé du traitement.*
+
+![Les fichiers terminés sous le bouton Démarrer](img/fr/step4-results.webp)
+*Les fichiers terminés sous le bouton Démarrer : le nom ouvre le fichier, *Afficher dans le dossier* le sélectionne dans le Finder, le chemin ouvre le dossier des résultats.*
 
 ### Numéros de maillot (facultatif)
 
@@ -199,6 +224,12 @@ Le mode direct fournit une page d'incrustation transparente pour OBS pendant que
 
 Le mode direct nécessite le même panorama complet que celui du calibrage, pas le cadrage piloté par l'IA.
 
+![Étape 5 pendant un direct](img/fr/step5.webp)
+*Étape 5 pendant un direct : *Adresse de l'overlay* donne l'adresse pour OBS et un lien de test.*
+
+![Overlay en direct](img/overlay.webp)
+*L'overlay en direct avec `?floor=1` (fond sombre pour tester) ; dans OBS le fond est transparent. L'anneau orange indique qui a le ballon.*
+
 ## Étape 6 · Évaluation
 
 Choisissez un fichier `.jsonl` dans `out/` et cliquez *Évaluer*. Le rapport dans le journal répond à ceci :
@@ -213,6 +244,9 @@ Choisissez un fichier `.jsonl` dans `out/` et cliquez *Évaluer*. Le rapport dan
 | `Ballon : tenu / en vol / libre / inconnu` | la part « inconnu » indique combien de fois le ballon n'a pas été trouvé ; avec un modèle de ballon faible, elle peut être élevée |
 | `Changements : …` | la liste des changements avec l'heure et les numéros |
 | `Situations : …` | chaque situation reconnue avec l'heure, l'équipe et la confiance – comparez-en quelques-unes avec la vidéo |
+
+![Étape 6](img/fr/step6.webp)
+*Étape 6 : le rapport sur le fichier de données dans le journal.*
 
 ---
 

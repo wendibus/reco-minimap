@@ -5,7 +5,7 @@
 #app{display:grid;grid-template-rows:auto 1fr auto;height:100%}
 header{display:flex;gap:14px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--ln);background:var(--pn);flex-wrap:wrap}
 header h1{font-size:16px;margin:0}header .tag{color:var(--mu)}
-header .sp{flex:1}
+header .sp{flex:1 1 0}#dir{min-width:140px}#lang{width:auto}
 main{display:grid;grid-template-columns:210px 1fr;min-height:0}
 nav{border-right:1px solid var(--ln);padding:10px;display:flex;flex-direction:column;gap:6px;background:var(--pn)}
 nav button{text-align:left;padding:10px 12px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--fg);cursor:pointer;font-size:14px}
@@ -34,7 +34,7 @@ a{color:#7fb7ff}
 </style></head><body>
 <div id="app">
 <header><h1>reco-minimap</h1><span class="mu small" id="ver"></span><a href="/guide" target="_blank" rel="noopener" id="navGuide"></a><a href="/review" target="_blank" rel="noopener" id="navReview">Review</a><span class="tag" id="tag"></span><span class="sp"></span>
- <div class="row" style="min-width:380px;flex:1;max-width:620px"><span class="mu" id="h_proj"></span><input type="text" id="dir" class="grow"><button class="b" id="dirbrowse"></button><button class="b" id="dirOpen"></button></div>
+ <div class="row" style="flex:3 1 460px;max-width:760px;min-width:0"><span class="mu" id="h_proj"></span><input type="text" id="dir" class="grow"><button class="b" id="dirbrowse"></button><button class="b" id="dirOpen"></button></div>
  <div class="row"><span class="mu" id="h_lang"></span><select id="lang"></select></div></header>
 <main><nav id="nav"></nav><div id="panel"></div></main>
 <footer><div id="logh"><b id="logt"></b><span id="jst" class="mu"></span><span class="sp" style="flex:1"></span><button class="b" id="cancel" style="display:none"></button></div><div id="log"></div><div class="mu small" id="lognote"></div></footer>
@@ -177,7 +177,7 @@ async function runJob(kind,params,onDone,onFail){if(JOB&&JOB.status==='running'&
  JOB={id:r.id,kind,status:'running',from:0};$('log').textContent='';$('cancel').style.display='';setJst();poll(onDone,onFail);}
 function setJst(){const s=JOB?JOB.status:'idle';$('jst').textContent=T('status.'+(s==='cancelled'?'failed':s));$('jst').className=s==='done'?'ok':s==='failed'||s==='cancelled'?'bad':'mu';}
 async function poll(onDone,onFail){const j=JOB;if(!j)return;const r=await api('/api/job/'+j.id+'?from=0');if(!r.ok){log(r.error);return;}
- const el=$('log'),atEnd=el.scrollTop+el.clientHeight>=el.scrollHeight-8;el.textContent=r.lines.map(l=>l.t).join('\n');if(atEnd)el.scrollTop=el.scrollHeight;
+ const el=$('log'),atEnd=el.scrollTop+el.clientHeight>=el.scrollHeight-8;el.textContent=r.lines.map(l=>l.t+'\n').join('');if(atEnd)el.scrollTop=el.scrollHeight;
  j.status=r.status;setJst();
  if(r.status==='running'){setTimeout(()=>poll(onDone,onFail),700);return;}
  $('cancel').style.display='none';await refresh();if(r.status==='done'){if(onDone)onDone();}else if(onFail)onFail();}

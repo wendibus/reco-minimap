@@ -2,6 +2,10 @@
 
 **Turn a sports panorama video into a top-down minimap** – players in their shirt colours, referees, the ball, jersey numbers and substitutions – with a browser-based interface, program messages and guides in English, German, French and Spanish.
 
+<img src="docs/media/demo-pip.webp" alt="Check video with boxes and the minimap inset" width="62%"> <img src="docs/media/demo-minimap.webp" alt="Minimap" width="36%">
+
+*Eight seconds of an animated test video, processed with the interface; the [walkthrough](docs/WALKTHROUGH.md) shows every step with screenshots (also in [German](docs/WALKTHROUGH.de.md), [French](docs/WALKTHROUGH.fr.md) and [Spanish](docs/WALKTHROUGH.es.md)).*
+
 It is built to work with panoramas from [Reco](https://github.com/reco-project/video-stitcher) (two cameras stitched into one wide picture) and with detection models trained in **Reco Trainer**, but it works on any full-field panorama video plus an RF-DETR ONNX model with the same output layout.
 
 Everything runs locally. No video, frame or model leaves your computer. The only network use is the optional number-model download and the update check, which asks GitHub for the latest version number (switch it off with `--no-update-check`).

@@ -145,9 +145,91 @@ fn native_dialog(kind: &str, prompt: &str) -> Option<String> {
     if p.is_empty() { None } else { Some(p.trim_end_matches('/').to_string()) }
 }
 
-fn reveal(path: &str) {
-    let cmd = if cfg!(target_os = "macos") { ("open", vec!["-R", path]) } else if cfg!(target_os = "windows") { ("explorer", vec!["/select,", path]) } else { ("xdg-open", vec![path]) };
-    let _ = Command::new(cmd.0).args(&cmd.1).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+/// Show `path` in the file manager, or with `open` hand a result file to its default program.
+/// Reports why nothing happened instead of failing silently.
+fn reveal(path: &str, open: bool) -> Result<(), String> {
+    let p = Path::new(path);
+    if path.is_empty() || !p.exists() {
+        return Err(tr!("Datei nicht gefunden: {path}", "File not found: {path}", "Fichier introuvable : {path}", "Archivo no encontrado: {path}"));
+    }
+    if open && !(p.is_file() && matches!(p.extension().and_then(|x| x.to_str()), Some("mp4" | "mov" | "jsonl"))) {
+        return Err(tr!("Kein Ergebnis dieses Programms: {path}", "Not a result of this program: {path}", "Pas un résultat de ce programme : {path}", "No es un resultado de este programa: {path}"));
+    }
+    let run = |prog: &str, args: &[&str]| Command::new(prog).args(args).stdout(Stdio::null()).stderr(Stdio::null()).status().map(|s| s.success()).unwrap_or(false);
+    // Linux file managers cannot select a file through xdg-open: show its folder
+    let folder = if p.is_dir() { p } else { p.parent().unwrap_or(p) }.to_string_lossy().to_string();
+    let ok = if cfg!(target_os = "macos") {
+        if open || p.is_dir() { run("open", &[path]) } else { run("open", &["-R", path]) || run("open", &[&folder]) }
+    } else if cfg!(target_os = "windows") {
+        // explorer returns a non-zero code even when it worked
+        let _ = if open || p.is_dir() { run("explorer", &[path]) } else { run("explorer", &["/select,", path]) };
+        true
+    } else {
+        run("xdg-open", &[if open { path } else { &folder }])
+    };
+    if ok { Ok(()) } else { Err(tr!("Konnte nicht geöffnet werden: {path}", "Could not be opened: {path}", "Ouverture impossible : {path}", "No se pudo abrir: {path}")) }
+}
+
+/// Pictures and demo films of the walkthrough (`docs/img`, `docs/media`), built into the program
+/// so the guide also shows them offline.
+pub fn guide_asset(path: &str) -> Option<(&'static [u8], &'static str)> {
+    let data: &'static [u8] = match path {
+        "img/de/calibration.webp" => include_bytes!("../../docs/img/de/calibration.webp"),
+        "img/de/step1.webp" => include_bytes!("../../docs/img/de/step1.webp"),
+        "img/de/step2.webp" => include_bytes!("../../docs/img/de/step2.webp"),
+        "img/de/step3-colours.webp" => include_bytes!("../../docs/img/de/step3-colours.webp"),
+        "img/de/step3.webp" => include_bytes!("../../docs/img/de/step3.webp"),
+        "img/de/step4-results.webp" => include_bytes!("../../docs/img/de/step4-results.webp"),
+        "img/de/step4.webp" => include_bytes!("../../docs/img/de/step4.webp"),
+        "img/de/step5.webp" => include_bytes!("../../docs/img/de/step5.webp"),
+        "img/de/step6.webp" => include_bytes!("../../docs/img/de/step6.webp"),
+        "img/en/calibration.webp" => include_bytes!("../../docs/img/en/calibration.webp"),
+        "img/en/step1.webp" => include_bytes!("../../docs/img/en/step1.webp"),
+        "img/en/step2.webp" => include_bytes!("../../docs/img/en/step2.webp"),
+        "img/en/step3-colours.webp" => include_bytes!("../../docs/img/en/step3-colours.webp"),
+        "img/en/step3.webp" => include_bytes!("../../docs/img/en/step3.webp"),
+        "img/en/step4-results.webp" => include_bytes!("../../docs/img/en/step4-results.webp"),
+        "img/en/step4.webp" => include_bytes!("../../docs/img/en/step4.webp"),
+        "img/en/step5.webp" => include_bytes!("../../docs/img/en/step5.webp"),
+        "img/en/step6.webp" => include_bytes!("../../docs/img/en/step6.webp"),
+        "img/es/calibration.webp" => include_bytes!("../../docs/img/es/calibration.webp"),
+        "img/es/step1.webp" => include_bytes!("../../docs/img/es/step1.webp"),
+        "img/es/step2.webp" => include_bytes!("../../docs/img/es/step2.webp"),
+        "img/es/step3-colours.webp" => include_bytes!("../../docs/img/es/step3-colours.webp"),
+        "img/es/step3.webp" => include_bytes!("../../docs/img/es/step3.webp"),
+        "img/es/step4-results.webp" => include_bytes!("../../docs/img/es/step4-results.webp"),
+        "img/es/step4.webp" => include_bytes!("../../docs/img/es/step4.webp"),
+        "img/es/step5.webp" => include_bytes!("../../docs/img/es/step5.webp"),
+        "img/es/step6.webp" => include_bytes!("../../docs/img/es/step6.webp"),
+        "img/fr/calibration.webp" => include_bytes!("../../docs/img/fr/calibration.webp"),
+        "img/fr/step1.webp" => include_bytes!("../../docs/img/fr/step1.webp"),
+        "img/fr/step2.webp" => include_bytes!("../../docs/img/fr/step2.webp"),
+        "img/fr/step3-colours.webp" => include_bytes!("../../docs/img/fr/step3-colours.webp"),
+        "img/fr/step3.webp" => include_bytes!("../../docs/img/fr/step3.webp"),
+        "img/fr/step4-results.webp" => include_bytes!("../../docs/img/fr/step4-results.webp"),
+        "img/fr/step4.webp" => include_bytes!("../../docs/img/fr/step4.webp"),
+        "img/fr/step5.webp" => include_bytes!("../../docs/img/fr/step5.webp"),
+        "img/fr/step6.webp" => include_bytes!("../../docs/img/fr/step6.webp"),
+        "img/overlay.webp" => include_bytes!("../../docs/img/overlay.webp"),
+        "media/demo-minimap.mp4" => include_bytes!("../../docs/media/demo-minimap.mp4"),
+        "media/demo-minimap.webp" => include_bytes!("../../docs/media/demo-minimap.webp"),
+        "media/demo-pip.mp4" => include_bytes!("../../docs/media/demo-pip.mp4"),
+        "media/demo-pip.webp" => include_bytes!("../../docs/media/demo-pip.webp"),
+        _ => return None,
+    };
+    let kind = if path.ends_with(".mp4") { "video/mp4" } else { "image/webp" };
+    Some((data, kind))
+}
+
+/// The walkthrough in the given language (`docs/WALKTHROUGH*.md`), built into the program.
+pub fn guide(lang: super::i18n::Lang) -> &'static str {
+    use super::i18n::Lang;
+    match lang {
+        Lang::De => include_str!("../../docs/WALKTHROUGH.de.md"),
+        Lang::En => include_str!("../../docs/WALKTHROUGH.md"),
+        Lang::Fr => include_str!("../../docs/WALKTHROUGH.fr.md"),
+        Lang::Es => include_str!("../../docs/WALKTHROUGH.es.md"),
+    }
 }
 
 // ---------------------------------------------------------------- project
@@ -424,6 +506,15 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
     }
     match (method.as_str(), path.as_str()) {
         ("GET", "/") => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("ui.html").as_bytes()),
+        ("GET", "/guide") => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("guide.html").as_bytes()),
+        ("GET", "/guide.md") => {
+            let lang = query.split('&').find_map(|kv| kv.strip_prefix("lang=")).and_then(super::i18n::Lang::parse).unwrap_or_else(super::i18n::lang);
+            respond(&mut s, "200 OK", "text/markdown; charset=utf-8", guide(lang).as_bytes())
+        }
+        ("GET", p) if p.starts_with("/docs/") => match guide_asset(&p[6..]) {
+            Some((data, kind)) => respond(&mut s, "200 OK", kind, data),
+            None => respond(&mut s, "404 Not Found", "text/plain", b"not found"),
+        },
         ("GET", "/review") => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("review.html").as_bytes()),
         ("GET", "/review.js") => respond(&mut s, "200 OK", "application/javascript; charset=utf-8", include_str!("review.js").as_bytes()),
         ("GET", "/api/review/sports") => {
@@ -468,10 +559,10 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
             let p = native_dialog(&get_s(&b, "kind"), &get_s(&b, "prompt"));
             jres(&mut s, json!({"ok": true, "path": p}));
         }
-        ("POST", "/api/reveal") => {
-            reveal(&get_s(&b, "path"));
-            jres(&mut s, json!({"ok": true}));
-        }
+        ("POST", "/api/reveal") => match reveal(&get_s(&b, "path"), b["open"].as_bool().unwrap_or(false)) {
+            Ok(()) => jres(&mut s, json!({"ok": true})),
+            Err(e) => err(&mut s, e),
+        },
         ("POST", "/api/probe") => match video::probe(&get_s(&b, "path")) {
             Ok(i) => jres(&mut s, json!({"ok": true, "w": i.w, "h": i.h, "fps": (i.fps * 100.0).round() / 100.0, "duration": i.duration})),
             Err(e) => err(&mut s, e),

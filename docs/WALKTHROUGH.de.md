@@ -2,6 +2,10 @@
 
 Diese Anleitung führt dich von „Ich habe ein Panoramavideo und ein trainiertes Modell“ bis zu „Ich habe ein Minimap-Video“. Sie folgt den sechs Schritten der Oberfläche. Beim ersten Mal brauchst du etwa 30 Minuten; bei späteren Spielen sind es wenige Minuten Klicken plus Rechenzeit.
 
+<p><img src="media/demo-pip.webp" alt="Ergebnis" width="58%"> <img src="media/demo-minimap.webp" alt="Ergebnis" width="40%"></p>
+
+**So sieht das Ergebnis aus:** die ersten acht Sekunden eines animierten Testvideos (rote Katzen gegen blaue Erdmännchen). Links das Kontrollvideo mit Boxen und eingeblendeter Minimap, rechts die Minimap allein. Als Video: [Kontrollvideo (MP4)](media/demo-pip.mp4) · [Minimap (MP4)](media/demo-minimap.mp4). Alle Bilder dieser Anleitung stammen aus diesem Testprojekt.
+
 **Das brauchst du vorher**
 
 * Das installierte Programm, siehe [Installation](#installation) unten.
@@ -95,13 +99,22 @@ Das Ergebnis liegt im Projektordner (`court.json`, `scales.json`, `teams.json`) 
    * `Wandzeit pro Bild` ist die Zeit pro Bild. Auf einem M4 Pro mit CoreML sind es einige hundert Millisekunden.
    * Es zeigt, ob die Annahmen über die Modellausgabe stimmen („Boxen liegen in 0..1“, „die meisten Treffer liegen auf ‚player‘“).
 
+![Schritt 1](img/de/step1.webp)
+*Schritt 1: Sportart gewählt, Modell importiert, Prüfsumme stimmt.*
+
 ## Schritt 2 · Video
 
 Wähle das **Panoramavideo** (*Durchsuchen …* oder Pfad einfügen). Das Programm liest Größe, Bildrate und Länge und zeigt sie grün an, z. B. `1920×1080, 25 Bilder/s, 20:00 min`. Eine rote Meldung heißt: Die Datei war nicht lesbar – prüfe, ob `ffmpeg` installiert ist.
 
+![Schritt 2](img/de/step2.webp)
+*Schritt 2: Das Video ist gelesen – Größe, Bildrate und Länge stehen grün darunter.*
+
 ## Schritt 3 · Kalibrierung
 
 Die Kalibrierung bringt dem Programm bei, wo das Spielfeld im Bild liegt. Hier passieren drei Dinge, in dieser Reihenfolge.
+
+![Schritt 3 im Überblick](img/de/step3.webp)
+*Schritt 3 im Überblick: Kalibrierung (15 Punkte, Fehler 0,30 m), gemessene Spielergrößen und die Trikotfarben.*
 
 ### 3a · Spielfeld kalibrieren
 
@@ -114,6 +127,9 @@ Die Kalibrierung bringt dem Programm bei, wo das Spielfeld im Bild liegt. Hier p
    * Mausrad = Zoom, Ziehen = Verschieben, **Rücktaste** = letzten Punkt entfernen, **F** = ganzes Bild. Das kleine Fenster oben rechts vergrößert die Stelle unter dem Mauszeiger.
 4. Ab dem 4. Punkt erscheint ein **grünes Feld** über dem Bild, und die Seite zeigt den **Fehler in Metern**. Ergänze Punkte, bis die grünen Linien auf den echten Linien liegen. Ziel: **8 oder mehr Punkte, über das ganze Feld verteilt**, Fehler **unter 0,5 m** (grün). Punkte an verschiedenen Stellen sind wichtiger als hochgenaues Klicken.
 5. Klicke *Speichern*. In der Oberfläche steht danach z. B. `15 Punkte, Fehler 0.21 m`.
+
+![Die Kalibrierseite](img/de/calibration.webp)
+*Die Kalibrierseite: neun Punkte gesetzt, die grünen Linien liegen auf dem Feld. Rechts blinkt in der kleinen Feldskizze Punkt 10, der als Nächstes dran ist; die Lupe oben zeigt die Stelle unter dem Mauszeiger.*
 
 > Ein Fehler von 0,00 m nach genau vier Punkten sagt nichts – vier Punkte passen immer exakt. Beurteile die grünen Linien und nimm mehr Punkte.
 
@@ -134,6 +150,9 @@ Klicke *Messen*. Das Programm schaut sich etwa ein Dutzend Bilder an und lernt, 
    * **Trikot-Bereich oben / unten** – welcher Teil der Spieler-Box das Trikot zeigt, als Anteil der Boxhöhe von oben. Für Menschen passt der Standard 0,18 bis 0,5. Bei Figuren mit anderen Proportionen (Maskottchen, Animationen) anpassen und danach *Farben ermitteln* erneut ausführen.
    * **Farbprobe an die Trikotfarben anlehnen** – hilft bei kräftigen, klar verschiedenen Farben (Rot gegen Blau) und wenn Flächen des Spielfelds in einer Teamfarbe gestrichen sind. Bei Hell gegen Dunkel ausgeschaltet lassen: Dort ordnet es mehr Spieler falsch zu.
    * **Spiel ohne Schiedsrichter** – dann wird niemand wegen einer unpassenden Trikotfarbe für einen Schiedsrichter gehalten.
+
+![Trikotfarben und Figuren](img/de/step3-colours.webp)
+*Trikotfarben und Figuren: Für die Zeichentrickfiguren des Testvideos liegt der Trikot-Bereich tiefer (0,3 bis 0,65), und die Farbprobe lehnt sich an Rot und Blau an.*
 
 ## Schritt 4 · Verarbeiten
 
@@ -157,6 +176,12 @@ Klicke *Messen*. Das Programm schaut sich etwa ein Dutzend Bilder an und lernt, 
 * Sind die Schiedsrichter markiert? Wenn nicht, prüfe die Schiedsrichter-Farbe (Schritt 3c).
 
 Danach verarbeitest du das ganze Spiel.
+
+![Schritt 4](img/de/step4.webp)
+*Schritt 4: ein Abschnitt (0:00 bis 0:08), alle vier Ausgaben gewählt. Unten im Protokoll die Zusammenfassung des Laufs.*
+
+![Die fertigen Dateien unter dem Start-Knopf](img/de/step4-results.webp)
+*Die fertigen Dateien unter dem Start-Knopf: Der Dateiname öffnet die Datei, *Im Ordner zeigen* markiert sie im Finder, der Ordnerpfad öffnet den Ergebnisordner.*
 
 ### Trikotnummern (optional)
 
@@ -199,6 +224,12 @@ Der Live-Modus liefert eine transparente Overlay-Seite für OBS, während das Vi
 
 Der Live-Modus braucht dasselbe ganze Panorama, auf dem du kalibriert hast, nicht den KI-Bildausschnitt.
 
+![Schritt 5 während eines Live-Laufs](img/de/step5.webp)
+*Schritt 5 während eines Live-Laufs: Unter *Overlay-Adresse* stehen die Adresse für OBS und ein Test-Link.*
+
+![Live-Overlay](img/overlay.webp)
+*Das Live-Overlay mit `?floor=1` (dunkler Boden zum Testen); in OBS ist der Hintergrund durchsichtig. Der orange Ring zeigt, wer den Ball hat.*
+
 ## Schritt 6 · Auswertung
 
 Wähle eine `.jsonl`-Datei aus `out/` und klicke *Auswerten*. Der Bericht im Protokoll beantwortet:
@@ -213,6 +244,9 @@ Wähle eine `.jsonl`-Datei aus `out/` und klicke *Auswerten*. Der Bericht im Pro
 | `Ball: gehalten / Flug / frei / unbekannt` | der Anteil „unbekannt“ zeigt, wie oft der Ball nicht gefunden wurde; mit einem schwachen Ballmodell kann er hoch sein |
 | `Wechsel: …` | die Liste der Wechsel mit Zeit und Nummern |
 | `Situationen: …` | jede erkannte Situation mit Zeit, Team und Sicherheit – vergleiche einige mit dem Video |
+
+![Schritt 6](img/de/step6.webp)
+*Schritt 6: der Bericht zur Datendatei im Protokoll.*
 
 ---
 

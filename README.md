@@ -2,6 +2,10 @@
 
 **Turn a sports panorama video into a top-down minimap** – players in their shirt colours, referees, the ball, jersey numbers and substitutions – with a browser-based interface, program messages and guides in English, German, French and Spanish.
 
+<img src="docs/media/demo-pip.webp" alt="Check video with boxes and the minimap inset" width="62%"> <img src="docs/media/demo-minimap.webp" alt="Minimap" width="36%">
+
+*Eight seconds of an animated test video, processed with the interface; the [walkthrough](docs/WALKTHROUGH.md) shows every step with screenshots (also in [German](docs/WALKTHROUGH.de.md), [French](docs/WALKTHROUGH.fr.md) and [Spanish](docs/WALKTHROUGH.es.md)).*
+
 It is built to work with panoramas from [Reco](https://github.com/reco-project/video-stitcher) (two cameras stitched into one wide picture) and with detection models trained in **Reco Trainer**, but it works on any full-field panorama video plus an RF-DETR ONNX model with the same output layout.
 
 Everything runs locally. No video, frame or model leaves your computer. The only network use is the optional number-model download and the update check, which asks GitHub for the latest version number (switch it off with `--no-update-check`).
@@ -15,7 +19,7 @@ Everything runs locally. No video, frame or model leaves your computer. The only
 | **Live** | Browser overlay for OBS plus a JSON event stream |
 | **Jersey numbers** | Optional OCR on the player's back, constrained to your squad list, with substitution detection |
 | **Game situations** | Optional recognition of tip-off, free throw, throw-in, kick-off, corner, penalty, 7 m throw and basketball 2/3-point attempts, from formations on the field ([per sport](docs/SCENARIOS.md)) |
-| **Interface** | `reco-minimap ui` – six steps from model import to evaluation, with a notice when a newer version is available |
+| **Interface** | `reco-minimap ui` – six steps from model import to evaluation, with a notice when a newer version is available; the header shows the installed version and opens the built-in guide in your language (`reco-minimap --version` on the command line) |
 
 > **Status:** the pipeline, interface, calibration, tracking and live mode are tested end to end. Detection quality with a real Reco Trainer model was checked on basketball footage only; the other sports are supported by their field geometry. Jersey-number reading has only been measured on synthetic digits (see [Jersey numbers](#jersey-numbers-and-substitutions)). Details in [Known limitations](#known-limitations).
 

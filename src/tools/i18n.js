@@ -298,7 +298,10 @@ const I18N = {
   "live.debug_sweep": " (Vollsuche)",
   "live.adaptive": "Adaptive Kachelauswahl (experimentell; vollständige Suche alle 2 s)",
   "run.workers": "Parallele Modell-Sitzungen (mehr Speicher; 2 auf M4 Pro getestet)",
-  "nav.review": "Review"
+  "nav.review": "Review",
+  "nav.guide": "Anleitung",
+  "nav.back": "zur Oberfläche",
+  "btn.open_file": "Datei öffnen"
  },
  "en": {
   "lang.name": "English",
@@ -598,7 +601,10 @@ const I18N = {
   "live.debug_sweep": " (full search)",
   "live.adaptive": "Adaptive tiles (experimental; full search every 2 s)",
   "run.workers": "Parallel model sessions (more memory; 2 tested on M4 Pro)",
-  "nav.review": "Review"
+  "nav.review": "Review",
+  "nav.guide": "Guide",
+  "nav.back": "back to the interface",
+  "btn.open_file": "Open file"
  },
  "fr": {
   "lang.name": "Français",
@@ -898,7 +904,10 @@ const I18N = {
   "live.debug_sweep": " (recherche complète)",
   "live.adaptive": "Tuiles adaptatives (expérimental ; recherche complète toutes les 2 s)",
   "run.workers": "Sessions de modèle parallèles (plus de mémoire ; 2 testées sur M4 Pro)",
-  "nav.review": "Revue"
+  "nav.review": "Revue",
+  "nav.guide": "Guide",
+  "nav.back": "retour à l'interface",
+  "btn.open_file": "Ouvrir le fichier"
  },
  "es": {
   "lang.name": "Español",
@@ -1198,7 +1207,10 @@ const I18N = {
   "live.debug_sweep": " (búsqueda completa)",
   "live.adaptive": "Teselas adaptativas (experimental; búsqueda completa cada 2 s)",
   "run.workers": "Sesiones de modelo paralelas (más memoria; 2 probadas en M4 Pro)",
-  "nav.review": "Revisión"
+  "nav.review": "Revisión",
+  "nav.guide": "Guía",
+  "nav.back": "volver a la interfaz",
+  "btn.open_file": "Abrir el archivo"
  }
 };
 

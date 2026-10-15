@@ -32,7 +32,8 @@ Options communes :
   --roi x0,y0,x1,y1 zone de recherche en fractions du panorama (p. ex. 0,0.3,1,0.9 = seulement la bande du terrain)
   --workers N       sessions de modèle en parallèle (p. ex. 2-3 avec CoreML ; plus de débit, plus de mémoire)
   --units all|ane|gpu|cpu   unités de calcul CoreML (par défaut all) ; trouver la plus rapide avec `selfcheck`
-  --ep cpu|coreml   exécution (coreml seulement si compilé avec `--features coreml`)
+  --ep cpu|auto|cuda|tensorrt|directml|coreml   exécution : cpu (défaut), auto = meilleur GPU sinon CPU, cuda / tensorrt (NVIDIA, Linux+Windows), directml (Windows), coreml (macOS, nécessite `--features coreml`)
+  --device N        numéro du GPU pour cuda/tensorrt/directml (défaut 0)
   --start T [--end T | --duration T]   ne traiter qu'un extrait ; T en secondes ou sous la forme min:s ou h:min:s
                     (p. ex. --start 12:30 --end 22:30). Vaut aussi pour selfcheck, scales et colors.
   --every N         n'analyser qu'une image sur N

@@ -81,7 +81,7 @@ panorama video ──► tiles (sized by distance) ──► RF-DETR detector (O
 | ONNX Runtime | shared library **1.24 or newer** (see below) |
 | A detection model | an RF-DETR ONNX export, e.g. from Reco Trainer |
 
-Tested on macOS (Apple silicon, M4 Pro). The code is portable and the test suite runs on Linux; Windows is untested.
+Tested on macOS (Apple silicon, M4 Pro). The test suite runs on Linux. **Windows and the NVIDIA (CUDA / TensorRT) and DirectML paths are implemented but not yet tested on real hardware** - reports welcome.
 
 ### macOS
 
@@ -113,6 +113,44 @@ python3 -m venv ~/ortvenv && ~/ortvenv/bin/pip install onnxruntime
 export ORT_DYLIB_PATH=$(find ~/ortvenv -name "libonnxruntime.so*" | head -1)
 cargo install --path . --features tools
 ```
+
+**NVIDIA GPU (CUDA):** install the GPU build instead (`pip install onnxruntime-gpu`), plus CUDA 12.x and cuDNN 9 (the pip route `pip install nvidia-cudnn-cu12 nvidia-cuda-runtime-cu12` also works if you add their `lib` folders to `LD_LIBRARY_PATH`). Then run with `--ep cuda` (or `--ep auto`). `--ep tensorrt` is faster still, but needs TensorRT 10 and builds an engine on the first start (a few minutes, cached in `~/.cache/reco-minimap/tensorrt`). No extra cargo feature is needed: the provider is picked at run time.
+
+### Windows
+
+```powershell
+winget install Gyan.FFmpeg
+winget install Rustlang.Rustup
+```
+
+Download an ONNX Runtime build from <https://github.com/microsoft/onnxruntime/releases>, unpack it, and tell the program where `onnxruntime.dll` is (version 1.24 or newer):
+
+| GPU | Download | Run with |
+|---|---|---|
+| NVIDIA | `onnxruntime-win-x64-gpu-<version>.zip` + CUDA 12.x and cuDNN 9 on `PATH` | `--ep cuda` |
+| Any DirectX 12 GPU (NVIDIA, AMD, Intel) | NuGet package `Microsoft.ML.OnnxRuntime.DirectML` (a `.nupkg` is a zip; take `runtimes\win-x64\native\onnxruntime.dll`) | `--ep directml` |
+| none | `onnxruntime-win-x64-<version>.zip` | `--ep cpu` |
+
+```powershell
+setx ORT_DYLIB_PATH "C:\onnxruntime\lib\onnxruntime.dll"
+cargo install --path . --features tools
+reco-minimap --help
+```
+
+(Open a new PowerShell window after `setx`. Alternatively copy `onnxruntime.dll` next to `reco-minimap.exe`; it is found there automatically.) `reco-minimap ui` uses the standard Windows file dialogs. To process a whole game in sections, use `scripts\run_game.ps1`.
+
+### Choosing the compute device
+
+| `--ep` | Platform | Notes |
+|---|---|---|
+| `cpu` | all | default |
+| `auto` | all | CUDA, then DirectML (Windows) or CoreML (macOS, if built with the `coreml` feature), otherwise CPU - it prints what it chose |
+| `cuda` | Linux, Windows | NVIDIA, CUDA 12 + cuDNN 9; fails with an explanation if the runtime lacks the provider |
+| `tensorrt` | Linux, Windows | NVIDIA, fastest, slow first start |
+| `directml` | Windows | any DirectX 12 GPU |
+| `coreml` | macOS | build with `--features tools,coreml`; `--units` selects GPU/ANE |
+
+`--device N` picks the GPU if you have more than one. Explicit choices never fall back silently: if the provider is missing you get an error, not a slow CPU run.
 
 ### Optional: number model
 
@@ -292,7 +330,7 @@ Common options (see `reco-minimap --help` for all):
 | `--every N` | Detect on every Nth frame (output stays at full frame rate) |
 | `--start T` with `--end T` or `--duration T` | Process only a section of a longer video. `T` is seconds, `min:s` or `h:min:s`, e.g. `--start 12:30 --end 22:30`. Also applies to `selfcheck`, `scales` and `colors` |
 | `--dets f.jsonl` | Record the detections of `run` for `replay` (record with a low `--thr-player`, e.g. 0.3, to compare thresholds later) |
-| `--ep coreml\|cpu`, `--units all\|gpu\|ane\|cpu` | Execution provider (on M-series `all` ≈ `gpu`; the Neural Engine did not help for this model) |
+| `--ep cpu\|auto\|cuda\|tensorrt\|directml\|coreml`, `--device N`, `--units all\|gpu\|ane\|cpu` | Execution provider and GPU number (see *Choosing the compute device*; `--units` is CoreML only: on M-series `all` ≈ `gpu`, the Neural Engine did not help for this model) |
 | `--scenes` | Recognise game situations (throw-in, free throw, kick-off, penalty, corner, 7 m, 2/3-point attempts …) |
 | `--numbers --roster-home … --roster-away … --hires …` | Read jersey numbers and detect substitutions |
 | `--thr-player 0.60 --thr-ball 0.30 --thr-ref 0.50` | Detection thresholds (defaults shown) |

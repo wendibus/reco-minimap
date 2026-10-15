@@ -127,7 +127,16 @@ fn default_project_dir() -> PathBuf {
 
 fn native_dialog(kind: &str, prompt: &str) -> Option<String> {
     let esc = prompt.replace('\\', "\\\\").replace('"', "\\\"");
-    let out = if cfg!(target_os = "macos") {
+    let out = if cfg!(target_os = "windows") {
+        let esc = prompt.replace('\'', "''");
+        let pick = if kind == "folder" {
+            format!("$d = New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description = '{esc}'; if ($d.ShowDialog() -eq 'OK') {{ $d.SelectedPath }}")
+        } else {
+            format!("$d = New-Object System.Windows.Forms.OpenFileDialog; $d.Title = '{esc}'; if ($d.ShowDialog() -eq 'OK') {{ $d.FileName }}")
+        };
+        let script = format!("[Console]::OutputEncoding = [Text.Encoding]::UTF8; Add-Type -AssemblyName System.Windows.Forms; {pick}");
+        Command::new("powershell").args(["-NoProfile", "-STA", "-Command", &script]).output().ok()?
+    } else if cfg!(target_os = "macos") {
         let what = if kind == "folder" { "folder" } else { "file" };
         Command::new("osascript").args(["-e", &format!("POSIX path of (choose {what} with prompt \"{esc}\")")]).output().ok()?
     } else {
@@ -142,7 +151,7 @@ fn native_dialog(kind: &str, prompt: &str) -> Option<String> {
         return None;
     }
     let p = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if p.is_empty() { None } else { Some(p.trim_end_matches('/').to_string()) }
+    if p.is_empty() { None } else { Some(if p.len() > 3 { p.trim_end_matches(|c| c == '/' || c == '\\').to_string() } else { p }) }
 }
 
 /// Show `path` in the file manager, or with `open` hand a result file to its default program.
@@ -329,7 +338,7 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
         let workers=get_s(p,"workers").parse::<usize>().unwrap_or(1).clamp(1,4);
         pushs(a,&["--workers",&workers.to_string()]);
         a.push("--ep".into());
-        a.push(if ep == "cpu" { "cpu".into() } else { "coreml".into() });
+        a.push(if ep.is_empty() { "cpu".into() } else { ep.clone() });
         if !units.is_empty() && units != "all" {
             a.push("--units".into());
             a.push(units.clone());
@@ -526,7 +535,7 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
             let sports: Vec<Value> = BUILTIN_IDS.iter().filter_map(|id| SportProfile::builtin(id)).map(|p| json!({"id": p.id, "field": [p.field.length, p.field.width], "team_size": p.team_size, "referees": p.referees})).collect();
             let ort = super::infer::ensure_ort_runtime().err();
             jres(&mut s, json!({"ok": true, "home": home_dir().to_string_lossy(), "default_dir": default_project_dir().to_string_lossy(), "sports": sports,
-                                "coreml": cfg!(feature = "coreml"), "ocr": {"path": super::ocr::default_model_path().to_string_lossy(), "exists": super::ocr::default_model_path().exists()}, "ort_error": ort, "version": env!("CARGO_PKG_VERSION"), "dialogs": cfg!(target_os = "macos") || Command::new("zenity").arg("--version").output().is_ok()}));
+                                "coreml": cfg!(feature = "coreml"), "ocr": {"path": super::ocr::default_model_path().to_string_lossy(), "exists": super::ocr::default_model_path().exists()}, "ort_error": ort, "version": env!("CARGO_PKG_VERSION"), "dialogs": cfg!(target_os = "macos") || cfg!(target_os = "windows") || Command::new("zenity").arg("--version").output().is_ok()}));
         }
         ("GET", "/api/update") => {
             let u = ui.update.lock().unwrap().clone();

@@ -14,6 +14,43 @@ use crate::detect::{decode_rfdetr, merge_tiles, BoxFormat, Class, DecodeCfg, Det
 pub enum Ep {
     Cpu,
     CoreMl,
+    /// NVIDIA GPU via CUDA (Linux, Windows). Needs an ONNX Runtime GPU build + CUDA 12 + cuDNN 9.
+    Cuda,
+    /// NVIDIA GPU via TensorRT (Linux, Windows): fastest, but the first start builds an engine (minutes, then cached).
+    TensorRt,
+    /// Any DirectX-12 GPU on Windows (NVIDIA, AMD, Intel) - needs the DirectML ONNX Runtime build.
+    DirectMl,
+    /// Best available provider for this platform, falling back to the CPU.
+    Auto,
+}
+
+impl Ep {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_ascii_lowercase().as_str() {
+            "cpu" => Some(Ep::Cpu),
+            "coreml" => Some(Ep::CoreMl),
+            "cuda" => Some(Ep::Cuda),
+            "tensorrt" | "trt" => Some(Ep::TensorRt),
+            "directml" | "dml" => Some(Ep::DirectMl),
+            "auto" => Some(Ep::Auto),
+            _ => None,
+        }
+    }
+}
+
+/// GPU adapter index for CUDA / TensorRT / DirectML (`--device N`, passed on as `RECO_MINIMAP_DEVICE`).
+pub fn device_id() -> i32 {
+    std::env::var("RECO_MINIMAP_DEVICE").ok().and_then(|v| v.parse().ok()).unwrap_or(0)
+}
+
+/// Per-user cache folder `<cache>/reco-minimap/<sub>`: `%LOCALAPPDATA%` on Windows, `$XDG_CACHE_HOME` or `~/.cache` elsewhere.
+pub fn cache_dir(sub: &str) -> PathBuf {
+    let base = if cfg!(target_os = "windows") {
+        std::env::var_os("LOCALAPPDATA").map(PathBuf::from)
+    } else {
+        std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
+    };
+    base.or_else(|| std::env::var_os("USERPROFILE").map(|h| PathBuf::from(h).join(".cache"))).unwrap_or_else(std::env::temp_dir).join("reco-minimap").join(sub)
 }
 
 /// CoreML compute units (`--units`): which hardware CoreML may use.
@@ -68,28 +105,77 @@ pub fn resolve_model(p: &str) -> Result<ModelInfo, String> {
     }
 }
 
+/// File name of the ONNX Runtime shared library on this platform.
+pub fn ort_lib_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "onnxruntime.dll"
+    } else if cfg!(target_os = "macos") {
+        "libonnxruntime.dylib"
+    } else {
+        "libonnxruntime.so"
+    }
+}
+
+/// Places where an ONNX Runtime usually lives (also next to the program itself).
+fn ort_candidates() -> Vec<PathBuf> {
+    let name = ort_lib_name();
+    let mut v: Vec<PathBuf> = Vec::new();
+    if let Some(d) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.to_path_buf())) {
+        v.push(d.join(name));
+    }
+    if cfg!(target_os = "macos") {
+        for d in ["/opt/homebrew/lib", "/opt/homebrew/opt/onnxruntime/lib", "/usr/local/lib", "/usr/local/opt/onnxruntime/lib"] {
+            v.push(Path::new(d).join(name));
+        }
+    } else if cfg!(target_os = "windows") {
+        for var in ["LOCALAPPDATA", "USERPROFILE", "ProgramFiles"] {
+            if let Some(b) = std::env::var_os(var) {
+                let b = PathBuf::from(b);
+                v.push(b.join("reco-minimap").join(name));
+                v.push(b.join("onnxruntime").join("lib").join(name));
+                v.push(b.join("onnxruntime").join(name));
+            }
+        }
+        v.push(Path::new("C:\\onnxruntime\\lib").join(name));
+    } else {
+        for d in ["/usr/local/lib", "/usr/lib", "/usr/lib/x86_64-linux-gnu", "/usr/lib/aarch64-linux-gnu", "/opt/onnxruntime/lib"] {
+            v.push(Path::new(d).join(name));
+        }
+        if let Some(h) = std::env::var_os("HOME") {
+            v.push(PathBuf::from(h).join(".local/lib/onnxruntime").join(name));
+        }
+    }
+    v
+}
+
 /// With `load-dynamic`, ort deadlocks (instead of failing) if the runtime
 /// library cannot be loaded, so check for it first (same reason reco-detect probes).
 pub fn ensure_ort_runtime() -> Result<(), String> {
     if let Ok(p) = std::env::var("ORT_DYLIB_PATH") {
         return if Path::new(&p).exists() { Ok(()) } else { Err(tr!("ORT_DYLIB_PATH={p} existiert nicht", "ORT_DYLIB_PATH={p} does not exist", "ORT_DYLIB_PATH={p} n'existe pas", "ORT_DYLIB_PATH={p} no existe")) };
     }
-    let candidates = [
-        "/opt/homebrew/lib/libonnxruntime.dylib",
-        "/opt/homebrew/opt/onnxruntime/lib/libonnxruntime.dylib",
-        "/usr/local/lib/libonnxruntime.dylib",
-        "/usr/local/opt/onnxruntime/lib/libonnxruntime.dylib",
-        "/usr/lib/libonnxruntime.so",
-        "/usr/local/lib/libonnxruntime.so",
-        "/usr/lib/x86_64-linux-gnu/libonnxruntime.so",
-    ];
-    for c in candidates {
-        if Path::new(c).exists() {
-            std::env::set_var("ORT_DYLIB_PATH", c);
+    for c in ort_candidates() {
+        if c.exists() {
+            std::env::set_var("ORT_DYLIB_PATH", &c);
             return Ok(());
         }
     }
-    Err(trs!("ONNX-Runtime-Bibliothek nicht gefunden. macOS: `brew install onnxruntime`, dann\n  export ORT_DYLIB_PATH=/opt/homebrew/lib/libonnxruntime.dylib\n(die Runtime muss >= 1.24 sein: dieser Build nutzt ort rc.12 / api-24 wie reco-detect)", "ONNX Runtime library not found. macOS: `brew install onnxruntime`, then\n  export ORT_DYLIB_PATH=/opt/homebrew/lib/libonnxruntime.dylib\n(the runtime must be >= 1.24: this build uses ort rc.12 / api-24 like reco-detect)", "Bibliothèque ONNX Runtime introuvable. macOS : `brew install onnxruntime`, puis\n  export ORT_DYLIB_PATH=/opt/homebrew/lib/libonnxruntime.dylib\n(la version doit être >= 1.24 : ce build utilise ort rc.12 / api-24 comme reco-detect)", "No se encuentra la biblioteca ONNX Runtime. macOS: `brew install onnxruntime`, y luego\n  export ORT_DYLIB_PATH=/opt/homebrew/lib/libonnxruntime.dylib\n(la versión debe ser >= 1.24: esta compilación usa ort rc.12 / api-24 como reco-detect)").into())
+    let hint: &str = if cfg!(target_os = "macos") {
+        "macOS: `brew install onnxruntime`; export ORT_DYLIB_PATH=/opt/homebrew/lib/libonnxruntime.dylib"
+    } else if cfg!(target_os = "windows") {
+        "Windows: https://github.com/microsoft/onnxruntime/releases -> onnxruntime-win-x64(-gpu)-<version>.zip (DirectML: NuGet Microsoft.ML.OnnxRuntime.DirectML); setx ORT_DYLIB_PATH \"C:\\onnxruntime\\lib\\onnxruntime.dll\" (or copy onnxruntime.dll next to reco-minimap.exe)"
+    } else {
+        "Linux: `pip install onnxruntime-gpu` (CUDA) or `pip install onnxruntime`; export ORT_DYLIB_PATH=<site-packages>/onnxruntime/capi/libonnxruntime.so.<version>"
+    };
+    Err(trs!(
+        "ONNX-Runtime-Bibliothek nicht gefunden. ",
+        "ONNX Runtime library not found. ",
+        "Bibliothèque ONNX Runtime introuvable. ",
+        "No se encuentra la biblioteca ONNX Runtime. "
+    )
+    .to_string()
+        + hint
+        + &tr!("\n(die Runtime muss >= 1.24 sein: dieser Build nutzt ort rc.12 / api-24 wie reco-detect)", "\n(the runtime must be >= 1.24: this build uses ort rc.12 / api-24 like reco-detect)", "\n(la version doit être >= 1.24 : ce build utilise ort rc.12 / api-24 comme reco-detect)", "\n(la versión debe ser >= 1.24: esta compilación usa ort rc.12 / api-24 como reco-detect)"))
 }
 
 pub struct RfDetr {
@@ -206,11 +292,95 @@ impl RfDetr {
     }
 }
 
+/// Register one GPU provider. `Ok(true)` = active, `Ok(false)` = this ONNX Runtime build lacks it.
+fn try_provider(builder: &mut ort::session::builder::SessionBuilder, ep: Ep, announce: bool) -> Result<bool, String> {
+    use ort::ep::ExecutionProvider;
+    let dev = device_id();
+    let (name, avail, dispatch) = match ep {
+        Ep::Cuda => {
+            let p = ort::ep::CUDA::default().with_device_id(dev);
+            ("CUDA", p.is_available().map_err(|e| e.to_string())?, p.build().error_on_failure())
+        }
+        Ep::TensorRt => {
+            let cache = cache_dir("tensorrt");
+            let _ = std::fs::create_dir_all(&cache);
+            let p = ort::ep::TensorRT::default()
+                .with_device_id(dev)
+                .with_fp16(true)
+                .with_engine_cache(true)
+                .with_engine_cache_path(cache.to_string_lossy())
+                .with_timing_cache(true)
+                .with_timing_cache_path(cache.to_string_lossy());
+            ("TensorRT", p.is_available().map_err(|e| e.to_string())?, p.build().error_on_failure())
+        }
+        Ep::DirectMl => {
+            let p = ort::ep::DirectML::default().with_device_id(dev);
+            ("DirectML", p.is_available().map_err(|e| e.to_string())?, p.build().error_on_failure())
+        }
+        _ => return Ok(false),
+    };
+    if !avail {
+        return Ok(false);
+    }
+    let b = std::mem::replace(builder, Session::builder().map_err(|e| e.to_string())?);
+    *builder = b.with_execution_providers([dispatch]).map_err(|e| {
+        tr!(
+            "{name} konnte nicht aktiviert werden: {e}\n(CUDA 12 und cuDNN 9 müssen im Suchpfad liegen: Linux LD_LIBRARY_PATH, Windows PATH)",
+            "{name} could not be enabled: {e}\n(CUDA 12 and cuDNN 9 must be on the search path: Linux LD_LIBRARY_PATH, Windows PATH)",
+            "{name} n'a pas pu être activé : {e}\n(CUDA 12 et cuDNN 9 doivent être dans le chemin de recherche : Linux LD_LIBRARY_PATH, Windows PATH)",
+            "No se pudo activar {name}: {e}\n(CUDA 12 y cuDNN 9 deben estar en la ruta de búsqueda: Linux LD_LIBRARY_PATH, Windows PATH)"
+        )
+    })?;
+    if announce {
+        eprintln!("{}", tr!("{name}-Provider: aktiv (Gerät {dev})", "{name} provider: active (device {dev})", "Fournisseur {name} : actif (appareil {dev})", "Proveedor {name}: activo (dispositivo {dev})"));
+    }
+    Ok(true)
+}
+
+fn unavailable(ep: Ep) -> String {
+    let n = match ep {
+        Ep::Cuda => "CUDA",
+        Ep::TensorRt => "TensorRT",
+        _ => "DirectML",
+    };
+    let how: &str = match ep {
+        Ep::DirectMl => "Windows: Microsoft.ML.OnnxRuntime.DirectML (NuGet), ORT_DYLIB_PATH -> its onnxruntime.dll",
+        Ep::TensorRt => "CUDA setup + TensorRT 10 (libnvinfer / nvinfer_10.dll) on the search path",
+        _ => "Linux: pip install onnxruntime-gpu, ORT_DYLIB_PATH -> its libonnxruntime.so*; Windows: onnxruntime-win-x64-gpu-<version>.zip; + CUDA 12.x, cuDNN 9",
+    };
+    tr!(
+        "{n}-Provider ist in dieser ONNX-Runtime NICHT enthalten. {how}. Oder --ep auto / --ep cpu.",
+        "The {n} provider is NOT included in this ONNX Runtime. {how}. Or use --ep auto / --ep cpu.",
+        "Le fournisseur {n} n'est PAS inclus dans cette ONNX Runtime. {how}. Ou utiliser --ep auto / --ep cpu.",
+        "El proveedor {n} NO está incluido en esta ONNX Runtime. {how}. O usa --ep auto / --ep cpu."
+    )
+}
+
 #[allow(unused_variables)]
 fn build_session(info: &ModelInfo, ep: Ep, units: Units, announce: bool) -> Result<Session, String> {
     let builder = Session::builder().map_err(|e| e.to_string())?;
     #[allow(unused_mut)]
     let mut builder = builder.with_optimization_level(GraphOptimizationLevel::Level3).map_err(|e| e.to_string())?;
+    let mut ep = ep;
+    if matches!(ep, Ep::Cuda | Ep::TensorRt | Ep::DirectMl) && !try_provider(&mut builder, ep, announce)? {
+        return Err(unavailable(ep));
+    }
+    if ep == Ep::Auto {
+        // Windows/Linux: CUDA, then DirectML (Windows); macOS: CoreML if built in; otherwise the CPU - and say which.
+        let order: &[Ep] = if cfg!(target_os = "windows") { &[Ep::Cuda, Ep::DirectMl] } else if cfg!(target_os = "macos") { &[] } else { &[Ep::Cuda] };
+        let mut chosen = false;
+        for &e in order {
+            if try_provider(&mut builder, e, announce).unwrap_or(false) {
+                chosen = true;
+                break;
+            }
+        }
+        if !chosen && cfg!(target_os = "macos") && cfg!(feature = "coreml") {
+            ep = Ep::CoreMl;
+        } else if !chosen && announce {
+            eprintln!("{}", trs!("Kein GPU-Provider verfügbar - es läuft auf der CPU.", "No GPU provider available - running on the CPU.", "Aucun fournisseur GPU disponible - exécution sur le CPU.", "Ningún proveedor de GPU disponible: se usa la CPU."));
+        }
+    }
     if ep == Ep::CoreMl {
         #[cfg(feature = "coreml")]
         {
@@ -221,7 +391,7 @@ fn build_session(info: &ModelInfo, ep: Ep, units: Units, announce: bool) -> Resu
                 Units::Gpu => ort::ep::coreml::ComputeUnits::CPUAndGPU,
                 Units::Cpu => ort::ep::coreml::ComputeUnits::CPUOnly,
             };
-            let cache = std::env::var("HOME").map(|h| format!("{h}/.cache/reco-minimap/coreml")).unwrap_or_else(|_| "/tmp/reco-minimap-coreml".into());
+            let cache = cache_dir("coreml").to_string_lossy().into_owned();
             let _ = std::fs::create_dir_all(&cache);
             let coreml = ort::ep::CoreML::default()
                 .with_compute_units(cu)

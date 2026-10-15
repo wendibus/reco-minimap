@@ -192,10 +192,11 @@ fn plan(o: &Opts, info: &VideoInfo) -> Vec<Tile> {
 
 fn load_model(o: &Opts) -> RfDetr {
     let path = o.s("model").unwrap_or_else(|| fail(trs!("--model <ordner|.onnx> fehlt", "--model <folder|.onnx> is missing", "--model <dossier|.onnx> manquant", "falta --model <carpeta|.onnx>")));
-    let ep = match o.s("ep").unwrap_or("cpu") {
-        "coreml" => Ep::CoreMl,
-        _ => Ep::Cpu,
-    };
+    let ep = Ep::parse(o.s("ep").unwrap_or("cpu")).unwrap_or_else(|| fail("--ep: cpu | auto | cuda | tensorrt | directml | coreml"));
+    if let Some(d) = o.s("device") {
+        d.parse::<i32>().unwrap_or_else(|_| fail("--device: 0, 1, ..."));
+        std::env::set_var("RECO_MINIMAP_DEVICE", d);
+    }
     let mut m = RfDetr::load(path, ep, o.s("units").map(|u| Units::parse(u).unwrap_or_else(|| fail(trs!("--units: all | ane | gpu | cpu", "--units: all | ane | gpu | cpu", "--units : all | ane | gpu | cpu", "--units: all | ane | gpu | cpu")))).unwrap_or(Units::All), o.u("workers", 1)).unwrap_or_else(|e| fail(e));
     m.cfg.thr_ball = o.f("thr-ball", 0.30) as f32;
     m.cfg.thr_player = thr_players(o).1;

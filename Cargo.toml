@@ -11,13 +11,14 @@ publish = false
 default = []
 # Command-line programs (calibrate / selfcheck / colors / run). Needs ffmpeg + ffprobe
 # on PATH and an ONNX Runtime shared library (ORT_DYLIB_PATH).
-tools = ["dep:ort", "dep:serde_json", "dep:sha2"]
+tools = ["dep:ort", "dep:serde_json", "dep:sha2", "dep:zip"]
 coreml = ["tools", "ort/coreml"]
 
 [dependencies]
 ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "load-dynamic", "api-24"], optional = true }
 serde_json = { version = "1", optional = true }
 sha2 = { version = "0.10", optional = true }
+zip = { version = "2", default-features = false, features = ["deflate"], optional = true }
 
 [[bin]]
 name = "reco-minimap"

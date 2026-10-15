@@ -32,7 +32,8 @@ Gemeinsame Optionen:
   --roi x0,y0,x1,y1 Suchbereich als Bruchteile des Panoramas (z.B. 0,0.3,1,0.9 = nur das Spielfeld-Band)
   --workers N       parallele Modell-Sitzungen (z.B. 2-3 mit CoreML; mehr Durchsatz, mehr Speicher)
   --units all|ane|gpu|cpu   CoreML-Recheneinheiten (Standard all); mit `selfcheck` die schnellste ermitteln
-  --ep cpu|coreml   Ausführung (coreml nur mit `--features coreml` gebaut)
+  --ep cpu|auto|cuda|tensorrt|directml|coreml   Ausführung: cpu (Standard), auto = beste GPU sonst CPU, cuda / tensorrt (NVIDIA, Linux+Windows), directml (Windows), coreml (macOS, braucht `--features coreml`)
+  --device N        GPU-Nummer für cuda/tensorrt/directml (Standard 0)
   --start T [--end T | --duration T]   nur einen Ausschnitt verarbeiten; T in Sekunden oder als min:s bzw. h:min:s
                     (z.B. --start 12:30 --end 22:30). Gilt auch für selfcheck, scales und colors.
   --every N         nur jedes N-te Bild auswerten

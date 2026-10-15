@@ -21,7 +21,7 @@ use crate::tracker::BBox;
 const FALLBACK_DIGIT_CLASSES: [usize; 10] = [26, 93, 25, 94, 632, 631, 933, 29, 27, 1109];
 
 pub fn default_model_path() -> PathBuf {
-    PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into())).join(".cache/reco-minimap/ocr/rec.onnx")
+    super::infer::cache_dir("ocr").join("rec.onnx")
 }
 
 pub struct NumberReader {
@@ -159,7 +159,7 @@ pub fn localize(w: usize, h: usize, rgb: &[u8]) -> Crop {
     Crop { w: cx1 - cx0, h: cy1 - cy0, rgb: out }
 }
 
-/// Download the recognition model (Apache-2.0, from the `rapidocr-onnxruntime` wheel on PyPI) with curl + unzip.
+/// Download the recognition model (Apache-2.0, from the `rapidocr-onnxruntime` wheel on PyPI) with curl; the wheel is unpacked in Rust (no unzip needed, works on Windows).
 pub fn fetch_model(dest: &Path) -> Result<PathBuf, String> {
     let dir = dest.parent().ok_or(trs!("Zielordner", "target folder", "dossier cible", "carpeta de destino"))?;
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -176,13 +176,26 @@ pub fn fetch_model(dest: &Path) -> Result<PathBuf, String> {
     if !st.success() {
         return Err(trs!("Download fehlgeschlagen", "the download failed", "le téléchargement a échoué", "la descarga ha fallado").into());
     }
-    let st = Command::new("unzip").args(["-o", "-j"]).arg(&wheel).arg("*ch_PP-OCRv4_rec_infer.onnx").arg("-d").arg(dir).stdout(std::process::Stdio::null()).status().map_err(|e| tr!("unzip nicht gefunden: {e}", "unzip not found: {e}", "unzip introuvable : {e}", "no se encuentra unzip: {e}"))?;
-    let _ = std::fs::remove_file(&wheel);
     let extracted = dir.join("ch_PP-OCRv4_rec_infer.onnx");
-    if !st.success() || !extracted.exists() {
-        return Err(trs!("Das Erkennungsmodell wurde im Paket nicht gefunden", "The recognition model was not found in the package", "Le modèle de reconnaissance est introuvable dans le paquet", "No se ha encontrado el modelo de reconocimiento en el paquete").into());
-    }
+    let res = extract_member(&wheel, "ch_PP-OCRv4_rec_infer.onnx", &extracted);
+    let _ = std::fs::remove_file(&wheel);
+    res?;
     std::fs::rename(&extracted, dest).map_err(|e| e.to_string())?;
     let _ = std::fs::write(dir.join("LICENSE.txt"), "PP-OCRv4 text recognition model (PaddleOCR), ONNX export from the RapidOCR project.\nLicense: Apache-2.0 - https://github.com/RapidAI/RapidOCR , https://github.com/PaddlePaddle/PaddleOCR\n");
     Ok(dest.to_path_buf())
+}
+
+/// Extract the first zip member whose name ends in `suffix`.
+fn extract_member(zip_path: &Path, suffix: &str, out: &Path) -> Result<(), String> {
+    let f = std::fs::File::open(zip_path).map_err(|e| e.to_string())?;
+    let mut z = zip::ZipArchive::new(f).map_err(|e| format!("zip: {e}"))?;
+    for i in 0..z.len() {
+        let mut m = z.by_index(i).map_err(|e| e.to_string())?;
+        if m.name().ends_with(suffix) {
+            let mut o = std::fs::File::create(out).map_err(|e| format!("{}: {e}", out.display()))?;
+            std::io::copy(&mut m, &mut o).map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+    }
+    Err(trs!("Das Erkennungsmodell wurde im Paket nicht gefunden", "The recognition model was not found in the package", "Le modèle de reconnaissance est introuvable dans le paquet", "No se encontró el modelo de reconocimiento en el paquete").into())
 }

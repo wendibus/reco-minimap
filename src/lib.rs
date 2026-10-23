@@ -37,6 +37,8 @@ pub struct AgentOut {
     pub id: u32,
     pub referee: bool,
     pub team: Team,
+    /// Wears the goalkeeper kit (only known when goalkeeper colours are set).
+    pub keeper: bool,
     pub pos: geom::Vec2,
     /// Filter velocity in m/s (for forward prediction in live displays).
     pub vel: geom::Vec2,
@@ -146,6 +148,10 @@ pub struct Config {
     pub roster: Vec<u8>,
     pub roster_home: Vec<u8>,
     pub roster_away: Vec<u8>,
+    /// Goalkeeper numbers per team (a subset of the rosters). With a goalkeeper kit colour set, the keeper can only
+    /// be one of these and the outfield players cannot.
+    pub keepers_home: Vec<u8>,
+    pub keepers_away: Vec<u8>,
     /// Evidence needed to confirm a number, and the lead over the runner-up.
     pub num_min_score: f32,
     pub num_min_lead: f32,
@@ -198,7 +204,7 @@ impl Config {
         ball.field = p.field;
         ball.possession = rules.possession;
         Self {
-            field: p.field, home_rgb, away_rgb, home_gk_rgb: None, away_gk_rgb: None, tracker, ball, roster: Vec::new(), roster_home: Vec::new(), roster_away: Vec::new(), num_min_score: 3.0, num_min_lead: 1.5, vote_decay: 0.985, sub_near_edge_m: 2.0, sub_leave_m: 1.5, sub_min_gone: 3.0, sub_cooldown: 20.0, referee_from_color: true, referee_rgb: None, ball_margin: 3.0, ball_init_conf: 0.40, ball_reacquire_conf: 0.50, ball_max_speed: p.ball_max_speed }
+            field: p.field, home_rgb, away_rgb, home_gk_rgb: None, away_gk_rgb: None, tracker, ball, roster: Vec::new(), roster_home: Vec::new(), roster_away: Vec::new(), keepers_home: Vec::new(), keepers_away: Vec::new(), num_min_score: 3.0, num_min_lead: 1.5, vote_decay: 0.985, sub_near_edge_m: 2.0, sub_leave_m: 1.5, sub_min_gone: 3.0, sub_cooldown: 20.0, referee_from_color: true, referee_rgb: None, ball_margin: 3.0, ball_init_conf: 0.40, ball_reacquire_conf: 0.50, ball_max_speed: p.ball_max_speed }
     }
 }
 
@@ -255,12 +261,13 @@ impl Minimap {
                 }
                 Class::Player | Class::Referee => {
                     let mut referee = d.class == Class::Referee;
-                    let mut team = if referee { Team::Unknown } else { self.classifier.classify(d.color) };
+                    let (mut team, mut keeper) = if referee { (Team::Unknown, false) } else { self.classifier.classify_role(d.color) };
                     if !referee && self.cfg.referee_from_color {
                         if let Some(c) = d.color {
                             if self.classifier.is_referee_colored(c) || (team == Team::Unknown && self.classifier.is_outlier(c)) {
                                 referee = true;
                                 team = Team::Unknown;
+                                keeper = false;
                             }
                         }
                     }
@@ -268,7 +275,7 @@ impl Minimap {
                     if !self.cfg.field.contains(court, margin) {
                         continue; // bench, coaches, spectators
                     }
-                    obs.push(Obs { referee, team: if referee { Team::Unknown } else { team }, pos: court, bbox: BBox { cx: d.cx, cy: d.cy, w: d.w, h: d.h }, conf: d.conf });
+                    obs.push(Obs { referee, team: if referee { Team::Unknown } else { team }, keeper: keeper && !referee, pos: court, bbox: BBox { cx: d.cx, cy: d.cy, w: d.w, h: d.h }, conf: d.conf });
                 }
             }
         }
@@ -312,6 +319,25 @@ impl Minimap {
         FrameState { t, players, referees, ball, events }
     }
 
+    /// Numbers a track may carry: the team roster, narrowed to the keepers (for a keeper kit) or without them
+    /// (for outfield shirts) when keeper numbers are declared and the keeper kit tells the two apart.
+    pub fn roster_for_track(&self, team: Team, keeper: bool) -> Vec<u8> {
+        let base = self.roster_for(team).to_vec();
+        let (kp, kit) = match team {
+            Team::Home => (&self.cfg.keepers_home, self.cfg.home_gk_rgb.is_some()),
+            Team::Away => (&self.cfg.keepers_away, self.cfg.away_gk_rgb.is_some()),
+            Team::Unknown => return base,
+        };
+        if kp.is_empty() || !kit {
+            return base;
+        }
+        if keeper {
+            kp.clone()
+        } else {
+            base.into_iter().filter(|n| !kp.contains(n)).collect()
+        }
+    }
+
     fn roster_for(&self, team: Team) -> &[u8] {
         let r = match team {
             Team::Home => &self.cfg.roster_home,
@@ -341,10 +367,15 @@ impl Minimap {
             }
         }
         let (decay, min_s, min_l) = (self.cfg.vote_decay, self.cfg.num_min_score, self.cfg.num_min_lead);
-        let rosters: Vec<(Team, Vec<u8>)> = [Team::Home, Team::Away].iter().map(|tm| (*tm, self.roster_for(*tm).to_vec())).collect();
+        let mut rosters: std::collections::HashMap<(Team, bool), Vec<u8>> = Default::default();
+        for tm in [Team::Home, Team::Away] {
+            for kp in [false, true] {
+                rosters.insert((tm, kp), self.roster_for_track(tm, kp));
+            }
+        }
         for tr in self.tracker.tracks_mut().iter_mut().filter(|x| !x.referee) {
             tr.jersey.decay(decay);
-            let roster = rosters.iter().find(|r| r.0 == tr.team).map(|r| r.1.as_slice()).unwrap_or(&[]);
+            let roster = rosters.get(&(tr.team, tr.is_keeper())).map(|r| r.as_slice()).unwrap_or(&[]);
             let best = match tr.jersey.best(roster, min_s, min_l) {
                 Some(b) => b,
                 None => continue,
@@ -389,6 +420,7 @@ impl Minimap {
             id: tr.id,
             referee: tr.referee,
             team: tr.team,
+            keeper: tr.is_keeper(),
             pos: tr.pos,
             vel: tr.velocity(),
             state: tr.state,
@@ -402,8 +434,8 @@ impl Minimap {
     /// Returns the accepted (number, confidence), if any.
     pub fn add_number_probs(&mut self, track: u32, probs: &[f32], t: usize) -> Option<(u8, f32)> {
         use jersey::{ctc_greedy, ctc_roster, parse_number};
-        let team = self.tracker.tracks().iter().find(|x| x.id == track).map(|x| x.team)?;
-        let roster = self.roster_for(team).to_vec();
+        let (team, keeper) = self.tracker.tracks().iter().find(|x| x.id == track).map(|x| (x.team, x.is_keeper()))?;
+        let roster = self.roster_for_track(team, keeper);
         let (n, conf) = if roster.is_empty() {
             let (s, c) = ctc_greedy(probs, t);
             (parse_number(&s)?, c)

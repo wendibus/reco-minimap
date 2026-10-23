@@ -189,7 +189,7 @@ Danach verarbeitest du das ganze Spiel.
 In Schritt 4 gibt es den Abschnitt *Trikotnummern lesen und anzeigen*.
 
 1. Klicke einmalig *Modell laden* (etwa 11 MB). Der Status wechselt zu „Nummern-Modell vorhanden“.
-2. Trage die **Kadernummern** beider Teams ein, mit Komma getrennt (`4,7,10,12,23`). Die Erkennung wählt dann nur unter diesen Nummern – deutlich zuverlässiger.
+2. Trage die **Kadernummern** beider Teams ein, mit Komma getrennt (`4,7,10,12,23`). Die Erkennung wählt dann nur unter diesen Nummern – deutlich zuverlässiger. Bei Fußball, Handball, Hockey u. ä. markierst du die Torleute mit `g` oder `tw` hinter der Nummer (`1g,4,7,12tw`): Ist die Torwartfarbe gesetzt (Schritt 3c), wird die Nummer eines Torwarts nur unter den Torleuten gesucht, die aller anderen nur unter den Feldspielern.
 3. Setze das Häkchen bei *Trikotnummern lesen und anzeigen* und lass einen Abschnitt laufen.
 4. **Die Größe entscheidet.** Eine Nummer ist ab etwa 10 px Ziffernhöhe lesbar, das heißt Spieler mit etwa **80 px Höhe**. Am Ende des Laufs steht im Protokoll, wie groß Spieler in deinem Video sind und ob das reicht. Wenn nicht, exportiere mit Reco eine größere Version desselben Panoramas (gleiche Zeitachse, gleiche Bildrate) und trage sie bei *Höher aufgelöstes Panorama für die Nummern* ein. Die Erkennung läuft weiter im kleineren Video.
 5. Nummern erscheinen auf den Scheiben, sobald sie bestätigt sind. Spieler, deren Rücken nie sichtbar ist, bleiben ohne Nummer.

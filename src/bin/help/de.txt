@@ -62,7 +62,7 @@ live-Optionen:
 
 Trikotnummern (run/live; erst `fetch-ocr`):
   --numbers         Nummern lesen und auf den Scheiben anzeigen; erkennt Wechsel (Nummer wechselt / Spieler verlässt und betritt das Feld)
-  --roster-home 4,5,7,10   --roster-away 3,6,8     Kader: Erkennung wählt nur unter diesen Nummern (deutlich zuverlässiger)
+  --roster-home 4,5,7,10   --roster-away 3,6,8     Kader: Erkennung wählt nur unter diesen Nummern (deutlich zuverlässiger); Torleute mit g/tw markieren: --roster-home 1g,4,5,12tw
   --hires <video>   zweites, höher aufgelöstes Panorama (gleiche Zeitachse) für die Nummern; Spieler brauchen ca. 80 px Höhe
   --ocr-model <datei>  (Standard ~/.cache/reco-minimap/ocr/rec.onnx)   --ocr-min-h 45 --ocr-max 4
 

@@ -189,7 +189,7 @@ Then process the whole game.
 In step 4 there is a section *Read and show jersey numbers*.
 
 1. Click *Download model* once (about 11 MB). The status turns to "Number model installed".
-2. Enter the **squad numbers** of both teams, separated by commas (`4,7,10,12,23`). The reader then only chooses among these – much more reliable.
+2. Enter the **squad numbers** of both teams, separated by commas (`4,7,10,12,23`). The reader then only chooses among these – much more reliable. In football, handball, hockey and the like, mark the goalkeepers with `g` behind the number (`1g,4,7,12g`): once the goalkeeper kit colour is set (step 3c), a keeper's number is then searched only among the keepers and everyone else's only among the outfield players.
 3. Tick *Read and show jersey numbers* and run a segment.
 4. **Size matters.** A number is readable from roughly 10 px digit height, which means players about **80 px tall**. At the end of the run the log says how tall players are in your video and whether that is enough. If not, export a larger version of the same panorama with Reco (same timeline, same frame rate) and enter it as *Higher-resolution panorama for the numbers*. Detection keeps using the smaller video.
 5. Numbers appear on the dots as soon as they are confirmed. Players whose back is never visible stay without a number.

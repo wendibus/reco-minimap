@@ -21,7 +21,7 @@ fn p(id: u32, team: Team, x: f32, y: f32) -> P {
 fn frame(t: f64, ps: &[P], ball: BallOut) -> FrameState {
     FrameState {
         t,
-        players: ps.iter().map(|q| AgentOut { segment: 0, identity: Default::default(), id: q.id, referee: false, team: q.team, pos: Vec2::new(q.x, q.y), vel: Vec2::new(q.speed, 0.0), state: TrackState::Visible, alpha: 1.0, jersey: None }).collect(),
+        players: ps.iter().map(|q| AgentOut { segment: 0, keeper: false, identity: Default::default(), id: q.id, referee: false, team: q.team, pos: Vec2::new(q.x, q.y), vel: Vec2::new(q.speed, 0.0), state: TrackState::Visible, alpha: 1.0, jersey: None }).collect(),
         referees: vec![],
         ball: ball,
         events: vec![],

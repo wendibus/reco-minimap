@@ -189,7 +189,7 @@ Traitez ensuite le match entier.
 À l'étape 4 se trouve la section *Lire et afficher les numéros de maillot*.
 
 1. Cliquez une fois *Télécharger le modèle* (environ 11 Mo). L'état passe à « Modèle de numéros installé ».
-2. Saisissez les **numéros des effectifs** des deux équipes, séparés par des virgules (`4,7,10,12,23`). La lecture ne choisit alors que parmi ces numéros – bien plus fiable.
+2. Saisissez les **numéros des effectifs** des deux équipes, séparés par des virgules (`4,7,10,12,23`). La lecture ne choisit alors que parmi ces numéros – bien plus fiable. Au football, handball, hockey etc., marquez les gardiens par `g` après le numéro (`1g,4,7,12g`) : une fois la couleur du maillot de gardien réglée (étape 3c), le numéro d'un gardien n'est cherché que parmi les gardiens et celui des autres que parmi les joueurs de champ.
 3. Cochez *Lire et afficher les numéros de maillot* et lancez un segment.
 4. **La taille décide.** Un numéro est lisible à partir d'environ 10 px de hauteur de chiffre, soit des joueurs d'environ **80 px de haut**. À la fin du traitement, le journal indique la taille des joueurs dans votre vidéo et si cela suffit. Sinon, exportez avec Reco une version plus grande du même panorama (même ligne de temps, même cadence) et indiquez-la dans *Panorama en plus haute résolution pour les numéros*. La détection continue sur la petite vidéo.
 5. Les numéros apparaissent sur les points une fois confirmés. Les joueurs dont le dos n'est jamais visible restent sans numéro.

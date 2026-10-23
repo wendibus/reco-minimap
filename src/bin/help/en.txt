@@ -74,6 +74,7 @@ Game situations (run/live):
 run options:
   --ref-color #hex  referee shirt colour (e.g. #000000 or yellow): finds referees by colour even if the model does not
   --home-gk #hex --away-gk #hex   goalkeeper shirt colours (also `home_gk` / `away_gk` in teams.json); --no-gk ignores them, --gk-swap exchanges the two keepers' teams
+  --draw-home-gk #hex --draw-away-gk #hex   stripe colour of the goalkeepers in the minimap (default: black or white, whichever contrasts); --no-stripes draws them as plain dots
   --no-field-mask   with --tile auto, tile the full picture width (default: with --court only where the field is)
   --no-smooth       write --minimap/--alpha at the detection rate only (default: full frame rate by interpolation with --every N)
   --alpha-bg 0.0    opacity of the dark backing in the --alpha overlay (0 = transparent, 0.6 = readable on a bright video)

@@ -61,6 +61,7 @@ fn a_declared_keeper_is_tracked_as_a_team_player_not_a_referee() {
     let run = |declare: bool| {
         let (proj, to_pano) = projector();
         let mut cfg = Config::new(HOME, AWAY);
+        cfg.keepers_enabled = true;
         cfg.referee_rgb = Some(BLACK);
         if declare {
             cfg.home_gk_rgb = Some(HOME_GK);
@@ -140,6 +141,7 @@ fn goalkeepers_are_marked_in_the_roster() {
 fn keeper_numbers_are_only_searched_among_keepers_and_outfield_numbers_among_the_rest() {
     let (proj, _) = projector();
     let mut cfg = Config::new(HOME, AWAY);
+    cfg.keepers_enabled = true;
     cfg.roster_home = vec![1, 4, 5, 7, 12];
     cfg.keepers_home = vec![1, 12];
     cfg.home_gk_rgb = Some(HOME_GK);
@@ -159,6 +161,7 @@ fn keeper_numbers_are_only_searched_among_keepers_and_outfield_numbers_among_the
 fn the_keeper_flag_reaches_the_output() {
     let (proj, to_pano) = projector();
     let mut cfg = Config::new(HOME, AWAY);
+    cfg.keepers_enabled = true;
     cfg.home_gk_rgb = Some(HOME_GK);
     let mut mm = Minimap::new(cfg, Box::new(proj));
     let mut last = None;
@@ -173,4 +176,61 @@ fn the_keeper_flag_reaches_the_output() {
     let s = last.unwrap();
     assert_eq!(s.players.iter().filter(|p| p.keeper).count(), 1);
     assert!(s.players.iter().find(|p| p.keeper).unwrap().pos.x < 3.0);
+}
+
+#[test]
+fn keeper_handling_exists_only_for_sports_with_a_keeper_kit() {
+    use reco_minimap::sport::{has_keepers, SportProfile, BUILTIN_IDS};
+    let with: Vec<&str> = BUILTIN_IDS.iter().copied().filter(|id| has_keepers(id)).collect();
+    assert_eq!(with, ["football", "futsal", "handball", "hockey", "lacrosse"]);
+    for id in ["basketball", "volleyball", "rugby", "american_football", "custom"] {
+        assert!(!Config::for_sport(&SportProfile::builtin(id).unwrap(), HOME, AWAY).keepers_enabled, "{id}");
+    }
+    for id in ["football", "handball"] {
+        assert!(Config::for_sport(&SportProfile::builtin(id).unwrap(), HOME, AWAY).keepers_enabled, "{id}");
+    }
+}
+
+#[test]
+fn keeper_colours_are_ignored_in_basketball() {
+    let (proj, to_pano) = projector();
+    let mut cfg = Config::for_sport(&reco_minimap::sport::SportProfile::basketball(), HOME, AWAY);
+    assert!(!cfg.keepers_enabled);
+    cfg.home_gk_rgb = Some(HOME_GK); // e.g. a stale value in teams.json from another sport
+    cfg.keepers_home = vec![1];
+    let mut mm = Minimap::new(cfg, Box::new(proj));
+    let mut last = None;
+    for k in 0..10 {
+        let mut ds = Vec::new();
+        for i in 0..4 {
+            ds.push(det(&to_pano, Vec2::new(8.0 + 2.0 * i as f32, 3.0 + 3.0 * i as f32), Class::Player, Some(HOME)));
+        }
+        ds.push(det(&to_pano, Vec2::new(1.5, 7.5), Class::Player, Some(HOME_GK)));
+        last = Some(mm.process(k as f64 * 0.2, &ds));
+    }
+    let s = last.unwrap();
+    assert!(s.players.iter().all(|p| !p.keeper), "no keeper flag in basketball");
+    assert_eq!(s.players.iter().filter(|p| p.team == Team::Home).count(), 4, "the green shirt is not a home player here");
+    assert!(mm.roster_for_track(Team::Home, false).is_empty());
+}
+
+#[test]
+fn keepers_are_drawn_striped() {
+    use reco_minimap::render::{Renderer, Theme};
+    use reco_minimap::sport::SportProfile;
+    let agent = |keeper: bool| AgentOut { segment: 0, keeper, identity: Default::default(), id: 1, referee: false, team: Team::Home, pos: Vec2::new(14.0, 7.5), vel: Vec2::default(), state: reco_minimap::tracker::TrackState::Visible, alpha: 1.0, jersey: None };
+    let draw = |keeper: bool, stripes: bool| {
+        let th = Theme { home: [220, 40, 40], keeper_stripes: stripes, ..Theme::default() };
+        let r = Renderer::with_profile(th, SportProfile::basketball());
+        let s = FrameState { t: 0.0, players: vec![agent(keeper)], referees: vec![], ball: reco_minimap::ball::BallOut { state: reco_minimap::ball::BallState::Unknown, pos: None, vel: None }, events: vec![] };
+        r.render(&s).rgba
+    };
+    let plain = draw(false, true);
+    let striped = draw(true, true);
+    assert_ne!(plain, striped, "keeper differs from an outfield dot");
+    assert_eq!(plain, draw(true, false), "stripes can be switched off");
+    // the stripes alternate: the disc holds both the team colour and the contrasting stripe colour
+    let px: Vec<[u8; 3]> = striped.chunks_exact(4).map(|p| [p[0], p[1], p[2]]).collect();
+    assert!(px.iter().any(|c| c[1] > 200 && c[2] > 200), "light stripes on the red dot");
+    assert!(px.iter().any(|c| c[0] > 200 && c[1] < 60), "team colour remains");
 }

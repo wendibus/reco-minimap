@@ -83,6 +83,7 @@ function drawCourt(g) {
     path(() => ctx.arc(X(at(bk)), Y(W / 2), tp * s, left ? -ang : Math.PI - ang, left ? ang : Math.PI + ang));
   }
 }
+function stripes(x, y, r, color, alpha) { const w = r * 0.42; ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI); ctx.clip(); ctx.translate(x, y); ctx.rotate(Math.PI / 4); ctx.globalAlpha = alpha; ctx.fillStyle = color; for (let o = -r - w; o < r + w; o += 2 * w) ctx.fillRect(o, -r * 1.5, w, r * 3); ctx.restore(); ctx.globalAlpha = 1; }
 function disc(x, y, r, color, alpha) { ctx.globalAlpha = alpha; ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI); ctx.fill(); ctx.globalAlpha = 1; }
 function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
@@ -102,6 +103,7 @@ function frame(now) {
       const edge = lum(fill) < 90 ? '#ebebeb' : '#0f0f0f', al = Math.max(a.alpha, MINA);
       const px = g.ox + d.x * g.s, py = g.oy + d.y * g.s;
       disc(px, py, r + 1.5, edge, al * 0.9); disc(px, py, r, fill, al);
+      if (a.keeper && !a.ref) { stripes(px, py, r, lum(fill) < 140 ? '#ffffff' : '#0f0f0f', al * 0.9); if (NUMBERS && a.jersey != null) disc(px, py, r * 0.66, fill, al); }
       if (NUMBERS && a.jersey != null) { ctx.globalAlpha = 1; ctx.fillStyle = lum(fill) < 140 ? '#ffffff' : '#0a0a0a'; ctx.font = 'bold ' + Math.round(r * (String(a.jersey).length > 1 ? 1.0 : 1.2)) + 'px -apple-system, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(a.jersey), px, py + r * 0.05); ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic'; }
     }
     for (const id of [...disp.keys()]) if (!seen.has(id)) disp.delete(id);

@@ -195,7 +195,8 @@ The interface runs the same check when it starts and shows a notice with an *Ins
 
 * `colors --court court.json` also looks for the keepers: players in the goal areas whose colour belongs to neither team. It assigns each keeper to the team whose outfield players stand on his side of the pitch in the same frame (so it does not matter that teams change ends at half-time). If that evidence is thin it says so - then swap the two with `--gk-swap`, or with *Swap goalkeeper colours* in the interface.
 * By hand: `--home-gk #hex --away-gk #hex`. `--no-gk` ignores stored keeper colours. Either keeper may be left out if only one team has a keeper kit.
-* A keeper is counted as a member of his team (the fifth, sixth ... player slot) and drawn in the team colour.
+* A keeper is counted as a member of his team (the fifth, sixth ... player slot) and drawn in the team colour **with diagonal stripes** (stripe colour: black or white, whichever contrasts; set it with `--draw-home-gk` / `--draw-away-gk`, or `--no-stripes` for plain dots). The browser overlay for OBS stripes them too.
+* **Only where it makes sense:** the options exist for football, futsal, handball, hockey and lacrosse. In basketball, volleyball, rugby, American football and custom pitches the interface does not show them, `colors` does not look for keepers, and keeper colours or `g` marks found in an old `teams.json` or squad list are ignored (with a note).
 * If a keeper's kit is almost the same colour as the referee's (both black, say), the program cannot tell them apart by colour; use a different `--ref-color` or let the model's referee class decide.
 
 ## Sports
@@ -353,6 +354,7 @@ Common options (see `reco-minimap --help` for all):
 | `--roi x0,y0,x1,y1` | Search only a band of the panorama (fractions) |
 | `--minimap f.mp4 --alpha f.mov --pip f.mp4 --json f.jsonl` | Outputs of `run` (`--alpha-bg 0.6` adds a dark backing) |
 | `--draw-home #fff --draw-away #2f6bff --ref-color #000` | Display colours, referee shirt colour |
+| `--draw-home-gk #hex --draw-away-gk #hex`, `--no-stripes` | Stripe colour of the goalkeepers in the minimap; plain dots |
 | `--home-gk #hex --away-gk #hex`, `--no-gk`, `--gk-swap` | Goalkeeper shirt colours, ignore them, exchange the two keepers' teams |
 | `--roster-home 1g,4,7,12gk` | In a squad list, `g` / `gk` / `tw` behind a number marks a goalkeeper |
 | `--min-alpha 1` | Keep undetected players fully opaque (default 0.8) |

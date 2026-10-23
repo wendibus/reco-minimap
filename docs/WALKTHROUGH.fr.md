@@ -144,6 +144,7 @@ Cliquez *Mesurer*. Le programme examine une douzaine d'images et apprend quelle 
 1. Cliquez *Détecter les couleurs*. Le programme relève les couleurs de maillot des joueurs sur le terrain et les répartit en deux équipes. Le journal montre les groupes de couleurs trouvés.
 2. Réglez les couleurs :
    * **Domicile / Extérieur (détection)** – les couleurs telles que la caméra les voit. Elles sont renseignées automatiquement ; *Inverser* échange domicile et extérieur si besoin. En cas d'échec (« équipes indiscernables »), choisissez les deux couleurs à la main.
+   * **Maillots de gardien** (football, futsal, handball, hockey, crosse) – si les gardiens portent une autre couleur que leur équipe, cocher *Maillots de gardien*. *Détecter les couleurs* propose les couleurs des gardiens depuis les surfaces ; si l'attribution à l'équipe est incertaine, le journal le signale – utiliser alors *Échanger les couleurs des gardiens*. Sans cela, un gardien en maillot différent est pris pour un arbitre ou ignoré. Basketball et les sports sans maillot de gardien n'affichent pas l'option.
    * **Domicile / Extérieur (affichage)** – les couleurs dans lesquelles les points sont dessinés. Prenez ce qui rend bien, p. ex. du blanc et un bleu clair. Une couleur très sombre se voit mal sur la minimap sombre.
    * **Couleur des arbitres** – la couleur du maillot des arbitres (souvent noir ou jaune). Le programme trouve ainsi les arbitres même si le modèle ne les reconnaît pas.
 3. **Silhouettes et maillots** (à ne modifier qu'en cas de besoin) :

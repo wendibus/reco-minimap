@@ -75,6 +75,7 @@ Situaciones de juego (run/live):
 Opciones de run:
   --ref-color #hex  color de la camiseta de los árbitros (p. ej. #000000 o amarillo): encuentra a los árbitros por el color aunque el modelo no los vea
   --home-gk #hex --away-gk #hex   colores de las camisetas de porteros (también `home_gk` / `away_gk` en teams.json); --no-gk los ignora, --gk-swap intercambia los equipos de los dos porteros
+  --draw-home-gk #hex --draw-away-gk #hex   color de las rayas de los porteros en el minimapa (por defecto negro o blanco según el contraste); --no-stripes los dibuja como puntos lisos
   --no-field-mask   con --tile auto, cubrir todo el ancho de la imagen (por defecto: con --court solo donde está el campo)
   --no-smooth       escribir --minimap/--alpha solo a la cadencia de detección (por defecto: cadencia completa por interpolación con --every N)
   --alpha-bg 0.0    opacidad del fondo oscuro en la superposición --alpha (0 = transparente, 0.6 = legible sobre un vídeo claro)

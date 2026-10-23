@@ -26,6 +26,11 @@ pub struct Theme {
     pub min_alpha: f32,
     /// Draw jersey numbers on the dots (and make the dots a bit larger so two digits fit).
     pub show_numbers: bool,
+    /// Goalkeepers are drawn with diagonal stripes (set to false for plain dots).
+    pub keeper_stripes: bool,
+    /// Stripe colours of the home / away keeper; `None` = black or white, whichever contrasts with the team colour.
+    pub home_keeper: Option<Rgb>,
+    pub away_keeper: Option<Rgb>,
 }
 
 impl Default for Theme {
@@ -43,6 +48,9 @@ impl Default for Theme {
             background_alpha: 255,
             min_alpha: 0.8,
             show_numbers: false,
+            keeper_stripes: true,
+            home_keeper: None,
+            away_keeper: None,
         }
     }
 }
@@ -89,6 +97,28 @@ impl Canvas {
                 let outer = (r_out - d + 0.5).clamp(0.0, 1.0);
                 let inner = if r_in > 0.0 { (d - r_in + 0.5).clamp(0.0, 1.0) } else { 1.0 };
                 self.blend(x, y, c, outer * inner * alpha);
+            }
+        }
+    }
+
+    /// Diagonal stripes over a disc (alternating `period` px bands, anti-aliased at the rim).
+    pub fn stripes(&mut self, cx: f32, cy: f32, r: f32, period: f32, c: Rgb, alpha: f32) {
+        let (x0, x1) = ((cx - r - 1.0).floor().max(0.0) as usize, ((cx + r + 1.0).ceil() as usize).min(self.w.saturating_sub(1)));
+        let (y0, y1) = ((cy - r - 1.0).floor().max(0.0) as usize, ((cy + r + 1.0).ceil() as usize).min(self.h.saturating_sub(1)));
+        let period = period.max(1.5);
+        for y in y0..=y1 {
+            for x in x0..=x1 {
+                let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+                let d = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
+                let inside = (r - d + 0.5).clamp(0.0, 1.0);
+                if inside <= 0.0 {
+                    continue;
+                }
+                // position across the stripes (diagonal), centred on the disc so every dot looks the same
+                let u = ((px - cx) + (py - cy)) / std::f32::consts::SQRT_2 / period;
+                if u.rem_euclid(2.0) >= 1.0 {
+                    self.blend(x, y, c, inside * alpha);
+                }
             }
         }
     }
@@ -221,6 +251,15 @@ impl Renderer {
         let alpha = a.alpha.max(t.min_alpha).min(1.0);
         c.disc(x, y, r + 1.5, 0.0, edge, alpha * 0.9);
         c.disc(x, y, r, 0.0, fill, alpha);
+        let striped = a.keeper && !a.referee && t.keeper_stripes;
+        if striped {
+            let own = if a.team == Team::Home { t.home_keeper } else { t.away_keeper };
+            let stripe = own.unwrap_or(if lum < 140.0 { [255u8, 255, 255] } else { [15u8, 15, 15] });
+            c.stripes(x, y, r, r * 0.42, stripe, alpha * 0.9);
+            if t.show_numbers && a.jersey.is_some() {
+                c.disc(x, y, r * 0.66, 0.0, fill, alpha); // plain plate so the number stays readable
+            }
+        }
         if t.show_numbers {
             if let Some(n) = a.jersey {
                 let ink = if lum < 140.0 { [255u8, 255, 255] } else { [10u8, 10, 10] };

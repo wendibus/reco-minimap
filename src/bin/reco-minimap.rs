@@ -1069,7 +1069,7 @@ fn cmd_live(o: &Opts, input: &str) {
     let teams = read_teams(o);
     let (home, away) = (teams.home, teams.away);
     // shirt colours the torso sample may snap to (teams, and the referees' if given)
-    let shirts: Vec<[u8; 3]> = teams.shirts(o.s("ref-color").and_then(parse_hex));
+    let shirts: Vec<[u8; 3]> = teams.shirts(o.s("ref-color").and_then(parse_hex), reco_minimap::sport::has_keepers(&profile.id));
     let torso = torso_band(o);
     let shirt_match = o.has("shirt-match");
     let mut mcfg = game_config(o, &profile, home, away);
@@ -1229,13 +1229,19 @@ struct Teams {
 }
 
 impl Teams {
+    /// Keeper colours only count in sports with a keeper kit; elsewhere (basketball, volleyball ...) they are ignored with a note.
     fn apply(&self, cfg: &mut Config) {
-        cfg.home_gk_rgb = self.home_gk;
-        cfg.away_gk_rgb = self.away_gk;
+        if cfg.keepers_enabled {
+            cfg.home_gk_rgb = self.home_gk;
+            cfg.away_gk_rgb = self.away_gk;
+        } else if self.home_gk.is_some() || self.away_gk.is_some() {
+            eprintln!("{}", trs!("Hinweis: Torwartfarben werden ignoriert – diese Sportart hat keine abweichenden Torwart-Trikots.", "Note: goalkeeper colours are ignored – this sport has no separate goalkeeper kits.", "Remarque : les couleurs de gardien sont ignorées – ce sport n'a pas de maillots de gardien distincts.", "Nota: se ignoran los colores de portero: este deporte no tiene camisetas de portero distintas."));
+        }
     }
     /// Colours a torso sample may snap to with `--shirt-match`.
-    fn shirts(&self, referee: Option<[u8; 3]>) -> Vec<[u8; 3]> {
-        [Some(self.home), Some(self.away), self.home_gk, self.away_gk, referee].into_iter().flatten().collect()
+    fn shirts(&self, referee: Option<[u8; 3]>, keepers: bool) -> Vec<[u8; 3]> {
+        let (hg, ag) = if keepers { (self.home_gk, self.away_gk) } else { (None, None) };
+        [Some(self.home), Some(self.away), hg, ag, referee].into_iter().flatten().collect()
     }
 }
 
@@ -1305,7 +1311,7 @@ fn cmd_run(o: &Opts, input: &str) {
     let teams = read_teams(o);
     let (home, away) = (teams.home, teams.away);
     // shirt colours the torso sample may snap to (teams, and the referees' if given)
-    let shirts: Vec<[u8; 3]> = teams.shirts(o.s("ref-color").and_then(parse_hex));
+    let shirts: Vec<[u8; 3]> = teams.shirts(o.s("ref-color").and_then(parse_hex), reco_minimap::sport::has_keepers(&profile.id));
     let torso = torso_band(o);
     let shirt_match = o.has("shirt-match");
     eprintln!("{}", tr!("Heim {}  Gast {}  | Kalibrierfehler {:.2} m", "Home {}  away {}  | calibration error {:.2} m", "Domicile {}  visiteurs {}  | erreur de calibrage {:.2} m", "Local {}  visitante {}  | error de calibración {:.2} m", hex(home), hex(away), cal.rms_m));
@@ -1318,7 +1324,7 @@ fn cmd_run(o: &Opts, input: &str) {
     let ppm = o.s("scale").and_then(|v| v.parse().ok()).unwrap_or_else(|| Renderer::default_px_per_m(&profile));
     let draw_home = o.s("draw-home").and_then(parse_hex).unwrap_or(home);
     let draw_away = o.s("draw-away").and_then(parse_hex).unwrap_or(away);
-    let mut theme = Theme { px_per_m: ppm, home: draw_home, away: draw_away, min_alpha: o.f("min-alpha", 0.8) as f32, show_numbers: o.has("numbers"), ..Theme::default() };
+    let mut theme = Theme { px_per_m: ppm, home: draw_home, away: draw_away, min_alpha: o.f("min-alpha", 0.8) as f32, show_numbers: o.has("numbers"), keeper_stripes: !o.has("no-stripes"), home_keeper: o.s("draw-home-gk").and_then(parse_hex), away_keeper: o.s("draw-away-gk").and_then(parse_hex), ..Theme::default() };
     let mut mcfg = game_config(o, &profile, home, away);
     mcfg.referee_rgb = o.s("ref-color").and_then(parse_hex);
     teams.apply(&mut mcfg);
@@ -1327,7 +1333,7 @@ fn cmd_run(o: &Opts, input: &str) {
     let mut scenes = o.has("scenes").then(|| SceneDetector::new(profile.clone()));
     let mut scene_log: Vec<SceneEvent> = Vec::new();
     let classifier = {
-        let c = reco_minimap::team::TeamClassifier::new(home, away).with_keepers(teams.home_gk, teams.away_gk);
+        let c = reco_minimap::team::TeamClassifier::new(home, away).with_keepers(if mcfg.keepers_enabled { teams.home_gk } else { None }, if mcfg.keepers_enabled { teams.away_gk } else { None });
         match mcfg.referee_rgb { Some(r) => c.with_referee(r), None => c }
     };
     let mut mm = Minimap::new(mcfg, Box::new(projector));
@@ -1564,7 +1570,7 @@ fn cmd_replay(o: &Opts, path: &str) {
     let mut scenes = o.has("scenes").then(|| SceneDetector::new(profile.clone()));
     let mut mm = Minimap::new(mcfg, Box::new(projector));
     let mut jsonl = o.s("json").map(|p| std::io::BufWriter::new(std::fs::File::create(p).unwrap_or_else(|e| fail(format!("{p}: {e}")))));
-    let theme = Theme { px_per_m: o.s("scale").and_then(|v| v.parse().ok()).unwrap_or_else(|| Renderer::default_px_per_m(&profile)), home: o.s("draw-home").and_then(parse_hex).unwrap_or(home), away: o.s("draw-away").and_then(parse_hex).unwrap_or(away), min_alpha: o.f("min-alpha", 0.8) as f32, ..Theme::default() };
+    let theme = Theme { px_per_m: o.s("scale").and_then(|v| v.parse().ok()).unwrap_or_else(|| Renderer::default_px_per_m(&profile)), home: o.s("draw-home").and_then(parse_hex).unwrap_or(home), away: o.s("draw-away").and_then(parse_hex).unwrap_or(away), min_alpha: o.f("min-alpha", 0.8) as f32, keeper_stripes: !o.has("no-stripes"), home_keeper: o.s("draw-home-gk").and_then(parse_hex), away_keeper: o.s("draw-away-gk").and_then(parse_hex), ..Theme::default() };
     let renderer = Renderer::with_profile(theme, profile.clone());
     let mut w_min = o.s("minimap").map(|p| {
         let (w, h) = renderer.size();

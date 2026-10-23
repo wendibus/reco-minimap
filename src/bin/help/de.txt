@@ -74,6 +74,7 @@ Spielsituationen (run/live):
 run-Optionen:
   --ref-color #hex  Schiri-Trikotfarbe (z.B. #000000 oder gelb): erkennt Schiris über die Farbe, auch wenn das Modell sie nicht findet
   --home-gk #hex --away-gk #hex   Torwart-Trikotfarben (auch `home_gk` / `away_gk` in teams.json); --no-gk ignoriert sie, --gk-swap tauscht die Teams der beiden Torleute
+  --draw-home-gk #hex --draw-away-gk #hex   Streifenfarbe der Torleute in der Minimap (Standard: schwarz oder weiß, je nach Kontrast); --no-stripes zeichnet sie als einfache Punkte
   --no-field-mask   bei --tile auto die volle Bildbreite kacheln (Standard: mit --court nur dort, wo das Feld liegt)
   --no-smooth       --minimap/--alpha nur mit der Erkennungsrate schreiben (Standard: volle Bildrate durch Interpolation bei --every N)
   --alpha-bg 0.0    Deckkraft der dunklen Unterlage im --alpha-Overlay (0 = transparent, 0.6 = gut lesbar auf hellem Video)

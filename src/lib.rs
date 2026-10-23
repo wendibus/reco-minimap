@@ -137,6 +137,9 @@ pub struct Config {
     pub field: Field,
     pub home_rgb: [u8; 3],
     pub away_rgb: [u8; 3],
+    /// Goalkeeper shirt colours (optional; for sports where the keeper wears a different colour).
+    pub home_gk_rgb: Option<[u8; 3]>,
+    pub away_gk_rgb: Option<[u8; 3]>,
     pub tracker: TrackerCfg,
     pub ball: BallCfg,
     /// Roster numbers accepted from OCR (both teams merged); empty = any. Per-team rosters below take precedence.
@@ -195,7 +198,7 @@ impl Config {
         ball.field = p.field;
         ball.possession = rules.possession;
         Self {
-            field: p.field, home_rgb, away_rgb, tracker, ball, roster: Vec::new(), roster_home: Vec::new(), roster_away: Vec::new(), num_min_score: 3.0, num_min_lead: 1.5, vote_decay: 0.985, sub_near_edge_m: 2.0, sub_leave_m: 1.5, sub_min_gone: 3.0, sub_cooldown: 20.0, referee_from_color: true, referee_rgb: None, ball_margin: 3.0, ball_init_conf: 0.40, ball_reacquire_conf: 0.50, ball_max_speed: p.ball_max_speed }
+            field: p.field, home_rgb, away_rgb, home_gk_rgb: None, away_gk_rgb: None, tracker, ball, roster: Vec::new(), roster_home: Vec::new(), roster_away: Vec::new(), num_min_score: 3.0, num_min_lead: 1.5, vote_decay: 0.985, sub_near_edge_m: 2.0, sub_leave_m: 1.5, sub_min_gone: 3.0, sub_cooldown: 20.0, referee_from_color: true, referee_rgb: None, ball_margin: 3.0, ball_init_conf: 0.40, ball_reacquire_conf: 0.50, ball_max_speed: p.ball_max_speed }
     }
 }
 
@@ -218,6 +221,9 @@ impl Minimap {
         let mut classifier = TeamClassifier::new(cfg.home_rgb, cfg.away_rgb);
         if let Some(r) = cfg.referee_rgb {
             classifier = classifier.with_referee(r);
+        }
+        if cfg.home_gk_rgb.is_some() || cfg.away_gk_rgb.is_some() {
+            classifier = classifier.with_keepers(cfg.home_gk_rgb, cfg.away_gk_rgb);
         }
         let tracker = Tracker::new(cfg.tracker.clone());
         let ball = BallTracker::new(cfg.ball.clone());

@@ -39,6 +39,11 @@ pub struct SportProfile {
 /// Same order as the sport list in Reco Trainer, then volleyball and the free rectangle.
 pub const BUILTIN_IDS: &[&str] = &["football", "futsal", "basketball", "handball", "hockey", "rugby", "lacrosse", "american_football", "volleyball", "custom"];
 
+/// Sports in which the goalkeeper wears a different colour from the team.
+pub fn has_keepers(sport_id: &str) -> bool {
+    matches!(sport_id, "football" | "futsal" | "handball" | "hockey" | "lacrosse")
+}
+
 fn v(x: f32, y: f32) -> Vec2 {
     Vec2::new(x, y)
 }

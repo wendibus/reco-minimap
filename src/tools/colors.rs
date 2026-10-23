@@ -1,5 +1,6 @@
 //! Dominant jersey colours via k-means in Lab space.
 
+use crate::geom::{Field, Vec2};
 use crate::team::rgb_to_lab;
 
 pub fn hex(c: [u8; 3]) -> String {
@@ -100,4 +101,78 @@ pub fn pick_teams(samples: &[[u8; 3]]) -> Option<(Cluster, Cluster, f32)> {
     }
     let d = lab_dist(c[0].rgb, c[1].rgb);
     Some((c[0].clone(), c[1].clone(), d))
+}
+
+/// One shirt-colour sample of a player with where he stood and in which sampled frame.
+#[derive(Clone, Copy, Debug)]
+pub struct PlayerSample {
+    pub frame: usize,
+    pub pos: Vec2,
+    pub rgb: [u8; 3],
+}
+
+/// Proposed goalkeeper shirts. `confident` is false when the team assignment rests on little evidence (check it, or swap).
+#[derive(Clone, Debug, Default)]
+pub struct KeeperPick {
+    pub home: Option<Cluster>,
+    pub away: Option<Cluster>,
+    pub confident: bool,
+}
+
+/// Find the goalkeepers' shirt colours: players in the goal areas whose colour belongs to neither team.
+/// A keeper is assigned to the team whose outfield players are, on average, on the keeper's side of the field
+/// (the defending team stays near its own goal). With two keeper colours the assignment is made jointly.
+pub fn pick_keepers(samples: &[PlayerSample], home: [u8; 3], away: [u8; 3], field: &Field) -> KeeperPick {
+    const FAR: f32 = 25.0; // Lab distance from both team colours
+    let zone = 0.18 * field.length;
+    let team_of = |c: [u8; 3]| -> Option<bool> {
+        let (dh, da) = (lab_dist(c, home), lab_dist(c, away));
+        if dh.min(da) > 35.0 { None } else { Some(dh < da) }
+    };
+    let cand: Vec<&PlayerSample> = samples
+        .iter()
+        .filter(|s| lab_dist(s.rgb, home).min(lab_dist(s.rgb, away)) > FAR && (s.pos.x < zone || s.pos.x > field.length - zone) && s.pos.y > 0.0 && s.pos.y < field.width)
+        .collect();
+    if cand.len() < 4 {
+        return KeeperPick::default();
+    }
+    let colours: Vec<[u8; 3]> = cand.iter().map(|s| s.rgb).collect();
+    let mut clusters = kmeans(&colours, 2);
+    if clusters.len() < 2 || lab_dist(clusters[0].rgb, clusters[1].rgb) < 15.0 || clusters[1].count * 4 < clusters[0].count {
+        clusters = kmeans(&colours, 1);
+    }
+    // team evidence per cluster: >0 = home, <0 = away
+    let nearest = |c: [u8; 3], cl: &[Cluster]| (0..cl.len()).min_by(|&a, &b| lab_dist(c, cl[a].rgb).partial_cmp(&lab_dist(c, cl[b].rgb)).unwrap_or(std::cmp::Ordering::Equal)).unwrap_or(0);
+    let mut evidence = vec![0f32; clusters.len()];
+    for s in &cand {
+        let (mut hx, mut hn, mut ax, mut an) = (0.0f32, 0, 0.0f32, 0);
+        for o in samples.iter().filter(|o| o.frame == s.frame) {
+            match team_of(o.rgb) {
+                Some(true) => { hx += o.pos.x; hn += 1; }
+                Some(false) => { ax += o.pos.x; an += 1; }
+                None => {}
+            }
+        }
+        if hn < 2 || an < 2 {
+            continue;
+        }
+        let left = s.pos.x < field.length / 2.0;
+        let (mh, ma) = (hx / hn as f32, ax / an as f32);
+        // the team whose players stand nearer the keeper's goal is the keeper's team
+        let toward_home = if left { ma - mh } else { mh - ma };
+        evidence[nearest(s.rgb, &clusters)] += toward_home.clamp(-10.0, 10.0);
+    }
+    let mut out = KeeperPick { confident: true, ..Default::default() };
+    if clusters.len() == 2 {
+        // two keepers belong to different teams: the cluster with the stronger home evidence is the home keeper
+        let (h, a) = if evidence[0] >= evidence[1] { (0, 1) } else { (1, 0) };
+        out.home = Some(clusters[h].clone());
+        out.away = Some(clusters[a].clone());
+        out.confident = (evidence[0] - evidence[1]).abs() > 20.0;
+    } else {
+        let e = evidence[0];
+        if e >= 0.0 { out.home = Some(clusters[0].clone()) } else { out.away = Some(clusters[0].clone()) }
+        out.confident = e.abs() > 20.0;
+    }
+    out
 }

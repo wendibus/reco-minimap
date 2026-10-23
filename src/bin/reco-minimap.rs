@@ -828,18 +828,24 @@ fn cmd_colors(o: &Opts, input: &str) {
         eprintln!("{}", trs!("Hinweis: ohne --court werden auch Zuschauer/Bank mitgezählt. Besser erst `calibrate` und dann --court court.json.", "Note: without --court, spectators and the bench are counted too. Better run `calibrate` first and then pass --court court.json.", "Remarque : sans --court, les spectateurs et le banc sont aussi comptés. Mieux vaut lancer `calibrate` puis passer --court court.json.", "Nota: sin --court también se cuentan espectadores y banquillo. Mejor ejecuta antes `calibrate` y pasa --court court.json."));
     }
     let mut samples: Vec<[u8; 3]> = Vec::new();
+    let mut located: Vec<reco_minimap::tools::colors::PlayerSample> = Vec::new();
     for (i, frame) in sample_frames(o, input, &info).iter().enumerate() {
         let dets = model.detect(frame, &tiles).unwrap_or_else(|e| fail(e));
         for d in dets.iter().filter(|d| d.class == Class::Player) {
+            let mut at = None;
             if let Some(p) = &projector {
                 use reco_minimap::geom::Projector;
                 let (u, v) = d.foot();
-                if !p.to_court(u, v).map(|c| field.contains(c, 0.3)).unwrap_or(false) {
-                    continue;
+                match p.to_court(u, v) {
+                    Some(c) if field.contains(c, 0.3) => at = Some(c),
+                    _ => continue,
                 }
             }
             if let Some(c) = frame.torso_color_in(d, torso_band(o)) {
                 samples.push(c);
+                if let Some(pos) = at {
+                    located.push(reco_minimap::tools::colors::PlayerSample { frame: i, pos, rgb: c });
+                }
             }
         }
         eprint!("{}", tr!("\r  Stichprobe {}…  {} Farbproben", "\r  sample {}…  {} colour samples", "\r  échantillon {}…  {} échantillons de couleur", "\r  muestra {}…  {} muestras de color", i + 1, samples.len()));
@@ -871,7 +877,26 @@ fn cmd_colors(o: &Opts, input: &str) {
         None => (a, b),
     };
     let out = o.s("out").unwrap_or("teams.json");
-    let v = serde_json::json!({"home": hex(home), "away": hex(away)});
+    let mut v = serde_json::json!({"home": hex(home), "away": hex(away)});
+    let keeper_sport = court_loaded.as_ref().map(|c| reco_minimap::sport::has_keepers(&c.1.id)).unwrap_or(false);
+    if keeper_sport && !o.has("no-gk") {
+        let pick = reco_minimap::tools::colors::pick_keepers(&located, home, away, &field);
+        if pick.home.is_none() && pick.away.is_none() {
+            println!("{}", trs!("\nTorwarttrikots: keine abweichende Farbe im Torraum gefunden (Torleute tragen vermutlich Teamfarbe, oder zu wenige Proben – mehr --samples). Von Hand setzen: --home-gk / --away-gk oder in der Oberfläche.", "\nGoalkeeper shirts: no deviating colour found in the goal areas (keepers probably wear the team colour, or too few samples – raise --samples). Set by hand: --home-gk / --away-gk or in the interface.", "\nMaillots de gardien : aucune couleur différente trouvée dans les surfaces (les gardiens portent sans doute la couleur de l'équipe, ou trop peu d'échantillons – augmenter --samples). À régler à la main : --home-gk / --away-gk ou dans l'interface.", "\nCamisetas de portero: no se encontró ningún color distinto en las áreas (probablemente llevan el color del equipo, o hay pocas muestras – sube --samples). A mano: --home-gk / --away-gk o en la interfaz."));
+        } else {
+            if let Some(c) = &pick.home {
+                v["home_gk"] = serde_json::json!(hex(c.rgb));
+                println!("{}", tr!("\nTorwart Heim: {}{}", "\nGoalkeeper home: {}{}", "\nGardien domicile : {}{}", "\nPortero local: {}{}", swatch(c.rgb), hex(c.rgb)));
+            }
+            if let Some(c) = &pick.away {
+                v["away_gk"] = serde_json::json!(hex(c.rgb));
+                println!("{}", tr!("Torwart Gast: {}{}", "Goalkeeper away: {}{}", "Gardien visiteurs : {}{}", "Portero visitante: {}{}", swatch(c.rgb), hex(c.rgb)));
+            }
+            if !pick.confident {
+                println!("{}", trs!("  ! Welcher Torwart zu welchem Team gehört, ist unsicher – bitte prüfen und bei Bedarf tauschen (Oberfläche: Torwartfarben tauschen, Kommandozeile: --gk-swap beim Start).", "  ! Which keeper belongs to which team is uncertain – please check and swap if needed (interface: swap goalkeeper colours; command line: --gk-swap when starting).", "  ! L'attribution des gardiens aux équipes est incertaine – vérifier et échanger si besoin (interface : échanger les couleurs des gardiens ; ligne de commande : --gk-swap au lancement).", "  ! No es seguro qué portero es de qué equipo – revísalo y cámbialo si hace falta (interfaz: intercambiar colores de porteros; línea de comandos: --gk-swap al iniciar)."));
+            }
+        }
+    }
     std::fs::write(out, serde_json::to_string_pretty(&v).unwrap()).unwrap_or_else(|e| fail(e));
     println!("{}", tr!("\nHeim {}  /  Gast {}  -> {out}", "\nHome {}  /  away {}  -> {out}", "\nDomicile {}  /  visiteurs {}  -> {out}", "\nLocal {}  /  visitante {}  -> {out}", hex(home), hex(away)));
     if o.s("home-hint").is_none() {
@@ -1038,13 +1063,15 @@ fn cmd_live(o: &Opts, input: &str) {
     let tiles = plan(o, &info);
     let (cal, profile) = load_court(o.s("court").unwrap_or_else(|| fail(trs!("--court court.json fehlt", "--court court.json is missing", "--court court.json manquant", "falta --court court.json"))));
     let projector = cal.projector().unwrap_or_else(|| fail(trs!("court.json: Homographie nicht lösbar", "court.json: the homography cannot be solved", "court.json : l'homographie ne peut pas être résolue", "court.json: no se puede resolver la homografía")));
-    let (home, away) = read_teams(o);
+    let teams = read_teams(o);
+    let (home, away) = (teams.home, teams.away);
     // shirt colours the torso sample may snap to (teams, and the referees' if given)
-    let shirts: Vec<[u8; 3]> = [Some(home), Some(away), o.s("ref-color").and_then(parse_hex)].into_iter().flatten().collect();
+    let shirts: Vec<[u8; 3]> = teams.shirts(o.s("ref-color").and_then(parse_hex));
     let torso = torso_band(o);
     let shirt_match = o.has("shirt-match");
     let mut mcfg = game_config(o, &profile, home, away);
     mcfg.referee_rgb = o.s("ref-color").and_then(parse_hex);
+    teams.apply(&mut mcfg);
     mcfg.tracker.spawn_conf = { let (low, high) = thr_players(o); if low < high { high } else { 0.0 } };
     let mut numbers = numbers_setup(o, &mut mcfg).map(|nm| BackgroundOcr::new(nm.reader,nm.min_h,nm.max_reads));
     let mut scenes = o.has("scenes").then(|| SceneDetector::new(profile.clone()));
@@ -1188,17 +1215,54 @@ fn cmd_live(o: &Opts, input: &str) {
 
 // ---------------------------------------------------------------- run
 
-fn read_teams(o: &Opts) -> ([u8; 3], [u8; 3]) {
-    if let (Some(h), Some(a)) = (o.s("home").and_then(parse_hex), o.s("away").and_then(parse_hex)) {
-        return (h, a);
+/// Shirt colours of both teams and, optionally, of their goalkeepers (`home_gk` / `away_gk` in teams.json,
+/// or `--home-gk` / `--away-gk`; `--no-gk` ignores them, `--gk-swap` exchanges the two keeper colours).
+#[derive(Clone, Copy, Debug)]
+struct Teams {
+    home: [u8; 3],
+    away: [u8; 3],
+    home_gk: Option<[u8; 3]>,
+    away_gk: Option<[u8; 3]>,
+}
+
+impl Teams {
+    fn apply(&self, cfg: &mut Config) {
+        cfg.home_gk_rgb = self.home_gk;
+        cfg.away_gk_rgb = self.away_gk;
     }
-    if let Some(p) = o.s("teams") {
+    /// Colours a torso sample may snap to with `--shirt-match`.
+    fn shirts(&self, referee: Option<[u8; 3]>) -> Vec<[u8; 3]> {
+        [Some(self.home), Some(self.away), self.home_gk, self.away_gk, referee].into_iter().flatten().collect()
+    }
+}
+
+fn read_teams(o: &Opts) -> Teams {
+    let mut t = None;
+    if let (Some(h), Some(a)) = (o.s("home").and_then(parse_hex), o.s("away").and_then(parse_hex)) {
+        t = Some(Teams { home: h, away: a, home_gk: None, away_gk: None });
+    } else if let Some(p) = o.s("teams") {
         let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(p).unwrap_or_else(|e| fail(format!("{p}: {e}")))).unwrap_or_else(|e| fail(format!("{p}: {e}")));
         if let (Some(h), Some(a)) = (v["home"].as_str().and_then(parse_hex), v["away"].as_str().and_then(parse_hex)) {
-            return (h, a);
+            t = Some(Teams { home: h, away: a, home_gk: v["home_gk"].as_str().and_then(parse_hex), away_gk: v["away_gk"].as_str().and_then(parse_hex) });
         }
     }
-    fail(trs!("Trikotfarben fehlen: --teams teams.json oder --home #rrggbb --away #rrggbb (Farben ermitteln: `reco-minimap colors`)", "Shirt colours are missing: --teams teams.json or --home #rrggbb --away #rrggbb (detect them with `reco-minimap colors`)", "Couleurs de maillot manquantes : --teams teams.json ou --home #rrggbb --away #rrggbb (les détecter avec `reco-minimap colors`)", "Faltan los colores de camiseta: --teams teams.json o --home #rrggbb --away #rrggbb (detéctalos con `reco-minimap colors`)"))
+    let mut t = t.unwrap_or_else(|| {
+        fail(trs!("Trikotfarben fehlen: --teams teams.json oder --home #rrggbb --away #rrggbb (Farben ermitteln: `reco-minimap colors`)", "Shirt colours are missing: --teams teams.json or --home #rrggbb --away #rrggbb (detect them with `reco-minimap colors`)", "Couleurs de maillot manquantes : --teams teams.json ou --home #rrggbb --away #rrggbb (les détecter avec `reco-minimap colors`)", "Faltan los colores de camiseta: --teams teams.json o --home #rrggbb --away #rrggbb (detéctalos con `reco-minimap colors`)"))
+    });
+    if let Some(c) = o.s("home-gk").and_then(parse_hex) {
+        t.home_gk = Some(c);
+    }
+    if let Some(c) = o.s("away-gk").and_then(parse_hex) {
+        t.away_gk = Some(c);
+    }
+    if o.has("no-gk") {
+        t.home_gk = None;
+        t.away_gk = None;
+    }
+    if o.has("gk-swap") {
+        std::mem::swap(&mut t.home_gk, &mut t.away_gk);
+    }
+    t
 }
 
 fn ball_json(s: &FrameState) -> serde_json::Value {
@@ -1235,9 +1299,10 @@ fn cmd_run(o: &Opts, input: &str) {
         }
     }
     let projector = cal.projector().unwrap_or_else(|| fail(trs!("court.json: Homographie nicht lösbar", "court.json: the homography cannot be solved", "court.json : l'homographie ne peut pas être résolue", "court.json: no se puede resolver la homografía")));
-    let (home, away) = read_teams(o);
+    let teams = read_teams(o);
+    let (home, away) = (teams.home, teams.away);
     // shirt colours the torso sample may snap to (teams, and the referees' if given)
-    let shirts: Vec<[u8; 3]> = [Some(home), Some(away), o.s("ref-color").and_then(parse_hex)].into_iter().flatten().collect();
+    let shirts: Vec<[u8; 3]> = teams.shirts(o.s("ref-color").and_then(parse_hex));
     let torso = torso_band(o);
     let shirt_match = o.has("shirt-match");
     eprintln!("{}", tr!("Heim {}  Gast {}  | Kalibrierfehler {:.2} m", "Home {}  away {}  | calibration error {:.2} m", "Domicile {}  visiteurs {}  | erreur de calibrage {:.2} m", "Local {}  visitante {}  | error de calibración {:.2} m", hex(home), hex(away), cal.rms_m));
@@ -1253,12 +1318,13 @@ fn cmd_run(o: &Opts, input: &str) {
     let mut theme = Theme { px_per_m: ppm, home: draw_home, away: draw_away, min_alpha: o.f("min-alpha", 0.8) as f32, show_numbers: o.has("numbers"), ..Theme::default() };
     let mut mcfg = game_config(o, &profile, home, away);
     mcfg.referee_rgb = o.s("ref-color").and_then(parse_hex);
+    teams.apply(&mut mcfg);
     mcfg.tracker.spawn_conf = { let (low, high) = thr_players(o); if low < high { high } else { 0.0 } };
     let mut numbers = numbers_setup(o, &mut mcfg);
     let mut scenes = o.has("scenes").then(|| SceneDetector::new(profile.clone()));
     let mut scene_log: Vec<SceneEvent> = Vec::new();
     let classifier = {
-        let c = reco_minimap::team::TeamClassifier::new(home, away);
+        let c = reco_minimap::team::TeamClassifier::new(home, away).with_keepers(teams.home_gk, teams.away_gk);
         match mcfg.referee_rgb { Some(r) => c.with_referee(r), None => c }
     };
     let mut mm = Minimap::new(mcfg, Box::new(projector));
@@ -1486,9 +1552,11 @@ fn cmd_replay(o: &Opts, path: &str) {
     }
     let (cal, profile) = load_court(o.s("court").unwrap_or_else(|| fail(trs!("--court court.json fehlt", "--court court.json is missing", "--court court.json manquant", "falta --court court.json"))));
     let projector = cal.projector().unwrap_or_else(|| fail(trs!("court.json: Homographie nicht lösbar", "court.json: the homography cannot be solved", "court.json : l'homographie ne peut pas être résolue", "court.json: no se puede resolver la homografía")));
-    let (home, away) = read_teams(o);
+    let teams = read_teams(o);
+    let (home, away) = (teams.home, teams.away);
     let mut mcfg = game_config(o, &profile, home, away);
     mcfg.referee_rgb = o.s("ref-color").and_then(parse_hex);
+    teams.apply(&mut mcfg);
     mcfg.tracker.spawn_conf = { let (low, high) = thr_players(o); if low < high { high } else { 0.0 } };
     let mut scenes = o.has("scenes").then(|| SceneDetector::new(profile.clone()));
     let mut mm = Minimap::new(mcfg, Box::new(projector));

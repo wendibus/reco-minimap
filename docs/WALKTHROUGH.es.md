@@ -144,6 +144,7 @@ Haz clic en *Medir*. El programa mira una docena de imágenes y aprende qué tam
 1. Haz clic en *Detectar colores*. El programa recoge los colores de camiseta de los jugadores en el campo y los reparte en dos equipos. En el registro ves los grupos de color encontrados.
 2. Ajusta los colores:
    * **Local / Visitante (detección)** – los colores tal como los ve la cámara. Se rellenan solos; con *Intercambiar* cambias local y visitante si están al revés. Si falla («equipos indistinguibles»), elige los dos colores a mano.
+   * **Camisetas de portero** (fútbol, futsal, balonmano, hockey, lacrosse) – si los porteros llevan otro color que su equipo, marca *Camisetas de portero*. *Detectar colores* propone los colores de los porteros a partir de las áreas; si no está seguro de qué portero es de qué equipo, lo dice: entonces usa *Intercambiar colores de porteros*. Sin esto, un portero con otra camiseta se confunde con un árbitro o no se detecta. Baloncesto y los deportes sin camiseta de portero no muestran la opción.
    * **Local / Visitante (visualización)** – los colores con los que se dibujan los puntos. Elige lo que quede bien, p. ej. blanco y un azul claro. Un color muy oscuro se ve mal en el minimapa oscuro.
    * **Color de los árbitros** – el color de la camiseta de los árbitros (normalmente negro o amarillo). Así el programa encuentra a los árbitros aunque el modelo no los reconozca.
 3. **Figuras y camisetas** (cámbialo solo si hace falta):

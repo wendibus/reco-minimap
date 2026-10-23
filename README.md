@@ -30,19 +30,20 @@ Everything runs locally. No video, frame or model leaves your computer. The only
 1. [How it works](#how-it-works)
 2. [Install](#install)
 3. [Quick start](#quick-start)
-4. [Sports](#sports)
-5. [Models from Reco Trainer](#models-from-reco-trainer)
-6. [Jersey numbers and substitutions](#jersey-numbers-and-substitutions)
-7. [Game situations (scenes)](#game-situations-scenes)
-8. [Live mode and OBS](#live-mode-and-obs)
-9. [Command-line reference](#command-line-reference)
-10. [Output formats](#output-formats)
-11. [Project folder](#project-folder)
-12. [Performance](#performance)
-13. [Known limitations](#known-limitations)
-14. [Use as a Rust library](#use-as-a-rust-library)
-15. [Development](#development)
-16. [License and credits](#license-and-credits)
+4. [Shirt colours and goalkeepers](#shirt-colours-and-goalkeepers)
+5. [Sports](#sports)
+6. [Models from Reco Trainer](#models-from-reco-trainer)
+7. [Jersey numbers and substitutions](#jersey-numbers-and-substitutions)
+8. [Game situations (scenes)](#game-situations-scenes)
+9. [Live mode and OBS](#live-mode-and-obs)
+10. [Command-line reference](#command-line-reference)
+11. [Output formats](#output-formats)
+12. [Project folder](#project-folder)
+13. [Performance](#performance)
+14. [Known limitations](#known-limitations)
+15. [Use as a Rust library](#use-as-a-rust-library)
+16. [Development](#development)
+17. [License and credits](#license-and-credits)
 
 Step-by-step guides: [Walkthrough (English)](docs/WALKTHROUGH.md) · [Anleitung (Deutsch)](docs/WALKTHROUGH.de.md) · [Guide (Français)](docs/WALKTHROUGH.fr.md) · [Guía (Español)](docs/WALKTHROUGH.es.md) · Game situations per sport: [Scenarios (English)](docs/SCENARIOS.md) · [Szenarien (Deutsch)](docs/SZENARIEN.de.md) · [Scénarios (Français)](docs/SCENARIOS.fr.md) · [Escenarios (Español)](docs/SCENARIOS.es.md)
 
@@ -184,6 +185,19 @@ reco-minimap update --yes     # build and install it (needs the Rust toolchain; 
 
 The interface runs the same check when it starts and shows a notice with an *Install now* button. Nothing is installed without that click or `--yes`. Restart the program afterwards.
 
+## Shirt colours and goalkeepers
+
+`colors` (or *Detect colours* in the interface) finds the two team colours and writes `teams.json`. In football, futsal, handball, hockey and lacrosse the goalkeepers usually wear a different colour. Declare it, otherwise a keeper in a green shirt is neither "home" nor "away" and is taken for a referee:
+
+```json
+{ "home": "#ffffff", "away": "#2f6bff", "home_gk": "#1ea03c", "away_gk": "#ffcc00" }
+```
+
+* `colors --court court.json` also looks for the keepers: players in the goal areas whose colour belongs to neither team. It assigns each keeper to the team whose outfield players stand on his side of the pitch in the same frame (so it does not matter that teams change ends at half-time). If that evidence is thin it says so - then swap the two with `--gk-swap`, or with *Swap goalkeeper colours* in the interface.
+* By hand: `--home-gk #hex --away-gk #hex`. `--no-gk` ignores stored keeper colours. Either keeper may be left out if only one team has a keeper kit.
+* A keeper is counted as a member of his team (the fifth, sixth ... player slot) and drawn in the team colour.
+* If a keeper's kit is almost the same colour as the referee's (both black, say), the program cannot tell them apart by colour; use a different `--ref-color` or let the model's referee class decide.
+
 ## Sports
 
 Profiles carry the field size, line markings, calibration landmarks, team size, referee slots and speed limits. Dimensions are the common international standards; real venues often differ slightly, and calibration scales the corners to your field.
@@ -312,7 +326,7 @@ Important: the minimap needs the **same full panorama you calibrated on**. The A
 | `calibrate <video>` | Click field landmarks → `court.json` (`--sport`, `--time`, `--lang`; custom: `--length --width --team-size --referees`) |
 | `selfcheck <video> --model …` | Run the model on sample frames and report players per frame, ball hits, speed (`--annotate dir` writes marked PNGs) |
 | `scales <video> --model …` | Measure player size per image row → `scales.json` for `--tile auto` |
-| `colors <video> --model …` | Detect the two shirt colours → `teams.json` |
+| `colors <video> --model … [--court court.json]` | Detect the two shirt colours (and, with `--court`, the goalkeepers' for football, futsal, handball, hockey, lacrosse) → `teams.json` |
 | `run <video> --model …` | Process a video → minimap / overlay / panorama+minimap / JSON |
 | `live <source> --model …` | Live overlay and data stream |
 | `replay <detections.jsonl> --court … --teams …` | Re-run tracking, ball and game situations from recorded detections (`run … --dets file`), without the video: seconds instead of minutes. Byte-identical to the run it was recorded from; use it to compare `--thr-player`, team colours or tracker changes |
@@ -338,6 +352,7 @@ Common options (see `reco-minimap --help` for all):
 | `--roi x0,y0,x1,y1` | Search only a band of the panorama (fractions) |
 | `--minimap f.mp4 --alpha f.mov --pip f.mp4 --json f.jsonl` | Outputs of `run` (`--alpha-bg 0.6` adds a dark backing) |
 | `--draw-home #fff --draw-away #2f6bff --ref-color #000` | Display colours, referee shirt colour |
+| `--home-gk #hex --away-gk #hex`, `--no-gk`, `--gk-swap` | Goalkeeper shirt colours, ignore them, exchange the two keepers' teams |
 | `--min-alpha 1` | Keep undetected players fully opaque (default 0.8) |
 | `--lang de\|en\|fr\|es` | Language of all messages (default: `RECO_MINIMAP_LANG`, else the system language, else English) |
 | `--torso 0.18,0.50` | Part of a player box (top, bottom as shares of its height) that shows the shirt; adjust for figures with other proportions (`colors`, `run`, `live`) |

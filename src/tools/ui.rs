@@ -532,7 +532,7 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
         }
         ("GET", "/i18n.js") => respond(&mut s, "200 OK", "application/javascript; charset=utf-8", include_str!("i18n.js").as_bytes()),
         ("GET", "/api/init") => {
-            let sports: Vec<Value> = BUILTIN_IDS.iter().filter_map(|id| SportProfile::builtin(id)).map(|p| json!({"id": p.id, "field": [p.field.length, p.field.width], "team_size": p.team_size, "referees": p.referees})).collect();
+            let sports: Vec<Value> = BUILTIN_IDS.iter().filter_map(|id| SportProfile::builtin(id)).map(|p| json!({"id": p.id, "field": [p.field.length, p.field.width], "team_size": p.team_size, "referees": p.referees, "keepers": crate::sport::has_keepers(&p.id)})).collect();
             let ort = super::infer::ensure_ort_runtime().err();
             jres(&mut s, json!({"ok": true, "home": home_dir().to_string_lossy(), "default_dir": default_project_dir().to_string_lossy(), "sports": sports,
                                 "coreml": cfg!(feature = "coreml"), "ocr": {"path": super::ocr::default_model_path().to_string_lossy(), "exists": super::ocr::default_model_path().exists()}, "ort_error": ort, "version": env!("CARGO_PKG_VERSION"), "dialogs": cfg!(target_os = "macos") || cfg!(target_os = "windows") || Command::new("zenity").arg("--version").output().is_ok()}));
@@ -558,7 +558,14 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
         }
         ("POST", "/api/teams/save") => {
             let dir = PathBuf::from(get_s(&b, "dir"));
-            let v = json!({"home": get_s(&b, "home"), "away": get_s(&b, "away")});
+            let mut v = json!({"home": get_s(&b, "home"), "away": get_s(&b, "away")});
+            // goalkeeper colours are optional: an empty value removes them
+            for k in ["home_gk", "away_gk"] {
+                let c = get_s(&b, k);
+                if c.len() == 7 && c.starts_with('#') {
+                    v[k] = json!(c);
+                }
+            }
             match std::fs::write(dir.join("teams.json"), serde_json::to_string_pretty(&v).unwrap()) {
                 Ok(()) => jres(&mut s, json!({"ok": true})),
                 Err(e) => err(&mut s, e),

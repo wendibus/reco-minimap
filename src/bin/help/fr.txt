@@ -74,6 +74,7 @@ Situations de jeu (run/live) :
 
 Options de run :
   --ref-color #hex  couleur du maillot des arbitres (p. ex. #000000 ou jaune) : trouve les arbitres par la couleur même si le modèle ne les voit pas
+  --home-gk #hex --away-gk #hex   couleurs des maillots de gardien (aussi `home_gk` / `away_gk` dans teams.json) ; --no-gk les ignore, --gk-swap échange les équipes des deux gardiens
   --no-field-mask   avec --tile auto, découper toute la largeur de l'image (par défaut : avec --court, seulement là où se trouve le terrain)
   --no-smooth       n'écrire --minimap/--alpha qu'à la cadence de détection (par défaut : cadence complète par interpolation avec --every N)
   --alpha-bg 0.0    opacité du fond sombre de l'incrustation --alpha (0 = transparent, 0.6 = lisible sur une vidéo claire)

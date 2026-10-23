@@ -62,7 +62,7 @@ live options:
 
 Jersey numbers (run/live; run `fetch-ocr` first):
   --numbers         read numbers and show them on the dots; detects substitutions (the number changes / a player leaves and one enters)
-  --roster-home 4,5,7,10   --roster-away 3,6,8     rosters: the reader only chooses among these numbers (much more reliable)
+  --roster-home 4,5,7,10   --roster-away 3,6,8     rosters: the reader only chooses among these numbers (much more reliable); mark goalkeepers with g/gk: --roster-home 1g,4,5,12gk
   --hires <video>   second, higher-resolution panorama (same timeline) for the numbers; players need about 80 px of height
   --ocr-model <file>  (default ~/.cache/reco-minimap/ocr/rec.onnx)   --ocr-min-h 45 --ocr-max 4
 

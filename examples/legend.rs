@@ -5,7 +5,7 @@ use reco_minimap::team::Team;
 use reco_minimap::tracker::TrackState;
 use reco_minimap::{AgentOut, FrameState};
 fn main() {
-    let ag = |id, referee, team, x, y, alpha, st| AgentOut { segment: 0, identity: Default::default(), id, referee, team, pos: Vec2::new(x, y), vel: Vec2::default(), state: st, alpha, jersey: None };
+    let ag = |id, referee, team, x, y, alpha, st| AgentOut { segment: 0, keeper: false, identity: Default::default(), id, referee, team, pos: Vec2::new(x, y), vel: Vec2::default(), state: st, alpha, jersey: None };
     let v = TrackState::Visible;
     let o = TrackState::Occluded;
     let s = FrameState {

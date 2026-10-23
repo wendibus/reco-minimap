@@ -125,3 +125,52 @@ fn no_keeper_colour_when_nobody_deviates() {
     let pick = pick_keepers(&s, HOME, AWAY, &field);
     assert!(pick.home.is_none() && pick.away.is_none());
 }
+
+#[test]
+fn goalkeepers_are_marked_in_the_roster() {
+    use reco_minimap::jersey::{parse_roster, parse_roster_keepers};
+    assert_eq!(parse_roster_keepers("1g, 4, 5, 12tw"), vec![1, 12]);
+    assert_eq!(parse_roster("1g, 4, 5, 12tw"), vec![1, 4, 5, 12]);
+    assert_eq!(parse_roster_keepers("1, 4, 5;12*  30GK"), vec![12, 30]);
+    assert_eq!(parse_roster_keepers("1 4 5 7"), Vec::<u8>::new());
+    assert_eq!(parse_roster_keepers("99999g 7p"), vec![7]);
+}
+
+#[test]
+fn keeper_numbers_are_only_searched_among_keepers_and_outfield_numbers_among_the_rest() {
+    let (proj, _) = projector();
+    let mut cfg = Config::new(HOME, AWAY);
+    cfg.roster_home = vec![1, 4, 5, 7, 12];
+    cfg.keepers_home = vec![1, 12];
+    cfg.home_gk_rgb = Some(HOME_GK);
+    let mm = Minimap::new(cfg.clone(), Box::new(proj));
+    assert_eq!(mm.roster_for_track(Team::Home, true), vec![1, 12]);
+    assert_eq!(mm.roster_for_track(Team::Home, false), vec![4, 5, 7]);
+    // the other team declared nothing: the plain roster (empty = free reading)
+    assert!(mm.roster_for_track(Team::Away, true).is_empty());
+    // without a keeper kit colour the kit cannot tell keepers from the others: no narrowing
+    cfg.home_gk_rgb = None;
+    let (proj, _) = projector();
+    let mm = Minimap::new(cfg, Box::new(proj));
+    assert_eq!(mm.roster_for_track(Team::Home, false), vec![1, 4, 5, 7, 12]);
+}
+
+#[test]
+fn the_keeper_flag_reaches_the_output() {
+    let (proj, to_pano) = projector();
+    let mut cfg = Config::new(HOME, AWAY);
+    cfg.home_gk_rgb = Some(HOME_GK);
+    let mut mm = Minimap::new(cfg, Box::new(proj));
+    let mut last = None;
+    for k in 0..10 {
+        let mut ds = Vec::new();
+        for i in 0..3 {
+            ds.push(det(&to_pano, Vec2::new(8.0 + 2.0 * i as f32, 3.0 + 3.0 * i as f32), Class::Player, Some(HOME)));
+        }
+        ds.push(det(&to_pano, Vec2::new(1.5, 7.5), Class::Player, Some(HOME_GK)));
+        last = Some(mm.process(k as f64 * 0.2, &ds));
+    }
+    let s = last.unwrap();
+    assert_eq!(s.players.iter().filter(|p| p.keeper).count(), 1);
+    assert!(s.players.iter().find(|p| p.keeper).unwrap().pos.x < 3.0);
+}

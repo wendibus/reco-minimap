@@ -141,7 +141,33 @@ pub fn ctc_roster(probs: &[f32], t: usize, roster: &[u8]) -> Option<(u8, f32)> {
     Some((roster[i], ((ll[i] - mx).exp() / sum) as f32))
 }
 
-/// Parse a roster string such as "4, 5,7;10 12" into numbers.
+/// Goalkeeper numbers in a roster string: a number followed directly by `g`, `gk`, `tw`, `t`, `k`, `p` or `*`
+/// (goalkeeper / Torwart / keeper / portero), e.g. "1g, 4, 5, 12tw" -> `[1, 12]`. Use [`parse_roster`] for all numbers.
+pub fn parse_roster_keepers(s: &str) -> Vec<u8> {
+    let b: Vec<char> = s.chars().collect();
+    let (mut i, mut out) = (0, Vec::new());
+    while i < b.len() {
+        if b[i].is_ascii_digit() {
+            let st = i;
+            while i < b.len() && b[i].is_ascii_digit() {
+                i += 1;
+            }
+            let n: Option<u8> = b[st..i].iter().collect::<String>().parse().ok();
+            if let (Some(n), Some(c)) = (n, b.get(i)) {
+                if matches!(c.to_ascii_lowercase(), 'g' | 't' | 'k' | 'p' | '*') {
+                    out.push(n);
+                }
+            }
+        } else {
+            i += 1;
+        }
+    }
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+/// Parse a roster string such as "4, 5,7;10 12" into numbers (a trailing keeper mark such as "1g" is ignored here).
 pub fn parse_roster(s: &str) -> Vec<u8> {
     let mut v: Vec<u8> = s.split(|c: char| !c.is_ascii_digit()).filter_map(|x| x.parse().ok()).collect();
     v.sort_unstable();

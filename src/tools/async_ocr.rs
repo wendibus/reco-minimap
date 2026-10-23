@@ -33,6 +33,7 @@ mod tests {
             &[Obs {
                 referee: false,
                 team: Team::Home,
+                keeper: false,
                 pos: Vec2::new(2.0, 2.0),
                 bbox: BBox::default(),
                 conf: 0.9,

@@ -244,6 +244,7 @@ reco-minimap run pano.mp4 --model … --court court.json --teams teams.json \
     --numbers --roster-home 4,7,10,12,23 --roster-away 3,6,8,15,9 [--hires pano_large.mp4]
 ```
 
+* **Goalkeepers:** in sports with a keeper kit (football, futsal, handball, hockey, lacrosse) mark them in the squad with `g`, `gk` or `tw` behind the number: `--roster-home 1g,4,7,10,12gk`. Once the keeper colour is set (see *Shirt colours and goalkeepers*), a keeper's number is chosen only among the keepers and everyone else's only among the outfield players. That removes the commonest mix-up (keeper vs. outfield) and makes the keepers' numbers almost certain. Without a keeper colour the marks have no effect. The JSON output carries `"keeper": true` for these players.
 * The number is searched in the upper torso crop (the region that differs most from the shirt colour) and read by the PP-OCRv4 recognition network. **With a squad list the reader only chooses among those numbers**, which is far more reliable than free reading.
 * Readings are collected as votes per player slot. A number is shown only after several consistent reads and stays until someone else's evidence wins; uncertain reads stay empty instead of guessing.
 * `--hires` reads numbers from a higher-resolution export of the same panorama (same timeline); detection keeps using the smaller video.
@@ -353,6 +354,7 @@ Common options (see `reco-minimap --help` for all):
 | `--minimap f.mp4 --alpha f.mov --pip f.mp4 --json f.jsonl` | Outputs of `run` (`--alpha-bg 0.6` adds a dark backing) |
 | `--draw-home #fff --draw-away #2f6bff --ref-color #000` | Display colours, referee shirt colour |
 | `--home-gk #hex --away-gk #hex`, `--no-gk`, `--gk-swap` | Goalkeeper shirt colours, ignore them, exchange the two keepers' teams |
+| `--roster-home 1g,4,7,12gk` | In a squad list, `g` / `gk` / `tw` behind a number marks a goalkeeper |
 | `--min-alpha 1` | Keep undetected players fully opaque (default 0.8) |
 | `--lang de\|en\|fr\|es` | Language of all messages (default: `RECO_MINIMAP_LANG`, else the system language, else English) |
 | `--torso 0.18,0.50` | Part of a player box (top, bottom as shares of its height) that shows the shirt; adjust for figures with other proportions (`colors`, `run`, `live`) |

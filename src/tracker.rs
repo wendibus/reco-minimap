@@ -96,6 +96,8 @@ impl Default for TrackerCfg {
 pub struct Obs {
     pub referee: bool,
     pub team: Team,
+    /// The shirt colour was the team's goalkeeper kit.
+    pub keeper: bool,
     pub pos: Vec2,
     pub bbox: BBox,
     pub conf: f32,
@@ -166,6 +168,15 @@ pub struct Track {
     pub retaken_at: Option<f64>,
     /// Running colour evidence for the team: +1 home .. -1 away.
     team_score: f32,
+    /// Running evidence that this player wears the goalkeeper kit (> 0 = keeper).
+    keeper_score: f32,
+}
+
+impl Track {
+    /// True while the colour evidence says this is his team's goalkeeper.
+    pub fn is_keeper(&self) -> bool {
+        !self.referee && self.keeper_score > 0.0
+    }
 }
 
 /// Counters about the team assignment (for run summaries).
@@ -349,6 +360,8 @@ impl Tracker {
                 Team::Unknown => None,
             };
             if let Some(v) = vote {
+                let kv = if o.keeper { 1.0 } else { -1.0 };
+                tr.keeper_score += (kv - tr.keeper_score) * self.cfg.team_vote;
                 tr.team_score += (v - tr.team_score) * self.cfg.team_vote;
                 if o.team != tr.team {
                     self.team_stats.cross_matches += 1;
@@ -380,6 +393,7 @@ impl Tracker {
             confirmed: None,
             number_before: None,
             retaken_at: None,
+            keeper_score: if o.keeper { 0.6 } else { -0.6 },
             team_score: match (o.referee, o.team) {
                 (false, Team::Home) => self.cfg.team_vote,
                 (false, Team::Away) => -self.cfg.team_vote,

@@ -63,7 +63,7 @@ Opciones de live:
 
 Dorsales (run/live; ejecuta antes `fetch-ocr`):
   --numbers         leer los dorsales y mostrarlos en los puntos; detecta cambios (el número cambia / un jugador sale y otro entra)
-  --roster-home 4,5,7,10   --roster-away 3,6,8     plantillas: el lector solo elige entre estos números (mucho más fiable)
+  --roster-home 4,5,7,10   --roster-away 3,6,8     plantillas: el lector solo elige entre estos números (mucho más fiable); marca a los porteros con g/gk: --roster-home 1g,4,5,12gk
   --hires <vídeo>   segundo panorama de mayor resolución (misma línea de tiempo) para los dorsales; los jugadores necesitan unos 80 px de alto
   --ocr-model <archivo>  (por defecto ~/.cache/reco-minimap/ocr/rec.onnx)   --ocr-min-h 45 --ocr-max 4
 

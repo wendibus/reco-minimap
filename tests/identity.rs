@@ -1,7 +1,7 @@
 use reco_minimap::{identity::{assign, IdentityAssignment, IdentityStatus, PlayerKey}, team::Team, tracker::TrackState, geom::Vec2, ball::{BallOut, BallState}, AgentOut, FrameState};
 
 fn agent(id: u32, team: Team, number: Option<u8>) -> AgentOut {
-    AgentOut { id, segment: 0, identity: IdentityAssignment::default(), referee: false, team, pos: Vec2::new(2.0, 3.0), vel: Vec2::default(), state: TrackState::Visible, alpha: 1.0, jersey: number }
+    AgentOut { id, segment: 0, identity: IdentityAssignment::default(), referee: false, team, keeper: false, pos: Vec2::new(2.0, 3.0), vel: Vec2::default(), state: TrackState::Visible, alpha: 1.0, jersey: number }
 }
 
 #[test]

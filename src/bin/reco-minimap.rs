@@ -921,6 +921,9 @@ struct Numbers {
 fn numbers_setup(o: &Opts, mcfg: &mut Config) -> Option<Numbers> {
     mcfg.roster_home = o.s("roster-home").map(parse_roster).unwrap_or_default();
     mcfg.roster_away = o.s("roster-away").map(parse_roster).unwrap_or_default();
+    // goalkeepers are marked in the roster: "1g, 4, 5, 12tw"
+    mcfg.keepers_home = o.s("roster-home").map(reco_minimap::jersey::parse_roster_keepers).unwrap_or_default();
+    mcfg.keepers_away = o.s("roster-away").map(reco_minimap::jersey::parse_roster_keepers).unwrap_or_default();
     if !o.has("numbers") {
         return None;
     }
@@ -1280,7 +1283,7 @@ fn state_json_with(s: &FrameState, scenes: &[SceneEvent]) -> serde_json::Value {
         serde_json::json!({"id": a.id, "segment": a.segment,
             "identity": {"status": a.identity.status.key(), "player": a.identity.player.map(|p| serde_json::json!({"team": match p.team { Team::Home => "home", Team::Away => "away", Team::Unknown => "none" }, "number": p.number}))},
             "team": match a.team { Team::Home => "home", Team::Away => "away", Team::Unknown => "none" },
-            "x": (a.pos.x * 100.0).round() / 100.0, "y": (a.pos.y * 100.0).round() / 100.0, "vx": (a.vel.x * 100.0).round() / 100.0, "vy": (a.vel.y * 100.0).round() / 100.0, "state": format!("{:?}", a.state).to_lowercase(), "alpha": (a.alpha * 100.0).round() / 100.0, "jersey": a.jersey})
+            "x": (a.pos.x * 100.0).round() / 100.0, "y": (a.pos.y * 100.0).round() / 100.0, "vx": (a.vel.x * 100.0).round() / 100.0, "vy": (a.vel.y * 100.0).round() / 100.0, "state": format!("{:?}", a.state).to_lowercase(), "alpha": (a.alpha * 100.0).round() / 100.0, "jersey": a.jersey, "keeper": a.keeper})
     };
     serde_json::json!({"t": (s.t * 1000.0).round() / 1000.0, "players": s.players.iter().map(agent).collect::<Vec<_>>(), "referees": s.referees.iter().map(agent).collect::<Vec<_>>(), "ball": ball_json(s),
         "events": s.events.iter().map(|e| serde_json::json!({"type": "sub", "kind": if e.kind == reco_minimap::SubKind::Confirmed { "confirmed" } else { "possible" }, "team": match e.team { Team::Home => "home", Team::Away => "away", Team::Unknown => "none" }, "slot": e.slot, "out": e.out_number, "in": e.in_number, "t": (e.t * 1000.0).round() / 1000.0})).chain(scenes.iter().map(scene_json)).collect::<Vec<_>>()})

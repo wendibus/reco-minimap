@@ -384,7 +384,7 @@ fn ball_held_is_detected_at_low_processing_rate() {
 fn frame_state_interpolation() {
     use reco_minimap::ball::BallOut;
     use reco_minimap::tracker::TrackState;
-    let ag = |id: u32, x: f32, a: f32| AgentOut { segment: 0, identity: Default::default(), id, referee: false, team: Team::Home, pos: Vec2::new(x, 5.0), vel: Vec2::new(1.0, 0.0), state: TrackState::Visible, alpha: a, jersey: None };
+    let ag = |id: u32, x: f32, a: f32| AgentOut { segment: 0, keeper: false, identity: Default::default(), id, referee: false, team: Team::Home, pos: Vec2::new(x, 5.0), vel: Vec2::new(1.0, 0.0), state: TrackState::Visible, alpha: a, jersey: None };
     let s0 = FrameState { t: 1.0, players: vec![ag(1, 2.0, 1.0), ag(2, 10.0, 1.0)], referees: vec![], ball: BallOut { state: BallState::Loose, pos: Some(Vec2::new(0.0, 0.0)), vel: None }, events: vec![] };
     let s1 = FrameState { t: 2.0, players: vec![ag(1, 4.0, 0.4), ag(3, 7.0, 1.0)], referees: vec![], ball: BallOut { state: BallState::InFlight, pos: Some(Vec2::new(4.0, 2.0)), vel: Some(Vec2::new(5.0, 0.0)) }, events: vec![] };
     let m = s0.lerp(&s1, 0.5);
@@ -402,7 +402,7 @@ fn frame_state_interpolation() {
 fn extrapolation_moves_with_velocity_and_stays_in_court() {
     use reco_minimap::ball::BallOut;
     use reco_minimap::tracker::TrackState;
-    let ag = |id: u32, x: f32, vx: f32| AgentOut { segment: 0, identity: Default::default(), id, referee: false, team: Team::Home, pos: Vec2::new(x, 7.0), vel: Vec2::new(vx, 0.0), state: TrackState::Visible, alpha: 1.0, jersey: None };
+    let ag = |id: u32, x: f32, vx: f32| AgentOut { segment: 0, keeper: false, identity: Default::default(), id, referee: false, team: Team::Home, pos: Vec2::new(x, 7.0), vel: Vec2::new(vx, 0.0), state: TrackState::Visible, alpha: 1.0, jersey: None };
     let s = FrameState { t: 10.0, players: vec![ag(1, 5.0, 4.0), ag(2, 27.5, 8.0)], referees: vec![], ball: BallOut { state: BallState::Loose, pos: Some(Vec2::new(5.0, 5.0)), vel: Some(Vec2::new(2.0, 0.0)) }, events: vec![] };
     let e = s.extrapolate(0.4);
     let p1 = e.players[0].pos;
@@ -841,7 +841,7 @@ fn weak_detections_keep_a_track_but_never_start_one() {
     let mut cfg = TrackerCfg::default();
     cfg.spawn_conf = 0.6;
     let mut tr = Tracker::new(cfg);
-    let obs = |p: Vec2, conf: f32| Obs { referee: false, team: Team::Home, pos: p, bbox: BBox::default(), conf };
+    let obs = |p: Vec2, conf: f32| Obs { referee: false, team: Team::Home, keeper: false, pos: p, bbox: BBox::default(), conf };
     let (a, ghost) = (Vec2::new(10.0, 7.0), Vec2::new(20.0, 3.0));
     let mut t = 0.0;
     // a confident start, then only weak detections of the same player; a weak false positive elsewhere all along

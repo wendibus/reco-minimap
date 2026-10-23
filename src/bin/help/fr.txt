@@ -63,7 +63,7 @@ Options de live :
 
 Numéros de maillot (run/live ; lancer d'abord `fetch-ocr`) :
   --numbers         lire les numéros et les afficher sur les points ; détecte les changements (le numéro change / un joueur sort et un autre entre)
-  --roster-home 4,5,7,10   --roster-away 3,6,8     effectifs : le lecteur ne choisit que parmi ces numéros (bien plus fiable)
+  --roster-home 4,5,7,10   --roster-away 3,6,8     effectifs : le lecteur ne choisit que parmi ces numéros (bien plus fiable) ; marquer les gardiens par g/gk : --roster-home 1g,4,5,12gk
   --hires <vidéo>   second panorama de plus haute résolution (même ligne de temps) pour les numéros ; les joueurs doivent faire environ 80 px de haut
   --ocr-model <fichier>  (par défaut ~/.cache/reco-minimap/ocr/rec.onnx)   --ocr-min-h 45 --ocr-max 4
 

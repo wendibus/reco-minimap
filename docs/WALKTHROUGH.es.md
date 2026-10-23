@@ -189,7 +189,7 @@ Después procesa el partido entero.
 En el paso 4 está la sección *Leer y mostrar los dorsales*.
 
 1. Haz clic una vez en *Descargar modelo* (unos 11 MB). El estado cambia a «Modelo de dorsales instalado».
-2. Introduce los **dorsales de las plantillas** de ambos equipos, separados por comas (`4,7,10,12,23`). La lectura elige entonces solo entre esos números – mucho más fiable.
+2. Introduce los **dorsales de las plantillas** de ambos equipos, separados por comas (`4,7,10,12,23`). La lectura elige entonces solo entre esos números – mucho más fiable. En fútbol, balonmano, hockey, etc., marca a los porteros con `g` tras el número (`1g,4,7,12g`): con el color de la camiseta de portero definido (paso 3c), el dorsal de un portero se busca solo entre los porteros y el de los demás solo entre los jugadores de campo.
 3. Marca *Leer y mostrar los dorsales* y ejecuta un segmento.
 4. **El tamaño decide.** Un dorsal se lee a partir de unos 10 px de altura de cifra, es decir, jugadores de unos **80 px de alto**. Al final del proceso, el registro indica qué tamaño tienen los jugadores en tu vídeo y si basta. Si no, exporta con Reco una versión mayor del mismo panorama (misma línea de tiempo, misma cadencia) e indícala en *Panorama de mayor resolución para los dorsales*. La detección sigue en el vídeo pequeño.
 5. Los dorsales aparecen sobre los puntos cuando están confirmados. Los jugadores cuya espalda nunca se ve se quedan sin número.

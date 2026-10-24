@@ -30,6 +30,8 @@ pub struct TickerCfg {
     pub home_players: Vec<(u8, String)>,
     pub away_players: Vec<(u8, String)>,
     pub sport: String,
+    /// Manual release: detected events wait in a queue until the operator approves them.
+    pub approve: bool,
 }
 
 impl TickerCfg {
@@ -43,7 +45,17 @@ impl TickerCfg {
     }
 
     pub fn to_json(&self) -> Value {
-        let share = self.names != "numbers";
+        self.json_with(self.names != "numbers")
+    }
+
+    /// Everything, names included - for the operator's own page only.
+    pub fn to_json_full(&self) -> Value {
+        let mut v = self.json_with(true);
+        v["names"] = json!("both");
+        v
+    }
+
+    fn json_with(&self, share: bool) -> Value {
         let map = |v: &Vec<(u8, String)>| -> Value {
             if share { Value::Object(v.iter().map(|(n, s)| (n.to_string(), json!(s))).collect()) } else { json!({}) }
         };
@@ -58,7 +70,44 @@ pub struct Hub {
     cv: Condvar,
     config: String,
     ticker_cfg: String,
-    ticker: Mutex<(u64, std::collections::VecDeque<Value>)>,
+    ticker_full: String,
+    ticker: Mutex<Ticker>,
+}
+
+/// The ticker's state: the published feed, the queue waiting for release, and what was taken back.
+#[derive(Default)]
+struct Ticker {
+    seq: u64,
+    feed: std::collections::VecDeque<Value>,
+    pending: Vec<Value>,
+    next_id: u64,
+    retracted: Vec<u64>,
+    approve: bool,
+}
+
+/// Events waiting for release are capped so an unattended queue cannot grow without bound.
+const PENDING_KEEP: usize = 200;
+
+impl Ticker {
+    fn publish(&mut self, mut e: Value) {
+        self.seq += 1;
+        e["seq"] = json!(self.seq);
+        e.as_object_mut().map(|o| o.remove("id"));
+        self.feed.push_back(e);
+        if self.feed.len() > TICKER_KEEP {
+            self.feed.pop_front();
+        }
+    }
+}
+
+/// May this request use the operator's release page? Only a program on this computer, called from the page
+/// itself: the connection comes from loopback, `Host` is a loopback name, a browser's `Origin` is that same
+/// host, and changes carry a header that other web pages cannot send without the hub's consent.
+pub fn admin_allowed(peer_loopback: bool, host: Option<&str>, origin: Option<&str>, marked: bool, change: bool) -> bool {
+    if !peer_loopback || !super::ui::request_allowed(host, origin) {
+        return false;
+    }
+    !change || marked
 }
 
 impl Hub {
@@ -67,32 +116,81 @@ impl Hub {
     }
 
     pub fn with_ticker(config_json: String, ticker: Option<TickerCfg>) -> Arc<Hub> {
-        let ticker_cfg = ticker.map(|t| t.to_json()).unwrap_or_else(|| json!({"names": "numbers", "teams": {"home": "", "away": ""}, "players": {"home": {}, "away": {}}})).to_string();
-        Arc::new(Hub { inner: Mutex::new((0, String::new())), cv: Condvar::new(), config: config_json, ticker_cfg, ticker: Mutex::new((0, Default::default())) })
+        let approve = ticker.as_ref().map(|t| t.approve).unwrap_or(false);
+        let plain = json!({"names": "numbers", "teams": {"home": "", "away": ""}, "players": {"home": {}, "away": {}}});
+        let ticker_cfg = ticker.as_ref().map(|t| t.to_json()).unwrap_or_else(|| plain.clone()).to_string();
+        let ticker_full = ticker.as_ref().map(|t| t.to_json_full()).unwrap_or(plain).to_string();
+        Arc::new(Hub { inner: Mutex::new((0, String::new())), cv: Condvar::new(), config: config_json, ticker_cfg, ticker_full, ticker: Mutex::new(Ticker { approve, ..Default::default() }) })
     }
 
-    /// Add events (substitutions, game situations) to the ticker feed; each gets a running `seq`.
+    /// New events (substitutions, game situations): published at once, or queued for release in manual mode.
     pub fn push_events(&self, events: &[Value]) {
-        if events.is_empty() {
-            return;
-        }
         let mut g = self.ticker.lock().unwrap();
         for e in events {
-            g.0 += 1;
-            let mut e = e.clone();
-            e["seq"] = json!(g.0);
-            g.1.push_back(e);
-            if g.1.len() > TICKER_KEEP {
-                g.1.pop_front();
+            if g.approve {
+                g.next_id += 1;
+                let mut e = e.clone();
+                e["id"] = json!(g.next_id);
+                g.pending.push(e);
+                if g.pending.len() > PENDING_KEEP {
+                    g.pending.remove(0);
+                }
+            } else {
+                g.publish(e.clone());
             }
         }
     }
 
-    /// The ticker feed after `since` as JSON, with the ticker settings.
+    /// The published feed after `since`, the entries taken back, and the ticker settings.
     pub fn ticker_json(&self, since: u64) -> String {
         let g = self.ticker.lock().unwrap();
         let cfg: Value = serde_json::from_str(&self.ticker_cfg).unwrap_or(Value::Null);
-        json!({"config": cfg, "seq": g.0, "events": g.1.iter().filter(|e| e["seq"].as_u64().unwrap_or(0) > since).cloned().collect::<Vec<_>>()}).to_string()
+        json!({"config": cfg, "seq": g.seq, "retracted": g.retracted, "events": g.feed.iter().filter(|e| e["seq"].as_u64().unwrap_or(0) > since).cloned().collect::<Vec<_>>()}).to_string()
+    }
+
+    /// The operator's view: the queue, the latest published entries, and the full settings (names included).
+    pub fn ticker_admin_json(&self) -> String {
+        let g = self.ticker.lock().unwrap();
+        let cfg: Value = serde_json::from_str(&self.ticker_full).unwrap_or(Value::Null);
+        let recent: Vec<&Value> = g.feed.iter().rev().take(40).collect::<Vec<_>>().into_iter().rev().collect();
+        json!({"config": cfg, "approve": g.approve, "pending": g.pending, "published": recent, "retracted": g.retracted, "seq": g.seq}).to_string()
+    }
+
+    /// Release one queued event (`true`) or discard it (`false`). Returns whether it was in the queue.
+    pub fn decide(&self, id: u64, release: bool) -> bool {
+        let mut g = self.ticker.lock().unwrap();
+        let Some(i) = g.pending.iter().position(|e| e["id"].as_u64() == Some(id)) else { return false };
+        let e = g.pending.remove(i);
+        if release {
+            g.publish(e);
+        }
+        true
+    }
+
+    pub fn release_all(&self) -> usize {
+        let mut g = self.ticker.lock().unwrap();
+        let all = std::mem::take(&mut g.pending);
+        let n = all.len();
+        all.into_iter().for_each(|e| g.publish(e));
+        n
+    }
+
+    /// Take a published entry back: viewers' pages drop it the next time they poll.
+    pub fn retract(&self, seq: u64) -> bool {
+        let mut g = self.ticker.lock().unwrap();
+        let Some(i) = g.feed.iter().position(|e| e["seq"].as_u64() == Some(seq)) else { return false };
+        g.feed.remove(i);
+        g.retracted.push(seq);
+        let n = g.retracted.len();
+        if n > 400 {
+            g.retracted.drain(..n - 400);
+        }
+        true
+    }
+
+    /// Switch between manual release and publishing at once.
+    pub fn set_approval(&self, on: bool) {
+        self.ticker.lock().unwrap().approve = on;
     }
 
     pub fn publish(&self, json: String) {
@@ -121,10 +219,31 @@ fn handle(mut s: TcpStream, hub: Arc<Hub>) {
         _ => return,
     };
     let req = String::from_utf8_lossy(&buf[..n]).to_string();
+    let peer_loopback = s.peer_addr().map(|a| a.ip().is_loopback()).unwrap_or(false);
+    let hdr = |name: &str| req.lines().skip(1).find_map(|l| l.split_once(':').filter(|(k, _)| k.trim().eq_ignore_ascii_case(name)).map(|(_, v)| v.trim().to_string()));
+    let method = req.split_whitespace().next().unwrap_or("GET").to_string();
     let target = req.split_whitespace().nth(1).unwrap_or("/").to_string();
     let (path, query) = target.split_once('?').map(|(p, q)| (p.to_string(), q.to_string())).unwrap_or((target.clone(), String::new()));
     match path.as_str() {
         "/ticker" | "/ticker/" => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("ticker.html").as_bytes()),
+        p if p.starts_with("/ticker/admin") => {
+            let change = method == "POST";
+            if !admin_allowed(peer_loopback, hdr("host").as_deref(), hdr("origin").as_deref(), hdr("x-ticker-admin").is_some(), change) {
+                return respond(&mut s, "403 Forbidden", "text/plain", b"forbidden");
+            }
+            let arg = |k: &str| query.split('&').find_map(|kv| kv.strip_prefix(&format!("{k}="))).and_then(|v| v.parse::<u64>().ok());
+            let ok = |s: &mut TcpStream, v: bool| respond(s, "200 OK", "application/json", json!({"ok": v}).to_string().as_bytes());
+            match (method.as_str(), p) {
+                ("GET", "/ticker/admin") | ("GET", "/ticker/admin/") => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("ticker.html").as_bytes()),
+                ("GET", "/ticker/admin.json") => respond(&mut s, "200 OK", "application/json; charset=utf-8", hub.ticker_admin_json().as_bytes()),
+                ("POST", "/ticker/admin/release") => { let v = arg("id").map(|i| hub.decide(i, true)).unwrap_or(false); ok(&mut s, v) }
+                ("POST", "/ticker/admin/discard") => { let v = arg("id").map(|i| hub.decide(i, false)).unwrap_or(false); ok(&mut s, v) }
+                ("POST", "/ticker/admin/release_all") => { hub.release_all(); ok(&mut s, true) }
+                ("POST", "/ticker/admin/retract") => { let v = arg("seq").map(|q| hub.retract(q)).unwrap_or(false); ok(&mut s, v) }
+                ("POST", "/ticker/admin/mode") => { hub.set_approval(arg("approve") == Some(1)); ok(&mut s, true) }
+                _ => respond(&mut s, "404 Not Found", "text/plain", b"not found"),
+            }
+        }
         "/ticker.json" => {
             let since = query.split('&').find_map(|kv| kv.strip_prefix("since=")).and_then(|v| v.parse().ok()).unwrap_or(0);
             respond(&mut s, "200 OK", "application/json; charset=utf-8", hub.ticker_json(since).as_bytes());

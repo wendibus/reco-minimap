@@ -43,6 +43,21 @@ reco-minimap svg scene.json --draw-home "#ffffff" --no-trails --out scene2.svg  
 * `teams.*.color` is the **drawing** colour (`--draw-home` / `--draw-away`, otherwise the detected shirt colour). `keeper_color` is the stripe colour of that team's keeper, or `null` for black/white by contrast.
 * Readers must check `format` and refuse a larger `version`; unknown extra keys are to be kept when saving so older programs do not lose data.
 
+### Marks and steps (written by the board, optional)
+
+```json
+"marks": [ { "type": "arrow", "color": "#ffcc00", "points": [[20.0, 30.0], [35.0, 22.0]] },
+           { "type": "pen",   "color": "#ffffff", "points": [[10.0, 5.0], [11.0, 5.4], [12.0, 5.1]] } ],
+"steps": [
+  { "name": "", "players": [ { "id": 3, "x": 41.2, "y": 30.5 } ], "ball": { "state": "held", "holder": 3, "x": 41.2, "y": 30.5 }, "marks": [] },
+  { "name": "", "players": [ { "id": 3, "x": 55.0, "y": 28.0 } ], "ball": { "state": "free", "holder": null, "x": 58.0, "y": 28.0 }, "marks": [] }
+]
+```
+
+* `marks` are the drawings on the first moment: an `arrow` points from its first to its last point, a `pen` is a freehand line. All in metres, like everything else.
+* `steps` holds the "what if" line: each step lists the positions of the players that moved (a player missing from a step stays where the step before had them), the ball and the drawings of that step. Step 1 equals the top level (`players`, `ball`, `marks`), so a reader that knows nothing about steps still sees the starting moment.
+* `reco-minimap svg scene.json --step 2` draws a later step.
+
 A board that lets the coach move players should write the same structure back (change `x`, `y`, `trail`, `ball`); `reco-minimap svg` then draws it.
 
 ## The SVG
@@ -53,3 +68,10 @@ The SVG's `viewBox` is in metres (field plus a 1.5 m margin), so it scales freel
 * Each player is `<g class="player home|away [keeper]" data-id="3" data-number="7" transform="translate(x y)">` – move it by changing the transform. The ball holder carries a ring (`class="holder"`), keepers are striped (`url(#stripes-home)` / `url(#stripes-away)`), the root carries `data-format`, `data-version`, `data-sport`, `data-t`.
 
 Options: `--width px` (default 900, only the preset size), `--no-numbers`, `--no-trails`, `--no-stripes`, `--draw-home`, `--draw-away`, `--draw-home-gk`, `--draw-away-gk`.
+
+
+## The board app
+
+`reco-minimap board` serves `board.html` (a single page, no internet needed) on `127.0.0.1`. The page loads `/scene.json`, saves with `POST /scene.json` (the program checks `format`/`version`, replaces the file atomically and refreshes the `.svg` next to it) and talks to nobody else. Only this computer may call it (loopback `Host`, same-origin `Origin`); with `--lan` it listens on the network instead and every request must carry the key from the printed link (`?k=…` or the `x-board-key` header). Use `--lan` only on a network you trust: anyone with the link can change the scene.
+
+Any other board app can use the same file format; this one is just the reference implementation. `--export board.html` writes the page with its language table inlined, which also opens from a file or a phone's file browser (saving then downloads the JSON instead of writing it back).

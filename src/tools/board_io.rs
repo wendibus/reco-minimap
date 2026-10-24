@@ -5,7 +5,7 @@ use std::path::Path;
 
 use serde_json::{json, Value};
 
-use crate::board::{BoardBall, BoardPlayer, BoardScene, FORMAT, VERSION};
+use crate::board::{BoardBall, BoardMark, BoardPlayer, BoardScene, MarkKind, FORMAT, VERSION};
 use crate::geom::{Field, Vec2};
 use crate::sport::SportProfile;
 use crate::team::Team;
@@ -18,6 +18,27 @@ fn r2(v: f32) -> f64 {
 
 fn pt(p: Vec2) -> Value {
     json!([r2(p.x), r2(p.y)])
+}
+
+fn mark_to_json(m: &BoardMark) -> Value {
+    json!({"type": if m.kind == MarkKind::Arrow { "arrow" } else { "pen" }, "color": hex(m.color), "points": m.points.iter().map(|p| pt(*p)).collect::<Vec<_>>()})
+}
+
+fn marks_from_json(v: &Value) -> Vec<BoardMark> {
+    v.as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|m| {
+                    let kind = match m["type"].as_str()? {
+                        "arrow" => MarkKind::Arrow,
+                        "pen" => MarkKind::Pen,
+                        _ => return None,
+                    };
+                    Some(BoardMark { kind, color: m["color"].as_str().and_then(parse_hex).unwrap_or([255, 204, 0]), points: m["points"].as_array()?.iter().filter_map(point).collect() })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 pub fn scene_to_json(s: &BoardScene) -> Value {
@@ -34,6 +55,7 @@ pub fn scene_to_json(s: &BoardScene) -> Value {
             "trail": p.trail.iter().map(|q| pt(*q)).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
         "referees": s.referees.iter().map(|p| json!({"x": r2(p.x), "y": r2(p.y)})).collect::<Vec<_>>(),
+        "marks": s.marks.iter().map(mark_to_json).collect::<Vec<_>>(),
         "ball": {"state": s.ball.state, "holder": s.ball.holder, "x": s.ball.pos.map(|p| r2(p.x)), "y": s.ball.pos.map(|p| r2(p.y))},
         "lines": s.lines.iter().map(|l| l.iter().map(|p| pt(*p)).collect::<Vec<_>>()).collect::<Vec<_>>(),
         "goals": s.goals.iter().map(|p| pt(*p)).collect::<Vec<_>>(),
@@ -81,6 +103,7 @@ pub fn scene_from_json(v: &Value) -> Result<BoardScene, String> {
         home_keeper: colour(&v["teams"]["home"]["keeper_color"]),
         away_keeper: colour(&v["teams"]["away"]["keeper_color"]),
         players,
+        marks: marks_from_json(&v["marks"]),
         referees: v["referees"].as_array().map(|a| a.iter().filter_map(|p| Some(Vec2::new(num(&p["x"])?, num(&p["y"])?))).collect()).unwrap_or_default(),
         ball: BoardBall {
             state: b["state"].as_str().unwrap_or("unknown").to_string(),
@@ -182,8 +205,38 @@ pub fn scene_from_states(path: &Path, at: f64, trail_secs: f64, profile: &SportP
         away_keeper: if keepers { colours.away_keeper } else { None },
         players,
         referees,
+        marks: Vec::new(),
         ball,
         lines: profile.lines.clone(),
         goals: profile.goals.clone(),
     })
+}
+
+/// A scene file may hold several steps (`steps`, written by the board): positions, ball and drawings per step.
+/// `step` counts from 1; step 1 is the scene itself. Players that exist in the scene but are missing from a step stay where they were.
+pub fn scene_step(v: &Value, step: usize) -> Result<BoardScene, String> {
+    let mut s = scene_from_json(v)?;
+    if step <= 1 {
+        return Ok(s);
+    }
+    let st = v["steps"].as_array().and_then(|a| a.get(step - 1)).ok_or_else(|| {
+        let n = v["steps"].as_array().map(|a| a.len()).unwrap_or(1);
+        tr!("Schritt {step} gibt es nicht (die Datei hat {n})", "there is no step {step} (the file has {n})", "l'étape {step} n'existe pas (le fichier en a {n})", "no existe el paso {step} (el archivo tiene {n})")
+    })?;
+    for p in s.players.iter_mut() {
+        p.trail.clear();
+        if let Some(q) = st["players"].as_array().and_then(|a| a.iter().find(|q| q["id"].as_u64() == Some(p.id as u64))) {
+            if let (Some(x), Some(y)) = (num(&q["x"]), num(&q["y"])) {
+                p.pos = Vec2::new(x, y);
+            }
+        }
+    }
+    let b = &st["ball"];
+    s.ball = BoardBall {
+        state: b["state"].as_str().unwrap_or("unknown").to_string(),
+        holder: b["holder"].as_u64().map(|h| h as u32),
+        pos: match (num(&b["x"]), num(&b["y"])) { (Some(x), Some(y)) => Some(Vec2::new(x, y)), _ => s.ball.pos },
+    };
+    s.marks = marks_from_json(&st["marks"]);
+    Ok(s)
 }

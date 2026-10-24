@@ -19,6 +19,8 @@ reco-minimap – minimap (terrain, joueurs, arbitres, ballon) à partir d'un pan
   reco-minimap snapshot  <states.jsonl> --court court.json --teams teams.json --at 12:34 [--trail 5] [--out scene.json] [--svg scene.svg]
                          extraire un instant d'un traitement comme scène de tableau tactique (JSON, voir docs/BOARD.md) et/ou SVG
   reco-minimap svg       <scene.json> [--out scene.svg]     dessiner un fichier de scène en SVG (--no-numbers --no-trails --no-stripes --width px)
+  reco-minimap board     [scene.json] [--states jeu.jsonl --at 12:34 --court court.json --teams teams.json --trail 5] [--port N] [--lan] [--export board.html]
+                    ouvrir le tableau tactique dans le navigateur : déplacer les joueurs, tracer des flèches, jouer une variante « et si » par étapes, enregistrer, exporter en SVG/PNG
   reco-minimap colors    <vidéo> --model <dossier|.onnx> [--court court.json] [--home-hint #rrggbb] [--out teams.json]
   reco-minimap run       <vidéo> --model <dossier|.onnx> --court court.json (--teams teams.json | --home #hex --away #hex)
                          [--minimap out.mp4] [--alpha out.mov] [--pip out.mp4] [--json out.jsonl]

@@ -307,6 +307,10 @@ fn main() {
             std::thread::sleep(std::time::Duration::from_secs(3600));
         }
     }
+    if args[0] == "board" {
+        cmd_board(&o);
+        return;
+    }
     let input = o.pos.first().cloned().unwrap_or_else(|| fail(trs!("<video> fehlt (siehe --help)", "<video> is missing (see --help)", "<vidéo> manquante (voir --help)", "falta <vídeo> (ver --help)")));
     match args[0].as_str() {
         "calibrate" => cmd_calibrate(&o, &input),
@@ -344,6 +348,11 @@ fn svg_style(o: &Opts) -> reco_minimap::board::SvgStyle {
 
 /// `snapshot`: cut one moment out of a run (`run --json`) as a board scene (JSON) and/or SVG.
 fn cmd_snapshot(o: &Opts, input: &str) {
+    let out = o.s("out").unwrap_or("scene.json").to_string();
+    snapshot_to(o, input, &out);
+}
+
+fn snapshot_to(o: &Opts, input: &str, out: &str) {
     use reco_minimap::tools::board_io::{scene_from_states, scene_to_json, SceneColours};
     let (_, profile) = load_court(o.s("court").unwrap_or_else(|| fail(trs!("--court court.json fehlt", "--court court.json is missing", "--court court.json manquant", "falta --court court.json"))));
     let teams = read_teams(o);
@@ -351,11 +360,10 @@ fn cmd_snapshot(o: &Opts, input: &str) {
     let colours = SceneColours {
         home: o.s("draw-home").and_then(parse_hex).unwrap_or(teams.home),
         away: o.s("draw-away").and_then(parse_hex).unwrap_or(teams.away),
-        home_keeper: o.s("draw-home-gk").and_then(parse_hex),
-        away_keeper: o.s("draw-away-gk").and_then(parse_hex),
+        home_keeper: o.s("draw-home-gk").and_then(parse_hex).or(if reco_minimap::sport::has_keepers(&profile.id) { teams.home_gk } else { None }),
+        away_keeper: o.s("draw-away-gk").and_then(parse_hex).or(if reco_minimap::sport::has_keepers(&profile.id) { teams.away_gk } else { None }),
     };
     let scene = scene_from_states(std::path::Path::new(input), at, o.f("trail", 5.0).max(0.0), &profile, colours).unwrap_or_else(|e| fail(e));
-    let out = o.s("out").unwrap_or("scene.json");
     std::fs::write(out, serde_json::to_string_pretty(&scene_to_json(&scene)).unwrap()).unwrap_or_else(|e| fail(format!("{out}: {e}")));
     println!("{}", tr!("Szene bei {:.1} s: {} Spieler, {} Schiedsrichter -> {out}", "Scene at {:.1} s: {} players, {} referees -> {out}", "Scène à {:.1} s : {} joueurs, {} arbitres -> {out}", "Escena en {:.1} s: {} jugadores, {} árbitros -> {out}", scene.t, scene.players.len(), scene.referees.len()));
     if let Some(svg) = o.s("svg") {
@@ -364,12 +372,32 @@ fn cmd_snapshot(o: &Opts, input: &str) {
     }
 }
 
+/// `board`: open the tactics board on a scene file (made first from a run with `--states`).
+fn cmd_board(o: &Opts) {
+    use reco_minimap::tools::board_srv;
+    let scene = std::path::PathBuf::from(o.pos.first().map(|s| s.as_str()).unwrap_or("scene.json"));
+    if let Some(parent) = scene.parent().filter(|p| !p.as_os_str().is_empty()) {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Some(states) = o.s("states") {
+        snapshot_to(o, states, &scene.to_string_lossy());
+    } else if !scene.exists() {
+        fail::<()>(tr!("{} gibt es nicht - mit --states lauf.jsonl --at 12:30 --court court.json eine Szene aus einem Lauf anlegen", "{} does not exist - make a scene from a run with --states run.jsonl --at 12:30 --court court.json", "{} n'existe pas - créer une scène à partir d'un traitement avec --states run.jsonl --at 12:30 --court court.json", "{} no existe: crea una escena desde un procesado con --states run.jsonl --at 12:30 --court court.json", scene.display()));
+    }
+    if let Some(out) = o.s("export") {
+        std::fs::write(out, board_srv::standalone_html()).unwrap_or_else(|e| fail(format!("{out}: {e}")));
+        println!("{}", tr!("Board-Seite gespeichert: {out} (öffnet auch ohne Programm; Szene dort mit „Öffnen“ laden)", "Board page saved: {out} (opens without the program; load the scene there with “Open”)", "Page du tableau enregistrée : {out} (s'ouvre sans le programme ; charger la scène avec « Ouvrir »)", "Página de la pizarra guardada: {out} (se abre sin el programa; carga la escena con «Abrir»)"));
+        return;
+    }
+    let opts = board_srv::Options { scene, port: o.u("port", 8790) as u16, lan: o.has("lan"), open: !o.has("no-open"), lang: o.s("lang").map(|s| s.to_string()).unwrap_or_else(|| i18n::lang().code().to_string()) };
+    board_srv::run(&opts).unwrap_or_else(|e| fail(e));
+}
+
 /// `svg`: draw a board scene file (JSON) as SVG - also for scenes a board app has edited.
 fn cmd_svg(o: &Opts, input: &str) {
-    use reco_minimap::tools::board_io::scene_from_json;
     let text = std::fs::read_to_string(input).unwrap_or_else(|e| fail(format!("{input}: {e}")));
     let v: serde_json::Value = serde_json::from_str(&text).unwrap_or_else(|e| fail(format!("{input}: {e}")));
-    let mut scene = scene_from_json(&v).unwrap_or_else(|e| fail(format!("{input}: {e}")));
+    let mut scene = reco_minimap::tools::board_io::scene_step(&v, o.u("step", 1).max(1)).unwrap_or_else(|e| fail(format!("{input}: {e}")));
     if let Some(c) = o.s("draw-home").and_then(parse_hex) { scene.home = c; }
     if let Some(c) = o.s("draw-away").and_then(parse_hex) { scene.away = c; }
     if let Some(c) = o.s("draw-home-gk").and_then(parse_hex) { scene.home_keeper = Some(c); }

@@ -22,6 +22,20 @@ pub struct BoardPlayer {
     pub trail: Vec<Vec2>,
 }
 
+/// A coach's drawing on the board: an arrow (first to last point) or a freehand line.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MarkKind {
+    Arrow,
+    Pen,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BoardMark {
+    pub kind: MarkKind,
+    pub color: [u8; 3],
+    pub points: Vec<Vec2>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct BoardBall {
     /// `held`, `flight`, `loose` or `unknown`.
@@ -44,6 +58,8 @@ pub struct BoardScene {
     pub players: Vec<BoardPlayer>,
     pub referees: Vec<Vec2>,
     pub ball: BoardBall,
+    /// Arrows and freehand lines drawn on this moment.
+    pub marks: Vec<BoardMark>,
     /// Field markings as polylines.
     pub lines: Vec<Vec<Vec2>>,
     /// Goal / basket centres.
@@ -123,7 +139,29 @@ pub fn to_svg(s: &BoardScene, st: &SvgStyle) -> String {
         }
         o.push_str("</g>\n");
     }
-    o.push_str("<g id=\"referees\">\n");
+    o.push_str("<g id=\"marks\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\">\n");
+    for m in &s.marks {
+        if m.points.len() < 2 {
+            continue;
+        }
+        let pts: Vec<String> = m.points.iter().map(|q| format!("{},{}", n(q.x), n(q.y))).collect();
+        let (kind, colour) = (if m.kind == MarkKind::Arrow { "arrow" } else { "pen" }, hex(m.color));
+        if m.kind == MarkKind::Arrow {
+            let (a, b) = (m.points[m.points.len() - 2], m.points[m.points.len() - 1]);
+            let (dx, dy) = (b.x - a.x, b.y - a.y);
+            let l = (dx * dx + dy * dy).sqrt().max(1e-3);
+            let (ux, uy) = (dx / l, dy / l);
+            let head = 0.9f32.min(l * 0.6);
+            let (bx, by) = (b.x - ux * head, b.y - uy * head);
+            let (hx, hy) = (-uy * head * 0.5, ux * head * 0.5);
+            o.push_str(&format!("<g class=\"mark arrow\" stroke=\"{colour}\"><polyline stroke-width=\"0.2\" points=\"{} {},{}\"/><polygon fill=\"{colour}\" stroke=\"none\" points=\"{},{} {},{} {},{}\"/></g>\n",
+                m.points[..m.points.len() - 1].iter().map(|q| format!("{},{}", n(q.x), n(q.y))).collect::<Vec<_>>().join(" "), n(bx), n(by),
+                n(b.x), n(b.y), n(bx + hx), n(by + hy), n(bx - hx), n(by - hy)));
+        } else {
+            o.push_str(&format!("<polyline class=\"mark {kind}\" stroke=\"{colour}\" stroke-width=\"0.2\" points=\"{}\"/>\n", pts.join(" ")));
+        }
+    }
+    o.push_str("</g>\n<g id=\"referees\">\n");
     for p in &s.referees {
         o.push_str(&format!("<circle class=\"referee\" cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"#000\" stroke=\"#ebebeb\" stroke-width=\"0.05\"/>\n", n(p.x), n(p.y), n(r)));
     }

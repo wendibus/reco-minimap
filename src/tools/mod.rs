@@ -3,6 +3,7 @@
 pub mod calib;
 pub mod async_ocr;
 pub mod board_io;
+pub mod board_srv;
 pub mod colors;
 pub mod i18n;
 pub mod infer;

@@ -379,9 +379,9 @@ const I18N = {
   "ticker.ui_approve": "Manuelle Freigabe: Einträge erscheinen erst, wenn ich sie freigebe",
   "ticker.ui_admin": "Freigabe-Seite (nur dieser Rechner)",
   "ticker.ui_export": "Für die Webseite exportieren (Ordner „out/ticker“ im Projekt: Dateien zum Hochladen, enthält index.html mit Einbettungscode)",
-  "ticker.ui_push": "Automatisch hochladen nach (PUT-Adresse, optional)",
+  "ticker.ui_push": "Automatisch hochladen nach (optional), z. B. sftp://benutzer:passwort@server/htdocs/ticker/ticker.json",
   "ticker.ui_key": "Schlüssel (optional, als Bearer-Token)",
-  "ticker.ui_web_hint": "Hochladen geht mit WebDAV (z. B. Nextcloud), S3/R2 oder einem Cloudflare Worker; der Upload braucht das Programm curl. Auf der Webseite liegen nur statische Dateien."
+  "ticker.ui_web_hint": "Am einfachsten über den FTP/SFTP-Zugang deines Webspace: das Programm überschreibt dort nur die Datei ticker.json (die übrigen Dateien aus dem Export einmal hochladen). Geht auch mit WebDAV (Nextcloud), S3/R2 oder einem Cloudflare Worker. Braucht das Programm curl; auf der Webseite liegen nur statische Dateien."
  },
  "en": {
   "lang.name": "English",
@@ -762,9 +762,9 @@ const I18N = {
   "ticker.ui_approve": "Manual release: entries appear only when I release them",
   "ticker.ui_admin": "Release page (this computer only)",
   "ticker.ui_export": "Export for a web site (folder “out/ticker” in the project: files to upload, with index.html showing the embed code)",
-  "ticker.ui_push": "Upload automatically to (PUT address, optional)",
+  "ticker.ui_push": "Upload automatically to (optional), e.g. sftp://user:password@server/htdocs/ticker/ticker.json",
   "ticker.ui_key": "Key (optional, sent as a bearer token)",
-  "ticker.ui_web_hint": "Uploading works with WebDAV (e.g. Nextcloud), S3/R2 or a Cloudflare Worker; it needs the curl program. Your web site only holds static files."
+  "ticker.ui_web_hint": "Simplest through your web space's FTP/SFTP access: the program only overwrites the file ticker.json there (upload the other files from the export once). Also works with WebDAV (Nextcloud), S3/R2 or a Cloudflare Worker. Needs the curl program; your web site only holds static files."
  },
  "fr": {
   "lang.name": "Français",
@@ -1145,9 +1145,9 @@ const I18N = {
   "ticker.ui_approve": "Validation manuelle : les entrées n'apparaissent qu'une fois validées par moi",
   "ticker.ui_admin": "Page de validation (cet ordinateur uniquement)",
   "ticker.ui_export": "Exporter pour un site web (dossier « out/ticker » du projet : fichiers à téléverser, avec index.html montrant le code d'intégration)",
-  "ticker.ui_push": "Téléverser automatiquement vers (adresse PUT, facultatif)",
+  "ticker.ui_push": "Téléverser automatiquement vers (facultatif), p. ex. sftp://utilisateur:motdepasse@serveur/htdocs/ticker/ticker.json",
   "ticker.ui_key": "Clé (facultatif, envoyée comme jeton Bearer)",
-  "ticker.ui_web_hint": "Le téléversement fonctionne avec WebDAV (p. ex. Nextcloud), S3/R2 ou un Cloudflare Worker ; il nécessite le programme curl. Votre site ne contient que des fichiers statiques."
+  "ticker.ui_web_hint": "Le plus simple : l'accès FTP/SFTP de votre hébergement ; le programme n'y écrase que le fichier ticker.json (téléversez une fois les autres fichiers de l'export). Fonctionne aussi avec WebDAV (Nextcloud), S3/R2 ou un Cloudflare Worker. Nécessite le programme curl ; votre site ne contient que des fichiers statiques."
  },
  "es": {
   "lang.name": "Español",
@@ -1528,9 +1528,9 @@ const I18N = {
   "ticker.ui_approve": "Aprobación manual: las entradas solo aparecen cuando las apruebo",
   "ticker.ui_admin": "Página de aprobación (solo este ordenador)",
   "ticker.ui_export": "Exportar para una web (carpeta «out/ticker» del proyecto: archivos para subir, con index.html que muestra el código para incrustar)",
-  "ticker.ui_push": "Subir automáticamente a (dirección PUT, opcional)",
+  "ticker.ui_push": "Subir automáticamente a (opcional), p. ej. sftp://usuario:contraseña@servidor/htdocs/ticker/ticker.json",
   "ticker.ui_key": "Clave (opcional, enviada como token Bearer)",
-  "ticker.ui_web_hint": "La subida funciona con WebDAV (p. ej. Nextcloud), S3/R2 o un Cloudflare Worker; necesita el programa curl. Tu web solo guarda archivos estáticos."
+  "ticker.ui_web_hint": "Lo más sencillo: el acceso FTP/SFTP de tu alojamiento; el programa solo sobrescribe allí el archivo ticker.json (sube una vez los demás archivos de la exportación). También funciona con WebDAV (Nextcloud), S3/R2 o un Cloudflare Worker. Necesita el programa curl; tu web solo guarda archivos estáticos."
  }
 };
 

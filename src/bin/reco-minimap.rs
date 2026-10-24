@@ -1198,6 +1198,9 @@ fn cmd_live(o: &Opts, input: &str) {
             eprintln!("{}", tr!("  Ticker für die Webseite: Dateien in {} (index.html zeigt die Einbettung; der Ordner kommt unverändert auf den Webspace, ticker.json wird laufend aktualisiert)", "  Ticker for your web site: files in {} (index.html shows how to embed; put the folder on your web space as it is, ticker.json is kept up to date)", "  Fil pour votre site : fichiers dans {} (index.html montre l'intégration ; placez le dossier tel quel sur votre hébergement, ticker.json est mis à jour en continu)", "  Resumen para tu web: archivos en {} (index.html muestra cómo incrustarlo; sube la carpeta tal cual a tu alojamiento, ticker.json se mantiene al día)", d.display()));
         }
         if let Some(u) = &sink.push {
+            if u.to_ascii_lowercase().starts_with("ftp://") {
+                eprintln!("{}", trs!("  ! ftp:// sendet das Passwort unverschlüsselt – besser sftp:// oder ftps://, wenn der Webspace es anbietet.", "  ! ftp:// sends the password unencrypted – use sftp:// or ftps:// if your web space offers it.", "  ! ftp:// envoie le mot de passe en clair – préférez sftp:// ou ftps:// si votre hébergement le propose.", "  ! ftp:// envía la contraseña sin cifrar; usa sftp:// o ftps:// si tu alojamiento lo ofrece."));
+            }
             eprintln!("{}", tr!("  Ticker-Upload (curl, {}): {}", "  Ticker upload (curl, {}): {}", "  Envoi du fil (curl, {}) : {}", "  Subida del resumen (curl, {}): {}", sink.method, reco_minimap::tools::ticker_pub::mask_url(u)));
         }
     }

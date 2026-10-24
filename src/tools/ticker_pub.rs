@@ -116,14 +116,65 @@ pub fn mask_url(u: &str) -> String {
     }
 }
 
+/// Is this an FTP-family address (`ftp://`, `ftps://`, `sftp://`)? There the file is overwritten in place
+/// on the web space, the way any FTP client would - no program has to run on the server.
+pub fn is_file_transfer(url: &str) -> bool {
+    let u = url.to_ascii_lowercase();
+    u.starts_with("ftp://") || u.starts_with("ftps://") || u.starts_with("sftp://")
+}
+
+/// Split `scheme://[user:pass@]host[:port]/path/name` into (address up to the path, directory path, file name).
+/// `sftp://host/~/dir/f` keeps its `~` (home-relative); the directory is returned as curl's rename command needs it.
+fn split_target(url: &str) -> Option<(String, String, String)> {
+    let i = url.find("://")? + 3;
+    let slash = url[i..].find('/')? + i;
+    let (head, path) = url.split_at(slash);
+    let path = path.split(['?', '#']).next().unwrap_or(path);
+    let (dir, name) = path.rsplit_once('/')?;
+    if name.is_empty() {
+        return None;
+    }
+    Some((head.to_string(), dir.to_string(), name.to_string()))
+}
+
+/// The curl arguments that upload `body` to a file on an FTP/SFTP server: written under a temporary name first and
+/// renamed afterwards, so a visitor never reads a half-written `ticker.json`.
+fn transfer_args(url: &str) -> Option<Vec<String>> {
+    let (head, dir, name) = split_target(url)?;
+    let tmp = format!("{name}.part");
+    let is_sftp = url.to_ascii_lowercase().starts_with("sftp://");
+    let mut a: Vec<String> = vec!["--ftp-create-dirs".into(), "-T".into(), "-".into(), format!("{head}{dir}/{tmp}")];
+    a.push("-Q".into());
+    if is_sftp {
+        let base = match dir.strip_prefix("/~") {
+            Some(rest) => rest.trim_start_matches('/').to_string(), // home-relative
+            None if dir.is_empty() => "/".to_string(), // the server's root
+            None => dir.clone(),
+        };
+        let join = |f: &str| if base.is_empty() { f.to_string() } else if base == "/" { format!("/{f}") } else { format!("{}/{f}", base.trim_end_matches('/')) };
+        a.push(format!("-rename {} {}", join(&tmp), join(&name)));
+    } else {
+        a.push(format!("-RNFR {tmp}"));
+        a.push("-Q".into());
+        a.push(format!("-RNTO {name}"));
+    }
+    Some(a)
+}
+
 fn push_once(sink: &Sink, body: &str) -> Result<(), String> {
     let url = sink.push.as_deref().unwrap_or("");
     let mut cmd = Command::new("curl");
-    cmd.args(["-sS", "--fail", "--max-time", "20", "-X", if sink.method.is_empty() { "PUT" } else { &sink.method }, "-H", "Content-Type: application/json", "--data-binary", "@-"]);
-    if let Some(k) = sink.key.as_deref().filter(|k| !k.is_empty()) {
-        cmd.args(["-H", &format!("Authorization: Bearer {k}")]);
+    if is_file_transfer(url) {
+        let args = transfer_args(url).ok_or_else(|| trs!("Adresse ohne Dateiname (…/ticker.json erwartet)", "address without a file name (expected …/ticker.json)", "adresse sans nom de fichier (…/ticker.json attendu)", "dirección sin nombre de archivo (se espera …/ticker.json)").to_string())?;
+        cmd.args(["-sS", "--fail", "--max-time", "30"]).args(&args);
+    } else {
+        cmd.args(["-sS", "--fail", "--max-time", "20", "-X", if sink.method.is_empty() { "PUT" } else { &sink.method }, "-H", "Content-Type: application/json", "--data-binary", "@-"]);
+        if let Some(k) = sink.key.as_deref().filter(|k| !k.is_empty()) {
+            cmd.args(["-H", &format!("Authorization: Bearer {k}")]);
+        }
+        cmd.arg(url);
     }
-    cmd.arg(url).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped());
+    cmd.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| format!("curl: {e}"))?;
     child.stdin.take().map(|mut s| s.write_all(body.as_bytes()));
     let out = child.wait_with_output().map_err(|e| e.to_string())?;
@@ -140,8 +191,11 @@ pub fn check(sink: &Sink) -> Result<(), String> {
         write_assets(d)?;
     }
     if let Some(u) = &sink.push {
-        if !(u.starts_with("http://") || u.starts_with("https://")) {
-            return Err(tr!("--ticker-push: die Adresse muss mit http:// oder https:// beginnen", "--ticker-push: the address must start with http:// or https://", "--ticker-push : l'adresse doit commencer par http:// ou https://", "--ticker-push: la dirección debe empezar por http:// o https://"));
+        if !(u.starts_with("http://") || u.starts_with("https://") || is_file_transfer(u)) {
+            return Err(tr!("--ticker-push: die Adresse muss mit sftp://, ftps://, ftp://, https:// oder http:// beginnen", "--ticker-push: the address must start with sftp://, ftps://, ftp://, https:// or http://", "--ticker-push : l'adresse doit commencer par sftp://, ftps://, ftp://, https:// ou http://", "--ticker-push: la dirección debe empezar por sftp://, ftps://, ftp://, https:// o http://"));
+        }
+        if is_file_transfer(u) && split_target(u).is_none() {
+            return Err(tr!("--ticker-push: {} braucht einen Dateinamen, z. B. sftp://benutzer:passwort@server/pfad/ticker.json", "--ticker-push: {} needs a file name, e.g. sftp://user:password@server/path/ticker.json", "--ticker-push : {} nécessite un nom de fichier, p. ex. sftp://utilisateur:motdepasse@serveur/chemin/ticker.json", "--ticker-push: {} necesita un nombre de archivo, p. ej. sftp://usuario:contraseña@servidor/ruta/ticker.json", mask_url(u)));
         }
         if Command::new("curl").arg("--version").stdout(Stdio::null()).stderr(Stdio::null()).status().map(|s| !s.success()).unwrap_or(true) {
             return Err(trs!("--ticker-push braucht das Programm curl (auf macOS, Linux und Windows 10/11 vorhanden)", "--ticker-push needs the curl program (present on macOS, Linux and Windows 10/11)", "--ticker-push nécessite le programme curl (présent sur macOS, Linux et Windows 10/11)", "--ticker-push necesita el programa curl (presente en macOS, Linux y Windows 10/11)").to_string());
@@ -185,4 +239,39 @@ pub fn spawn(hub: Arc<Hub>, sink: Sink) {
             std::thread::sleep(Duration::from_millis(700));
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ftp_uploads_go_to_a_temporary_name_and_are_renamed() {
+        let a = transfer_args("ftp://u:p@host:21/www/club/ticker.json").unwrap();
+        assert!(a.contains(&"ftp://u:p@host:21/www/club/ticker.json.part".to_string()), "{a:?}");
+        assert!(a.contains(&"-RNFR ticker.json.part".to_string()) && a.contains(&"-RNTO ticker.json".to_string()), "{a:?}");
+        // the file goes to the root of the account too
+        assert!(transfer_args("ftp://host/ticker.json").unwrap().contains(&"ftp://host/ticker.json.part".to_string()));
+    }
+
+    #[test]
+    fn sftp_renames_with_full_or_home_relative_paths() {
+        let abs = transfer_args("sftp://u@host/var/www/ticker.json").unwrap();
+        assert!(abs.contains(&"-rename /var/www/ticker.json.part /var/www/ticker.json".to_string()), "{abs:?}");
+        let home = transfer_args("sftp://u@host/~/htdocs/ticker/ticker.json").unwrap();
+        assert!(home.contains(&"-rename htdocs/ticker/ticker.json.part htdocs/ticker/ticker.json".to_string()), "{home:?}");
+        assert!(home.contains(&"sftp://u@host/~/htdocs/ticker/ticker.json.part".to_string()), "{home:?}");
+        let top = transfer_args("sftp://u@host/ticker.json").unwrap();
+        assert!(top.contains(&"-rename /ticker.json.part /ticker.json".to_string()), "{top:?}");
+    }
+
+    #[test]
+    fn an_address_without_a_file_name_is_refused_and_the_scheme_is_told_apart() {
+        assert!(transfer_args("sftp://u@host/dir/").is_none());
+        assert!(transfer_args("sftp://u@host").is_none());
+        assert!(is_file_transfer("SFTP://u@h/f") && is_file_transfer("ftps://h/f") && is_file_transfer("ftp://h/f"));
+        assert!(!is_file_transfer("https://h/f"));
+        let bad = check(&Sink { push: Some("sftp://u@host/dir/".into()), ..Default::default() });
+        assert!(bad.unwrap_err().contains("ticker.json"));
+    }
 }

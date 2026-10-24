@@ -7,6 +7,7 @@ reco-minimap – minimap (terrain, joueurs, arbitres, ballon) à partir d'un pan
   reco-minimap live      <source> --model <..> --court court.json --teams teams.json   minimap en direct pour OBS/Spieldock (incrustation navigateur)
                     + page du fil en direct sur /ticker : --ticker-names numbers|names|both (par défaut numbers)  --home-name --away-name  (noms dans l'effectif : --roster-home "7:Anna, 12:Ben")
                     --ticker-approve : les événements attendent votre validation sur http://127.0.0.1:<port>/ticker/admin (cet ordinateur uniquement)
+                    site web : --ticker-export <dossier> (fichiers statiques + code d'intégration)  --ticker-push <url> [--ticker-key k] (envoi avec curl)
   reco-minimap import-model <dossier|.onnx> --to <dossier des modèles>   vérifier et copier un modèle Reco Trainer
   reco-minimap ui [--port 8788] [--no-open] [--no-update-check]                          interface dans le navigateur (Deutsch/English/Français/Español)
   reco-minimap --version                                              afficher la version installée

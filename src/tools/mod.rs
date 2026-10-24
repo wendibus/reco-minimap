@@ -12,6 +12,7 @@ pub mod models;
 pub mod ocr;
 pub mod review;
 pub mod scales;
+pub mod ticker_pub;
 pub mod ui;
 pub mod update;
 pub mod video;

@@ -1176,11 +1176,31 @@ fn cmd_live(o: &Opts, input: &str) {
     };
     let hub = Hub::with_ticker(serde_json::json!({"home": hex(draw_home), "away": hex(draw_away), "referee": "#000000", "ball": "#ff8c00", "floor": "#262c34", "linecolor": "#e1e4e8",
         "sport": profile.id, "numbers": o.has("numbers"), "field": [profile.field.length, profile.field.width], "lines": profile.lines.iter().map(|pl| pl.iter().map(|p| [(p.x * 100.0).round() / 100.0, (p.y * 100.0).round() / 100.0]).collect::<Vec<_>>()).collect::<Vec<_>>()}).to_string(), Some(ticker));
+    // copies of the public feed for a web site: a folder and/or an upload (static files only, no code on the receiving side)
+    let sink = reco_minimap::tools::ticker_pub::Sink {
+        dir: o.s("ticker-export").map(std::path::PathBuf::from),
+        push: o.s("ticker-push").map(|s| s.to_string()),
+        method: o.s("ticker-push-method").unwrap_or("PUT").to_ascii_uppercase(),
+        key: o.s("ticker-key").map(|s| s.to_string()),
+    };
+    if !matches!(sink.method.as_str(), "PUT" | "POST") {
+        fail::<()>("--ticker-push-method: PUT | POST");
+    }
+    reco_minimap::tools::ticker_pub::check(&sink).unwrap_or_else(|e| fail(e));
     let host = o.s("host").unwrap_or("127.0.0.1").to_string();
     let addr = live::serve(hub.clone(), &host, o.u("port", 8765) as u16).unwrap_or_else(|e| fail(e));
     eprintln!("{}", tr!("\nLive-Overlay: http://{addr}/", "\nLive overlay: http://{addr}/", "\nIncrustation en direct : http://{addr}/", "\nSuperposición en directo: http://{addr}/"));
     eprintln!("{}", trs!("  OBS: Quelle hinzufügen -> Browser -> URL oben, Breite 1400 / Höhe 800 (oder passend), Hintergrund bleibt transparent.", "  OBS: add a source -> Browser -> the URL above, width 1400 / height 800 (or as needed); the background stays transparent.", "  OBS : ajouter une source -> Navigateur -> l'URL ci-dessus, largeur 1400 / hauteur 800 (ou selon besoin) ; le fond reste transparent.", "  OBS: añade una fuente -> Navegador -> la URL de arriba, ancho 1400 / alto 800 (o lo que convenga); el fondo queda transparente."));
     eprintln!("{}", tr!("Live-Ticker: http://{addr}/ticker   (Anzeige: {})", "Live ticker: http://{addr}/ticker   (shows: {})", "Fil en direct : http://{addr}/ticker   (affiche : {})", "Resumen en directo: http://{addr}/ticker   (muestra: {})", match ticker_mode { "names" => trs!("Namen", "names", "noms", "nombres"), "both" => trs!("Nummern und Namen", "numbers and names", "numéros et noms", "números y nombres"), _ => trs!("nur Nummern", "numbers only", "numéros seulement", "solo números") }));
+    if sink.dir.is_some() || sink.push.is_some() {
+        reco_minimap::tools::ticker_pub::spawn(hub.clone(), sink.clone());
+        if let Some(d) = &sink.dir {
+            eprintln!("{}", tr!("  Ticker für die Webseite: Dateien in {} (index.html zeigt die Einbettung; der Ordner kommt unverändert auf den Webspace, ticker.json wird laufend aktualisiert)", "  Ticker for your web site: files in {} (index.html shows how to embed; put the folder on your web space as it is, ticker.json is kept up to date)", "  Fil pour votre site : fichiers dans {} (index.html montre l'intégration ; placez le dossier tel quel sur votre hébergement, ticker.json est mis à jour en continu)", "  Resumen para tu web: archivos en {} (index.html muestra cómo incrustarlo; sube la carpeta tal cual a tu alojamiento, ticker.json se mantiene al día)", d.display()));
+        }
+        if let Some(u) = &sink.push {
+            eprintln!("{}", tr!("  Ticker-Upload (curl, {}): {}", "  Ticker upload (curl, {}): {}", "  Envoi du fil (curl, {}) : {}", "  Subida del resumen (curl, {}): {}", sink.method, reco_minimap::tools::ticker_pub::mask_url(u)));
+        }
+    }
     if o.has("ticker-approve") {
         eprintln!("{}", tr!("  Manuelle Freigabe: Ereignisse erscheinen erst im Ticker, wenn du sie freigibst: http://127.0.0.1:{}/ticker/admin (nur auf diesem Rechner erreichbar)", "  Manual release: events only appear in the ticker once you release them: http://127.0.0.1:{}/ticker/admin (reachable from this computer only)", "  Validation manuelle : les événements n'apparaissent dans le fil qu'une fois validés : http://127.0.0.1:{}/ticker/admin (accessible depuis cet ordinateur uniquement)", "  Aprobación manual: los eventos solo aparecen en el resumen cuando los apruebas: http://127.0.0.1:{}/ticker/admin (solo accesible desde este ordenador)", addr.rsplit(':').next().unwrap_or("8765")));
     }

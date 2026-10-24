@@ -332,6 +332,17 @@ While `live` runs, **`http://127.0.0.1:8765/ticker`** is a text feed for phones 
 
 **Manual release:** with `--ticker-approve` (in the interface: *Manual release*) detected events first wait in a queue. Open **`http://127.0.0.1:8765/ticker/admin`** on the same computer: each entry has *Release* or *Discard*, *Release all* publishes the queue, and a published entry can be *taken back* (viewers' pages drop it on their next refresh). The switch *Manual release* turns the queue on and off during the match. The audience only ever sees released entries. The release page works only from this computer (connection, `Host`, `Origin` and a marker header are checked), shows names even when the public page is set to numbers, and is not available over `--host 0.0.0.0` from other devices. The queue keeps the latest 200 waiting entries.
 
+**On your own web site:** `--ticker-export <folder>` writes the ticker as **static files** (`ticker.json`, `ticker.html`, `ticker.js`, `index.html` with copy-paste snippets, `.htaccess`) and keeps `ticker.json` current. Put the folder on any web space (SFTP, Nextcloud, Cloudflare Pages, GitHub Pages ...), or let the program upload it for you: `--ticker-push https://…/ticker.json [--ticker-key TOKEN] [--ticker-push-method PUT|POST]` (uses `curl`; works with WebDAV such as Nextcloud, S3/R2 pre-configured for PUT, or a Cloudflare Worker; `https://user:pass@host/…` is used for basic authentication and never printed). Then embed it:
+
+```html
+<!-- anywhere: an iframe (options: lang, show, theme, max) -->
+<iframe src="https://example.org/ticker/ticker.html?embed=1&lang=de" style="width:100%;height:480px;border:0"></iframe>
+<!-- or the widget: plain JavaScript in a shadow root, takes your page's font, colours via CSS variables -->
+<script src="https://example.org/ticker/ticker.js" data-feed="https://example.org/ticker/ticker.json" data-lang="de" data-max="20"></script>
+```
+
+There is no code to install on the web server, so there is nothing to hack there. Only released entries and, with `numbers`, no names ever reach those files; the hub, the positions and the release page stay on your computer. If the page and the files are on different domains the files' server must allow cross-origin reads of `ticker.json` (the supplied `.htaccess` does that for Apache; an iframe needs nothing). The widget shows *offline* when the sender stops (it writes a heartbeat every 10 s).
+
 The feed is built from automatic detection (jersey numbers need `--numbers`, and a *possible* substitution is marked unconfirmed), so it can be wrong or late; it keeps the last 600 entries and a phone that joins late catches up. Open it from outside your network only through a tunnel or server you control: the hub itself has no login.
 
 Opt-in `--adaptive-live` selects tiles near recent observations between full
@@ -358,7 +369,7 @@ Important: the minimap needs the **same full panorama you calibrated on**. The A
 | `scales <video> --model …` | Measure player size per image row → `scales.json` for `--tile auto` |
 | `colors <video> --model … [--court court.json]` | Detect the two shirt colours (and, with `--court`, the goalkeepers' for football, futsal, handball, hockey, lacrosse) → `teams.json` |
 | `run <video> --model …` | Process a video → minimap / overlay / panorama+minimap / JSON |
-| `live <source> --model … [--ticker-names numbers\|names\|both] [--home-name …] [--away-name …] [--ticker-approve] [--host 0.0.0.0]` | Live overlay, data stream and the text ticker at `/ticker` |
+| `live <source> --model … [--ticker-names numbers\|names\|both] [--home-name …] [--away-name …] [--ticker-approve] [--ticker-export dir] [--ticker-push url] [--host 0.0.0.0]` | Live overlay, data stream and the text ticker at `/ticker` |
 | `replay <detections.jsonl> --court … --teams …` | Re-run tracking, ball and game situations from recorded detections (`run … --dets file`), without the video: seconds instead of minutes. Byte-identical to the run it was recorded from; use it to compare `--thr-player`, team colours or tracker changes |
 | `stats <states.jsonl>` | Numbers about a run: slots, jumps, ball states, substitutions |
 | `import-model <path> --to <dir>` | Verify and copy a Reco Trainer model |

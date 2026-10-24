@@ -7,6 +7,7 @@ reco-minimap – Minimap (Court, Spieler, Schiris, Ball) aus einem Reco-Panorama
   reco-minimap live      <quelle> --model <..> --court court.json --teams teams.json   Live-Minimap für OBS/Spieldock (Browser-Overlay)
                     + Live-Ticker-Seite unter /ticker: --ticker-names numbers|names|both (Standard numbers)  --home-name --away-name  (Namen im Kader: --roster-home "7:Anna, 12:Ben")
                     --ticker-approve: Ereignisse warten auf deine Freigabe unter http://127.0.0.1:<Port>/ticker/admin (nur dieser Rechner)
+                    Webseite: --ticker-export <Ordner> (statische Dateien + Einbettungscode)  --ticker-push <url> [--ticker-key k] (Upload mit curl)
   reco-minimap import-model <ordner|.onnx> --to <modelle-ordner>   Reco-Trainer-Modell prüfen und kopieren
   reco-minimap ui [--port 8788] [--no-open] [--no-update-check]                          Oberfläche im Browser (Deutsch/English/Français/Español)
   reco-minimap --version                                              installierte Version anzeigen

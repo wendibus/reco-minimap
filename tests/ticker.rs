@@ -48,7 +48,9 @@ fn the_feed_grows_and_late_viewers_can_catch_up() {
     let addr = live::serve(hub.clone(), "127.0.0.1", 0).unwrap();
     let (c, page) = get(&addr, "/ticker");
     assert_eq!(c, 200);
-    assert!(page.contains("/ticker.json") && page.contains("<script src=\"/i18n.js\">"));
+    assert!(page.contains("<script src=\"/ticker.js\">") && page.contains("<div id=\"app\">"));
+    let js = get(&addr, "/ticker.js").1;
+    assert!(js.contains("RT_STRINGS") && js.contains("/ticker/admin") && !js.contains("\"/i18n.js\""));
     let v: Value = serde_json::from_str(&get(&addr, "/ticker.json").1).unwrap();
     assert_eq!(v["seq"], 0);
     assert!(v["events"].as_array().unwrap().is_empty());
@@ -202,4 +204,128 @@ fn the_operator_sees_names_even_when_the_public_does_not() {
     s.read_to_string(&mut out).unwrap();
     assert!(out.contains("Anna"), "{out}");
     assert!(!get(&addr, "/ticker.json").1.contains("Anna"));
+}
+
+// ---------------------------------------------------------------- for a web site: export, push, widget
+
+use reco_minimap::tools::ticker_pub::{self, Sink};
+
+fn tmpdir(name: &str) -> std::path::PathBuf {
+    let d = std::env::temp_dir().join(format!("reco-ticker-{}-{name}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    d
+}
+
+#[test]
+fn the_export_folder_holds_static_files_only() {
+    let d = tmpdir("assets");
+    ticker_pub::write_assets(&d).unwrap();
+    for f in ["ticker.html", "ticker.js", "index.html", ".htaccess"] {
+        assert!(d.join(f).exists(), "{f}");
+    }
+    assert!(std::fs::read_dir(&d).unwrap().all(|e| !e.unwrap().file_name().to_string_lossy().ends_with(".php")), "no server-side code");
+    let page = std::fs::read_to_string(d.join("ticker.html")).unwrap();
+    assert!(page.contains("name=\"ticker-static\"") && page.contains("<script src=\"ticker.js\"></script>") && !page.contains("/ticker.js\""), "relative, no hub paths");
+    let js = std::fs::read_to_string(d.join("ticker.js")).unwrap();
+    assert!(js.starts_with("(function(){") && js.contains("customElements.define('reco-ticker'") && js.contains("data-feed"));
+    assert!(js.contains("const RT_STRINGS"), "the texts travel with the widget");
+    assert!(js.is_ascii(), "readable whatever charset the web server announces");
+    assert!(js.contains("\\u2190") && js.contains("Wechsel"));
+    let idx = std::fs::read_to_string(d.join("index.html")).unwrap();
+    assert!(idx.contains("&lt;iframe") && idx.contains("data-feed") && idx.contains("--rt-home"));
+    // the widget is valid JavaScript
+    if std::process::Command::new("node").arg("--version").output().is_ok() {
+        let st = std::process::Command::new("node").arg("--check").arg(d.join("ticker.js")).output().unwrap();
+        assert!(st.status.success(), "{}", String::from_utf8_lossy(&st.stderr));
+    }
+}
+
+#[test]
+fn the_sender_keeps_ticker_json_current_with_a_heartbeat_and_without_hidden_names() {
+    let d = tmpdir("sender");
+    let hub = Hub::with_ticker("{}".into(), Some(cfg("numbers")));
+    let sink = Sink { dir: Some(d.clone()), method: "PUT".into(), ..Default::default() };
+    ticker_pub::check(&sink).unwrap();
+    ticker_pub::spawn(hub.clone(), sink);
+    let read = || -> Option<Value> { serde_json::from_str(&std::fs::read_to_string(d.join("ticker.json")).ok()?).ok() };
+    let wait = |f: &dyn Fn(&Value) -> bool| { for _ in 0..60 { if let Some(v) = read() { if f(&v) { return v; } } std::thread::sleep(std::time::Duration::from_millis(100)); } panic!("timed out"); };
+    let first = wait(&|v| v["beat"].as_u64().is_some());
+    assert_eq!(first["events"].as_array().unwrap().len(), 0);
+    hub.push_events(&[json!({"type": "sub", "kind": "confirmed", "team": "home", "out": 7, "in": 3, "t": 5.0})]);
+    let v = wait(&|v| v["seq"] == 1);
+    assert!(v["beat"].as_u64().unwrap() > first["beat"].as_u64().unwrap(), "a change writes a new beat");
+    assert!(!std::fs::read_to_string(d.join("ticker.json")).unwrap().contains("Anna"), "numbers only: no names in the file");
+    assert!(!d.join("ticker.json.tmp").exists());
+}
+
+#[test]
+fn queued_events_stay_out_of_the_exported_feed() {
+    let d = tmpdir("queue");
+    let mut c = cfg("both");
+    c.approve = true;
+    let hub = Hub::with_ticker("{}".into(), Some(c));
+    ticker_pub::spawn(hub.clone(), Sink { dir: Some(d.clone()), method: "PUT".into(), ..Default::default() });
+    hub.push_events(&[json!({"type": "scene", "kind": "corner", "team": "home", "t": 1.0})]);
+    std::thread::sleep(std::time::Duration::from_millis(1800));
+    let v: Value = serde_json::from_str(&std::fs::read_to_string(d.join("ticker.json")).unwrap()).unwrap();
+    assert!(v["events"].as_array().unwrap().is_empty());
+    hub.release_all();
+    std::thread::sleep(std::time::Duration::from_millis(1800));
+    let v: Value = serde_json::from_str(&std::fs::read_to_string(d.join("ticker.json")).unwrap()).unwrap();
+    assert_eq!(v["events"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn the_upload_sends_the_feed_with_put_and_the_key() {
+    if std::process::Command::new("curl").arg("--version").output().is_err() {
+        return;
+    }
+    // a one-request web server that keeps what it was sent
+    let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = l.local_addr().unwrap().port();
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    std::thread::spawn(move || {
+        for s in l.incoming().flatten() {
+            let mut s = s;
+            s.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+            let mut buf = Vec::new();
+            let mut tmp = [0u8; 4096];
+            loop {
+                let n = s.read(&mut tmp).unwrap_or(0);
+                buf.extend_from_slice(&tmp[..n]);
+                let text = String::from_utf8_lossy(&buf).to_string();
+                if let Some((h, b)) = text.split_once("\r\n\r\n") {
+                    let want = h.lines().find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0))).unwrap_or(0);
+                    if b.len() >= want || n == 0 {
+                        break;
+                    }
+                }
+                if n == 0 {
+                    break;
+                }
+            }
+            let _ = s.write_all(b"HTTP/1.1 201 Created\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            let _ = tx.send(String::from_utf8_lossy(&buf).to_string());
+        }
+    });
+    let hub = Hub::with_ticker("{}".into(), Some(cfg("numbers")));
+    hub.push_events(&[json!({"type": "scene", "kind": "corner", "team": "home", "t": 1.0})]);
+    let sink = Sink { push: Some(format!("http://127.0.0.1:{port}/dav/ticker.json")), method: "PUT".into(), key: Some("s3cret".into()), ..Default::default() };
+    ticker_pub::check(&sink).unwrap();
+    ticker_pub::spawn(hub, sink);
+    let req = rx.recv_timeout(std::time::Duration::from_secs(10)).expect("an upload arrives");
+    assert!(req.starts_with("PUT /dav/ticker.json "), "{req}");
+    assert!(req.to_ascii_lowercase().contains("authorization: bearer s3cret"), "{req}");
+    let body: Value = serde_json::from_str(req.split_once("\r\n\r\n").unwrap().1).unwrap();
+    assert_eq!(body["events"][0]["kind"], "corner");
+    assert!(body["beat"].as_u64().is_some());
+}
+
+#[test]
+fn the_push_address_is_checked_and_passwords_are_not_printed() {
+    assert!(ticker_pub::check(&Sink { push: Some("ftp://x/y".into()), ..Default::default() }).is_err());
+    assert!(ticker_pub::check(&Sink { push: Some("https://example.org/t.json".into()), ..Default::default() }).is_ok() || std::process::Command::new("curl").arg("--version").output().is_err());
+    assert_eq!(ticker_pub::mask_url("https://user:pw@dav.example.org/f/t.json"), "https://***@dav.example.org/f/t.json");
+    assert_eq!(ticker_pub::mask_url("https://example.org/a@b"), "https://example.org/a@b");
 }

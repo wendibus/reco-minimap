@@ -36,7 +36,7 @@ Everything runs locally. No video, frame or model leaves your computer. The only
 7. [Models from Reco Trainer](#models-from-reco-trainer)
 8. [Jersey numbers and substitutions](#jersey-numbers-and-substitutions)
 9. [Game situations (scenes)](#game-situations-scenes)
-10. [Live mode and OBS](#live-mode-and-obs)
+10. [Live mode and OBS](#live-mode-and-obs) (with the [live ticker](#live-ticker))
 11. [Command-line reference](#command-line-reference)
 12. [Output formats](#output-formats)
 13. [Project folder](#project-folder)
@@ -325,6 +325,8 @@ reco-minimap live <source> --model … --court court.json --teams teams.json \
 * Use `--host 0.0.0.0` to reach it from another computer. This also makes the overlay and position data (`/state.json`) visible to everyone on that network.
 
 ### Live ticker
+
+**Full guide with a picture and installation steps: [Live ticker (English)](docs/TICKER.md) · [Live-Ticker (Deutsch)](docs/TICKER.de.md) · [Fil en direct (Français)](docs/TICKER.fr.md) · [Resumen en directo (Español)](docs/TICKER.es.md).**
 
 While `live` runs, **`http://127.0.0.1:8765/ticker`** is a text feed for phones and browsers: substitutions and (with `--scenes`) game situations such as kick-off, throw-in, corner, penalty, free throw and shot attempts, newest first, with the video time. It works for every sport, in German, English, French and Spanish (the viewer picks the language on the page, `?lang=fr` presets it). The *Share* button hands the link to the phone's share sheet. For other devices on your Wi-Fi start with `--host 0.0.0.0` and send `http://<this-computer>:8765/ticker` (in the interface: *Reachable from other devices on the network*, the link is shown ready to copy).
 

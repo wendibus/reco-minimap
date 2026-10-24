@@ -1,5 +1,5 @@
 //! Serves the live ticker with made-up events, to look at the page without a video:
-//!   cargo run --features tools --example ticker_demo -- [--port 8765] [--names both] [--sport football]
+//!   cargo run --features tools --example ticker_demo -- [--port 8765] [--names both] [--sport football] [--approve]
 //! then open http://127.0.0.1:8765/ticker
 use reco_minimap::tools::live::{self, Hub, TickerCfg};
 use serde_json::json;
@@ -15,6 +15,7 @@ fn main() {
         home_players: reco_minimap::jersey::parse_roster_names("7:Anna Müller, 12=Ben, 4:Cem"),
         away_players: reco_minimap::jersey::parse_roster_names("9:Dana"),
         sport: arg("--sport", "basketball"),
+        approve: args.iter().any(|a| a == "--approve"),
     };
     let hub = Hub::with_ticker("{}".into(), Some(cfg));
     let addr = live::serve(hub.clone(), "127.0.0.1", arg("--port", "8765").parse().unwrap()).unwrap();

@@ -379,6 +379,17 @@ add("ticker.ui_home", "Name Heim", "Home team name", "Nom domicile", "Nombre loc
 add("ticker.ui_away", "Name Gast", "Away team name", "Nom visiteurs", "Nombre visitante")
 add("ticker.ui_network", "Für andere Geräte im Netzwerk erreichbar (Handy im selben WLAN)", "Reachable from other devices on the network (phone on the same Wi-Fi)", "Accessible depuis d'autres appareils du réseau (téléphone sur le même Wi-Fi)", "Accesible desde otros dispositivos de la red (móvil en la misma Wi-Fi)")
 add("ticker.ui_noip", "Die Adresse dieses Computers im Netzwerk wurde nicht gefunden – im Link 127.0.0.1 durch sie ersetzen.", "This computer's network address was not found – replace 127.0.0.1 in the link with it.", "L'adresse réseau de cet ordinateur est introuvable – remplacez 127.0.0.1 dans le lien par celle-ci.", "No se encontró la dirección de red de este ordenador: sustituye 127.0.0.1 en el enlace por ella.")
+add("ticker.a_title", "Freigabe", "Release", "Validation", "Aprobación")
+add("ticker.a_queue", "Wartet auf Freigabe", "Waiting for release", "En attente de validation", "Esperando aprobación")
+add("ticker.a_release", "Freigeben", "Release", "Valider", "Aprobar")
+add("ticker.a_discard", "Verwerfen", "Discard", "Rejeter", "Descartar")
+add("ticker.a_release_all", "Alle freigeben", "Release all", "Tout valider", "Aprobar todo")
+add("ticker.a_retract", "Zurücknehmen", "Take back", "Retirer", "Retirar")
+add("ticker.a_manual", "Manuelle Freigabe", "Manual release", "Validation manuelle", "Aprobación manual")
+add("ticker.a_none", "Nichts wartet.", "Nothing is waiting.", "Rien n'est en attente.", "No hay nada pendiente.")
+add("ticker.a_hint", "Nur Freigegebenes sieht das Publikum. Zurückgenommene Einträge verschwinden bei den Zuschauern beim nächsten Abruf (wer die Seite schon geladen hat, sieht sie evtl. kurz weiter). Diese Seite ist nur auf diesem Rechner erreichbar.", "The audience only sees what you release. Entries you take back disappear for viewers on their next refresh (a page already open may show them a moment longer). This page is reachable from this computer only.", "Le public ne voit que ce que vous validez. Les entrées retirées disparaissent chez les spectateurs à la prochaine actualisation (une page déjà ouverte peut les montrer un instant de plus). Cette page n'est accessible que depuis cet ordinateur.", "El público solo ve lo que apruebas. Las entradas retiradas desaparecen para los espectadores en la siguiente actualización (una página ya abierta puede mostrarlas un momento más). Esta página solo es accesible desde este ordenador.")
+add("ticker.ui_approve", "Manuelle Freigabe: Einträge erscheinen erst, wenn ich sie freigebe", "Manual release: entries appear only when I release them", "Validation manuelle : les entrées n'apparaissent qu'une fois validées par moi", "Aprobación manual: las entradas solo aparecen cuando las apruebo")
+add("ticker.ui_admin", "Freigabe-Seite (nur dieser Rechner)", "Release page (this computer only)", "Page de validation (cet ordinateur uniquement)", "Página de aprobación (solo este ordenador)")
 
 # --- consistency checks
 for k, d in T.items():

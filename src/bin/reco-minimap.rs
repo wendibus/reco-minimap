@@ -1172,6 +1172,7 @@ fn cmd_live(o: &Opts, input: &str) {
         home_players: o.s("roster-home").map(reco_minimap::jersey::parse_roster_names).unwrap_or_default(),
         away_players: o.s("roster-away").map(reco_minimap::jersey::parse_roster_names).unwrap_or_default(),
         sport: profile.id.clone(),
+        approve: o.has("ticker-approve"),
     };
     let hub = Hub::with_ticker(serde_json::json!({"home": hex(draw_home), "away": hex(draw_away), "referee": "#000000", "ball": "#ff8c00", "floor": "#262c34", "linecolor": "#e1e4e8",
         "sport": profile.id, "numbers": o.has("numbers"), "field": [profile.field.length, profile.field.width], "lines": profile.lines.iter().map(|pl| pl.iter().map(|p| [(p.x * 100.0).round() / 100.0, (p.y * 100.0).round() / 100.0]).collect::<Vec<_>>()).collect::<Vec<_>>()}).to_string(), Some(ticker));
@@ -1180,6 +1181,9 @@ fn cmd_live(o: &Opts, input: &str) {
     eprintln!("{}", tr!("\nLive-Overlay: http://{addr}/", "\nLive overlay: http://{addr}/", "\nIncrustation en direct : http://{addr}/", "\nSuperposición en directo: http://{addr}/"));
     eprintln!("{}", trs!("  OBS: Quelle hinzufügen -> Browser -> URL oben, Breite 1400 / Höhe 800 (oder passend), Hintergrund bleibt transparent.", "  OBS: add a source -> Browser -> the URL above, width 1400 / height 800 (or as needed); the background stays transparent.", "  OBS : ajouter une source -> Navigateur -> l'URL ci-dessus, largeur 1400 / hauteur 800 (ou selon besoin) ; le fond reste transparent.", "  OBS: añade una fuente -> Navegador -> la URL de arriba, ancho 1400 / alto 800 (o lo que convenga); el fondo queda transparente."));
     eprintln!("{}", tr!("Live-Ticker: http://{addr}/ticker   (Anzeige: {})", "Live ticker: http://{addr}/ticker   (shows: {})", "Fil en direct : http://{addr}/ticker   (affiche : {})", "Resumen en directo: http://{addr}/ticker   (muestra: {})", match ticker_mode { "names" => trs!("Namen", "names", "noms", "nombres"), "both" => trs!("Nummern und Namen", "numbers and names", "numéros et noms", "números y nombres"), _ => trs!("nur Nummern", "numbers only", "numéros seulement", "solo números") }));
+    if o.has("ticker-approve") {
+        eprintln!("{}", tr!("  Manuelle Freigabe: Ereignisse erscheinen erst im Ticker, wenn du sie freigibst: http://127.0.0.1:{}/ticker/admin (nur auf diesem Rechner erreichbar)", "  Manual release: events only appear in the ticker once you release them: http://127.0.0.1:{}/ticker/admin (reachable from this computer only)", "  Validation manuelle : les événements n'apparaissent dans le fil qu'une fois validés : http://127.0.0.1:{}/ticker/admin (accessible depuis cet ordinateur uniquement)", "  Aprobación manual: los eventos solo aparecen en el resumen cuando los apruebas: http://127.0.0.1:{}/ticker/admin (solo accesible desde este ordenador)", addr.rsplit(':').next().unwrap_or("8765")));
+    }
     if host == "127.0.0.1" {
         eprintln!("{}", trs!("  Von anderen Geräten erreichbar mit --host 0.0.0.0 (dann sehen alle im Netz auch die Overlay- und Positionsdaten).", "  Reachable from other devices with --host 0.0.0.0 (everyone on the network then also sees the overlay and position data).", "  Accessible depuis d'autres appareils avec --host 0.0.0.0 (tout le réseau voit alors aussi l'overlay et les positions).", "  Accesible desde otros dispositivos con --host 0.0.0.0 (entonces toda la red ve también la superposición y las posiciones)."));
     }

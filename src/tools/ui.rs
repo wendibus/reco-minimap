@@ -440,6 +440,9 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
                         pushs(&mut a, &[flag, get_s(p, key).trim()]);
                     }
                 }
+                if p["ticker_approve"].as_bool() == Some(true) {
+                    pushs(&mut a, &["--ticker-approve"]);
+                }
                 if p["network"].as_bool() == Some(true) {
                     pushs(&mut a, &["--host", "0.0.0.0"]);
                 }
@@ -767,15 +770,16 @@ mod tests {
     #[test]
     fn the_live_job_passes_the_ticker_settings() {
         let p = json!({"model_dir": "/m", "source": "/v.mp4", "ep": "cpu", "size": "1920x1080", "fps": 25, "port": 8765,
-            "ticker_names": "both", "home_name": " Sharks ", "away_name": "", "network": true});
+            "ticker_names": "both", "home_name": " Sharks ", "away_name": "", "network": true, "ticker_approve": true});
         let a = build_args("live", Path::new("/nonexistent-project"), &p).unwrap();
         assert_eq!(pair(&a, "--ticker-names").as_deref(), Some("both"));
         assert_eq!(pair(&a, "--home-name").as_deref(), Some("Sharks"));
         assert!(pair(&a, "--away-name").is_none(), "an empty name is not passed");
         assert_eq!(pair(&a, "--host").as_deref(), Some("0.0.0.0"));
+        assert!(a.contains(&"--ticker-approve".to_string()));
         // the safe default: nothing about names, local only
         let b = build_args("live", Path::new("/nonexistent-project"), &json!({"model_dir": "/m", "source": "/v.mp4", "ep": "cpu", "size": "1920x1080", "fps": 25, "port": 8765, "ticker_names": "evil"})).unwrap();
-        assert!(!b.contains(&"--ticker-names".to_string()) && !b.contains(&"--host".to_string()), "{b:?}");
+        assert!(!b.contains(&"--ticker-names".to_string()) && !b.contains(&"--host".to_string()) && !b.contains(&"--ticker-approve".to_string()), "{b:?}");
     }
 
     #[test]

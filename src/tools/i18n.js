@@ -366,7 +366,18 @@ const I18N = {
   "ticker.ui_home": "Name Heim",
   "ticker.ui_away": "Name Gast",
   "ticker.ui_network": "Für andere Geräte im Netzwerk erreichbar (Handy im selben WLAN)",
-  "ticker.ui_noip": "Die Adresse dieses Computers im Netzwerk wurde nicht gefunden – im Link 127.0.0.1 durch sie ersetzen."
+  "ticker.ui_noip": "Die Adresse dieses Computers im Netzwerk wurde nicht gefunden – im Link 127.0.0.1 durch sie ersetzen.",
+  "ticker.a_title": "Freigabe",
+  "ticker.a_queue": "Wartet auf Freigabe",
+  "ticker.a_release": "Freigeben",
+  "ticker.a_discard": "Verwerfen",
+  "ticker.a_release_all": "Alle freigeben",
+  "ticker.a_retract": "Zurücknehmen",
+  "ticker.a_manual": "Manuelle Freigabe",
+  "ticker.a_none": "Nichts wartet.",
+  "ticker.a_hint": "Nur Freigegebenes sieht das Publikum. Zurückgenommene Einträge verschwinden bei den Zuschauern beim nächsten Abruf (wer die Seite schon geladen hat, sieht sie evtl. kurz weiter). Diese Seite ist nur auf diesem Rechner erreichbar.",
+  "ticker.ui_approve": "Manuelle Freigabe: Einträge erscheinen erst, wenn ich sie freigebe",
+  "ticker.ui_admin": "Freigabe-Seite (nur dieser Rechner)"
  },
  "en": {
   "lang.name": "English",
@@ -734,7 +745,18 @@ const I18N = {
   "ticker.ui_home": "Home team name",
   "ticker.ui_away": "Away team name",
   "ticker.ui_network": "Reachable from other devices on the network (phone on the same Wi-Fi)",
-  "ticker.ui_noip": "This computer's network address was not found – replace 127.0.0.1 in the link with it."
+  "ticker.ui_noip": "This computer's network address was not found – replace 127.0.0.1 in the link with it.",
+  "ticker.a_title": "Release",
+  "ticker.a_queue": "Waiting for release",
+  "ticker.a_release": "Release",
+  "ticker.a_discard": "Discard",
+  "ticker.a_release_all": "Release all",
+  "ticker.a_retract": "Take back",
+  "ticker.a_manual": "Manual release",
+  "ticker.a_none": "Nothing is waiting.",
+  "ticker.a_hint": "The audience only sees what you release. Entries you take back disappear for viewers on their next refresh (a page already open may show them a moment longer). This page is reachable from this computer only.",
+  "ticker.ui_approve": "Manual release: entries appear only when I release them",
+  "ticker.ui_admin": "Release page (this computer only)"
  },
  "fr": {
   "lang.name": "Français",
@@ -1102,7 +1124,18 @@ const I18N = {
   "ticker.ui_home": "Nom domicile",
   "ticker.ui_away": "Nom visiteurs",
   "ticker.ui_network": "Accessible depuis d'autres appareils du réseau (téléphone sur le même Wi-Fi)",
-  "ticker.ui_noip": "L'adresse réseau de cet ordinateur est introuvable – remplacez 127.0.0.1 dans le lien par celle-ci."
+  "ticker.ui_noip": "L'adresse réseau de cet ordinateur est introuvable – remplacez 127.0.0.1 dans le lien par celle-ci.",
+  "ticker.a_title": "Validation",
+  "ticker.a_queue": "En attente de validation",
+  "ticker.a_release": "Valider",
+  "ticker.a_discard": "Rejeter",
+  "ticker.a_release_all": "Tout valider",
+  "ticker.a_retract": "Retirer",
+  "ticker.a_manual": "Validation manuelle",
+  "ticker.a_none": "Rien n'est en attente.",
+  "ticker.a_hint": "Le public ne voit que ce que vous validez. Les entrées retirées disparaissent chez les spectateurs à la prochaine actualisation (une page déjà ouverte peut les montrer un instant de plus). Cette page n'est accessible que depuis cet ordinateur.",
+  "ticker.ui_approve": "Validation manuelle : les entrées n'apparaissent qu'une fois validées par moi",
+  "ticker.ui_admin": "Page de validation (cet ordinateur uniquement)"
  },
  "es": {
   "lang.name": "Español",
@@ -1470,7 +1503,18 @@ const I18N = {
   "ticker.ui_home": "Nombre local",
   "ticker.ui_away": "Nombre visitante",
   "ticker.ui_network": "Accesible desde otros dispositivos de la red (móvil en la misma Wi-Fi)",
-  "ticker.ui_noip": "No se encontró la dirección de red de este ordenador: sustituye 127.0.0.1 en el enlace por ella."
+  "ticker.ui_noip": "No se encontró la dirección de red de este ordenador: sustituye 127.0.0.1 en el enlace por ella.",
+  "ticker.a_title": "Aprobación",
+  "ticker.a_queue": "Esperando aprobación",
+  "ticker.a_release": "Aprobar",
+  "ticker.a_discard": "Descartar",
+  "ticker.a_release_all": "Aprobar todo",
+  "ticker.a_retract": "Retirar",
+  "ticker.a_manual": "Aprobación manual",
+  "ticker.a_none": "No hay nada pendiente.",
+  "ticker.a_hint": "El público solo ve lo que apruebas. Las entradas retiradas desaparecen para los espectadores en la siguiente actualización (una página ya abierta puede mostrarlas un momento más). Esta página solo es accesible desde este ordenador.",
+  "ticker.ui_approve": "Aprobación manual: las entradas solo aparecen cuando las apruebo",
+  "ticker.ui_admin": "Página de aprobación (solo este ordenador)"
  }
 };
 

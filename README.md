@@ -330,6 +330,8 @@ While `live` runs, **`http://127.0.0.1:8765/ticker`** is a text feed for phones 
 
 **Names or numbers:** `--ticker-names numbers|names|both` (default `numbers`). Names come from the squad lists, written after the number with `:` or `=`: `--roster-home "7:Anna Müller, 12:Ben, 1g:Tom"` (the keeper mark still works; names may contain spaces, not commas). With `numbers` the names are **never sent** to any device, which is the safe setting for youth teams; with `names` or `both` the page gets a switch (Numbers · Names · Both) so each viewer can reduce it, and `?show=numbers` presets a link. A number without a name is shown as `#7`. `--home-name` / `--away-name` set the team names in the header.
 
+**Manual release:** with `--ticker-approve` (in the interface: *Manual release*) detected events first wait in a queue. Open **`http://127.0.0.1:8765/ticker/admin`** on the same computer: each entry has *Release* or *Discard*, *Release all* publishes the queue, and a published entry can be *taken back* (viewers' pages drop it on their next refresh). The switch *Manual release* turns the queue on and off during the match. The audience only ever sees released entries. The release page works only from this computer (connection, `Host`, `Origin` and a marker header are checked), shows names even when the public page is set to numbers, and is not available over `--host 0.0.0.0` from other devices. The queue keeps the latest 200 waiting entries.
+
 The feed is built from automatic detection (jersey numbers need `--numbers`, and a *possible* substitution is marked unconfirmed), so it can be wrong or late; it keeps the last 600 entries and a phone that joins late catches up. Open it from outside your network only through a tunnel or server you control: the hub itself has no login.
 
 Opt-in `--adaptive-live` selects tiles near recent observations between full
@@ -356,7 +358,7 @@ Important: the minimap needs the **same full panorama you calibrated on**. The A
 | `scales <video> --model …` | Measure player size per image row → `scales.json` for `--tile auto` |
 | `colors <video> --model … [--court court.json]` | Detect the two shirt colours (and, with `--court`, the goalkeepers' for football, futsal, handball, hockey, lacrosse) → `teams.json` |
 | `run <video> --model …` | Process a video → minimap / overlay / panorama+minimap / JSON |
-| `live <source> --model … [--ticker-names numbers\|names\|both] [--home-name …] [--away-name …] [--host 0.0.0.0]` | Live overlay, data stream and the text ticker at `/ticker` |
+| `live <source> --model … [--ticker-names numbers\|names\|both] [--home-name …] [--away-name …] [--ticker-approve] [--host 0.0.0.0]` | Live overlay, data stream and the text ticker at `/ticker` |
 | `replay <detections.jsonl> --court … --teams …` | Re-run tracking, ball and game situations from recorded detections (`run … --dets file`), without the video: seconds instead of minutes. Byte-identical to the run it was recorded from; use it to compare `--thr-player`, team colours or tracker changes |
 | `stats <states.jsonl>` | Numbers about a run: slots, jumps, ball states, substitutions |
 | `import-model <path> --to <dir>` | Verify and copy a Reco Trainer model |

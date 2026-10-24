@@ -6,6 +6,7 @@ reco-minimap – minimap (court, players, referees, ball) from a Reco panorama
   reco-minimap scales    <video> --model <folder|.onnx> [--court court.json] [--samples 12] [--out scales.json]
   reco-minimap live      <source> --model <..> --court court.json --teams teams.json   live minimap for OBS/Spieldock (browser overlay)
                     + live ticker page at /ticker: --ticker-names numbers|names|both (default numbers)  --home-name --away-name  (names in the squad: --roster-home "7:Anna, 12:Ben")
+                    --ticker-approve: events wait for your release at http://127.0.0.1:<port>/ticker/admin (this computer only)
   reco-minimap import-model <folder|.onnx> --to <models folder>   check and copy a Reco Trainer model
   reco-minimap ui [--port 8788] [--no-open] [--no-update-check]                          interface in the browser (Deutsch/English/Français/Español)
   reco-minimap --version                                              show the installed version

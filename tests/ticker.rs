@@ -28,6 +28,7 @@ fn cfg(names: &str) -> TickerCfg {
         home_players: parse_roster_names("7:Anna Müller"),
         away_players: parse_roster_names("9:Dana"),
         sport: "football".into(),
+        approve: false,
     }
 }
 
@@ -35,7 +36,7 @@ fn get(addr: &str, path: &str) -> (u16, String) {
     let mut s = std::net::TcpStream::connect(addr).unwrap();
     s.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
     // one write: the hub reads a request with a single read
-    s.write_all(format!("GET {path} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n").as_bytes()).unwrap();
+    s.write_all(format!("GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n").as_bytes()).unwrap();
     let mut out = String::new();
     s.read_to_string(&mut out).unwrap();
     (out.split_whitespace().nth(1).unwrap().parse().unwrap(), out.split_once("\r\n\r\n").map(|x| x.1).unwrap_or("").to_string())
@@ -105,4 +106,100 @@ fn the_feed_keeps_only_the_newest_entries() {
     assert_eq!(v["seq"], 650);
     assert_eq!(v["events"].as_array().unwrap().len(), 600);
     assert_eq!(v["events"][0]["seq"], 51);
+}
+
+fn post(addr: &str, path: &str, marked: bool) -> (u16, String) {
+    let mut s = std::net::TcpStream::connect(addr).unwrap();
+    s.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+    let extra = if marked { "x-ticker-admin: 1\r\n" } else { "" };
+    s.write_all(format!("POST {path} HTTP/1.1\r\nHost: {addr}\r\n{extra}Content-Length: 0\r\nConnection: close\r\n\r\n").as_bytes()).unwrap();
+    let mut out = String::new();
+    s.read_to_string(&mut out).unwrap();
+    (out.split_whitespace().nth(1).unwrap().parse().unwrap(), out.split_once("\r\n\r\n").map(|x| x.1).unwrap_or("").to_string())
+}
+
+fn manual_hub(names: &str) -> (std::sync::Arc<Hub>, String) {
+    let mut c = cfg(names);
+    c.approve = true;
+    let hub = Hub::with_ticker("{}".into(), Some(c));
+    let addr = live::serve(hub.clone(), "127.0.0.1", 0).unwrap();
+    (hub, addr)
+}
+
+fn feed(addr: &str) -> Value {
+    serde_json::from_str(&get(addr, "/ticker.json").1).unwrap()
+}
+
+#[test]
+fn nothing_reaches_the_public_feed_until_it_is_released() {
+    let (hub, addr) = manual_hub("numbers");
+    hub.push_events(&[json!({"type": "sub", "kind": "confirmed", "team": "home", "out": 7, "in": 3, "t": 5.0}), json!({"type": "scene", "kind": "corner", "team": "away", "t": 9.0})]);
+    assert!(feed(&addr)["events"].as_array().unwrap().is_empty(), "queued, not published");
+    let admin: Value = serde_json::from_str(&get(&addr, "/ticker/admin.json").1).unwrap();
+    assert_eq!(admin["approve"], true);
+    let ids: Vec<u64> = admin["pending"].as_array().unwrap().iter().map(|e| e["id"].as_u64().unwrap()).collect();
+    assert_eq!(ids.len(), 2);
+
+    // release the second, discard the first
+    assert_eq!(post(&addr, &format!("/ticker/admin/release?id={}", ids[1]), true).0, 200);
+    assert_eq!(post(&addr, &format!("/ticker/admin/discard?id={}", ids[0]), true).0, 200);
+    let f = feed(&addr);
+    assert_eq!(f["events"].as_array().unwrap().len(), 1);
+    assert_eq!(f["events"][0]["kind"], "corner");
+    assert_eq!(f["events"][0]["seq"], 1, "the public sequence counts released entries");
+    assert!(f["events"][0].get("id").is_none(), "queue ids stay private");
+    // a viewer who already has seq 1 still gets the next release, whatever order the events were detected in
+    hub.push_events(&[json!({"type": "scene", "kind": "penalty", "team": "home", "t": 20.0}), json!({"type": "scene", "kind": "kickoff", "team": "home", "t": 3.0})]);
+    assert_eq!(post(&addr, "/ticker/admin/release_all", true).0, 200);
+    let later: Value = serde_json::from_str(&get(&addr, "/ticker.json?since=1").1).unwrap();
+    assert_eq!(later["events"].as_array().unwrap().len(), 2);
+    // releasing something twice, or an unknown id, does nothing
+    assert!(!hub.decide(ids[1], true) && !hub.decide(999, true));
+    assert_eq!(feed(&addr)["seq"], 3);
+}
+
+#[test]
+fn a_published_entry_can_be_taken_back_and_the_mode_switched() {
+    let (hub, addr) = manual_hub("numbers");
+    hub.set_approval(false);
+    hub.push_events(&[json!({"type": "scene", "kind": "corner", "team": "away", "t": 9.0}), json!({"type": "scene", "kind": "corner", "team": "home", "t": 19.0})]);
+    assert_eq!(feed(&addr)["events"].as_array().unwrap().len(), 2, "automatic mode publishes at once");
+    assert_eq!(post(&addr, "/ticker/admin/retract?seq=1", true).0, 200);
+    let f = feed(&addr);
+    assert_eq!(f["events"].as_array().unwrap().len(), 1);
+    assert_eq!(f["retracted"], json!([1]), "viewers who already hold it are told to drop it");
+    assert_eq!(post(&addr, "/ticker/admin/mode?approve=1", true).0, 200);
+    hub.push_events(&[json!({"type": "scene", "kind": "throw_in", "team": "home", "t": 30.0})]);
+    assert_eq!(feed(&addr)["seq"], 2, "back in manual mode nothing new is published");
+}
+
+#[test]
+fn only_the_operator_page_on_this_computer_may_release() {
+    let (_hub, addr) = manual_hub("numbers");
+    // changes need the marker header (other web pages cannot send it without the hub's consent)
+    assert_eq!(post(&addr, "/ticker/admin/release_all", false).0, 403);
+    assert_eq!(get(&addr, "/ticker/admin.json").0, 200, "this computer, by its own name");
+    let mut s = std::net::TcpStream::connect(&addr).unwrap();
+    s.write_all(b"GET /ticker/admin.json HTTP/1.1\r\nHost: evil.example\r\nConnection: close\r\n\r\n").unwrap();
+    let mut out = String::new();
+    s.read_to_string(&mut out).unwrap();
+    assert!(out.starts_with("HTTP/1.1 403"), "a foreign Host name is refused: {out}");
+    use reco_minimap::tools::live::admin_allowed;
+    assert!(admin_allowed(true, Some("127.0.0.1:8765"), None, true, true));
+    assert!(admin_allowed(true, Some("localhost:8765"), Some("http://localhost:8765"), false, false), "reading needs no marker");
+    assert!(!admin_allowed(false, Some("127.0.0.1:8765"), None, true, true), "another computer");
+    assert!(!admin_allowed(true, Some("evil.example"), None, true, true), "foreign Host (DNS rebinding)");
+    assert!(!admin_allowed(true, Some("127.0.0.1:8765"), Some("http://evil.example"), true, true), "another web page");
+    assert!(!admin_allowed(true, Some("127.0.0.1:8765"), None, false, true), "change without the marker");
+}
+
+#[test]
+fn the_operator_sees_names_even_when_the_public_does_not() {
+    let (_hub, addr) = manual_hub("numbers");
+    let mut s = std::net::TcpStream::connect(&addr).unwrap();
+    s.write_all(format!("GET /ticker/admin.json HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n").as_bytes()).unwrap();
+    let mut out = String::new();
+    s.read_to_string(&mut out).unwrap();
+    assert!(out.contains("Anna"), "{out}");
+    assert!(!get(&addr, "/ticker.json").1.contains("Anna"));
 }

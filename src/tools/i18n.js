@@ -377,7 +377,11 @@ const I18N = {
   "ticker.a_none": "Nichts wartet.",
   "ticker.a_hint": "Nur Freigegebenes sieht das Publikum. Zurückgenommene Einträge verschwinden bei den Zuschauern beim nächsten Abruf (wer die Seite schon geladen hat, sieht sie evtl. kurz weiter). Diese Seite ist nur auf diesem Rechner erreichbar.",
   "ticker.ui_approve": "Manuelle Freigabe: Einträge erscheinen erst, wenn ich sie freigebe",
-  "ticker.ui_admin": "Freigabe-Seite (nur dieser Rechner)"
+  "ticker.ui_admin": "Freigabe-Seite (nur dieser Rechner)",
+  "ticker.ui_export": "Für die Webseite exportieren (Ordner „out/ticker“ im Projekt: Dateien zum Hochladen, enthält index.html mit Einbettungscode)",
+  "ticker.ui_push": "Automatisch hochladen nach (PUT-Adresse, optional)",
+  "ticker.ui_key": "Schlüssel (optional, als Bearer-Token)",
+  "ticker.ui_web_hint": "Hochladen geht mit WebDAV (z. B. Nextcloud), S3/R2 oder einem Cloudflare Worker; der Upload braucht das Programm curl. Auf der Webseite liegen nur statische Dateien."
  },
  "en": {
   "lang.name": "English",
@@ -756,7 +760,11 @@ const I18N = {
   "ticker.a_none": "Nothing is waiting.",
   "ticker.a_hint": "The audience only sees what you release. Entries you take back disappear for viewers on their next refresh (a page already open may show them a moment longer). This page is reachable from this computer only.",
   "ticker.ui_approve": "Manual release: entries appear only when I release them",
-  "ticker.ui_admin": "Release page (this computer only)"
+  "ticker.ui_admin": "Release page (this computer only)",
+  "ticker.ui_export": "Export for a web site (folder “out/ticker” in the project: files to upload, with index.html showing the embed code)",
+  "ticker.ui_push": "Upload automatically to (PUT address, optional)",
+  "ticker.ui_key": "Key (optional, sent as a bearer token)",
+  "ticker.ui_web_hint": "Uploading works with WebDAV (e.g. Nextcloud), S3/R2 or a Cloudflare Worker; it needs the curl program. Your web site only holds static files."
  },
  "fr": {
   "lang.name": "Français",
@@ -1135,7 +1143,11 @@ const I18N = {
   "ticker.a_none": "Rien n'est en attente.",
   "ticker.a_hint": "Le public ne voit que ce que vous validez. Les entrées retirées disparaissent chez les spectateurs à la prochaine actualisation (une page déjà ouverte peut les montrer un instant de plus). Cette page n'est accessible que depuis cet ordinateur.",
   "ticker.ui_approve": "Validation manuelle : les entrées n'apparaissent qu'une fois validées par moi",
-  "ticker.ui_admin": "Page de validation (cet ordinateur uniquement)"
+  "ticker.ui_admin": "Page de validation (cet ordinateur uniquement)",
+  "ticker.ui_export": "Exporter pour un site web (dossier « out/ticker » du projet : fichiers à téléverser, avec index.html montrant le code d'intégration)",
+  "ticker.ui_push": "Téléverser automatiquement vers (adresse PUT, facultatif)",
+  "ticker.ui_key": "Clé (facultatif, envoyée comme jeton Bearer)",
+  "ticker.ui_web_hint": "Le téléversement fonctionne avec WebDAV (p. ex. Nextcloud), S3/R2 ou un Cloudflare Worker ; il nécessite le programme curl. Votre site ne contient que des fichiers statiques."
  },
  "es": {
   "lang.name": "Español",
@@ -1514,7 +1526,11 @@ const I18N = {
   "ticker.a_none": "No hay nada pendiente.",
   "ticker.a_hint": "El público solo ve lo que apruebas. Las entradas retiradas desaparecen para los espectadores en la siguiente actualización (una página ya abierta puede mostrarlas un momento más). Esta página solo es accesible desde este ordenador.",
   "ticker.ui_approve": "Aprobación manual: las entradas solo aparecen cuando las apruebo",
-  "ticker.ui_admin": "Página de aprobación (solo este ordenador)"
+  "ticker.ui_admin": "Página de aprobación (solo este ordenador)",
+  "ticker.ui_export": "Exportar para una web (carpeta «out/ticker» del proyecto: archivos para subir, con index.html que muestra el código para incrustar)",
+  "ticker.ui_push": "Subir automáticamente a (dirección PUT, opcional)",
+  "ticker.ui_key": "Clave (opcional, enviada como token Bearer)",
+  "ticker.ui_web_hint": "La subida funciona con WebDAV (p. ej. Nextcloud), S3/R2 o un Cloudflare Worker; necesita el programa curl. Tu web solo guarda archivos estáticos."
  }
 };
 

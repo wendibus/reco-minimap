@@ -19,6 +19,11 @@ use serde_json::{json, Value};
 /// Entries the ticker keeps (a whole match has far fewer events).
 const TICKER_KEEP: usize = 600;
 
+/// A sink that writes into a folder (for the example and tests).
+pub fn ticker_sink_dir(dir: &str) -> super::ticker_pub::Sink {
+    super::ticker_pub::Sink { dir: Some(dir.into()), method: "PUT".into(), ..Default::default() }
+}
+
 /// What the ticker page may show. Names are only part of it when the operator allows them
 /// (`names` is `names` or `both`); with `numbers` no name ever leaves this program.
 #[derive(Clone, Debug)]
@@ -143,9 +148,25 @@ impl Hub {
 
     /// The published feed after `since`, the entries taken back, and the ticker settings.
     pub fn ticker_json(&self, since: u64) -> String {
+        self.ticker_json_beat(since, None)
+    }
+
+    /// The same with a heartbeat number: a page reading a static copy of the feed sees the beat change
+    /// every few seconds and so knows the sender is still alive.
+    pub fn ticker_json_beat(&self, since: u64, beat: Option<u64>) -> String {
         let g = self.ticker.lock().unwrap();
         let cfg: Value = serde_json::from_str(&self.ticker_cfg).unwrap_or(Value::Null);
-        json!({"config": cfg, "seq": g.seq, "retracted": g.retracted, "events": g.feed.iter().filter(|e| e["seq"].as_u64().unwrap_or(0) > since).cloned().collect::<Vec<_>>()}).to_string()
+        let mut v = json!({"config": cfg, "seq": g.seq, "retracted": g.retracted, "events": g.feed.iter().filter(|e| e["seq"].as_u64().unwrap_or(0) > since).cloned().collect::<Vec<_>>()});
+        if let Some(b) = beat {
+            v["beat"] = json!(b);
+        }
+        v.to_string()
+    }
+
+    /// What decides whether the public feed changed: published count and entries taken back.
+    pub fn ticker_stamp(&self) -> (u64, usize) {
+        let g = self.ticker.lock().unwrap();
+        (g.seq, g.retracted.len())
     }
 
     /// The operator's view: the queue, the latest published entries, and the full settings (names included).
@@ -225,7 +246,8 @@ fn handle(mut s: TcpStream, hub: Arc<Hub>) {
     let target = req.split_whitespace().nth(1).unwrap_or("/").to_string();
     let (path, query) = target.split_once('?').map(|(p, q)| (p.to_string(), q.to_string())).unwrap_or((target.clone(), String::new()));
     match path.as_str() {
-        "/ticker" | "/ticker/" => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("ticker.html").as_bytes()),
+        "/ticker" | "/ticker/" => respond(&mut s, "200 OK", "text/html; charset=utf-8", super::ticker_pub::page_for_hub().as_bytes()),
+        "/ticker.js" => respond(&mut s, "200 OK", "application/javascript; charset=utf-8", super::ticker_pub::script().as_bytes()),
         p if p.starts_with("/ticker/admin") => {
             let change = method == "POST";
             if !admin_allowed(peer_loopback, hdr("host").as_deref(), hdr("origin").as_deref(), hdr("x-ticker-admin").is_some(), change) {
@@ -234,7 +256,7 @@ fn handle(mut s: TcpStream, hub: Arc<Hub>) {
             let arg = |k: &str| query.split('&').find_map(|kv| kv.strip_prefix(&format!("{k}="))).and_then(|v| v.parse::<u64>().ok());
             let ok = |s: &mut TcpStream, v: bool| respond(s, "200 OK", "application/json", json!({"ok": v}).to_string().as_bytes());
             match (method.as_str(), p) {
-                ("GET", "/ticker/admin") | ("GET", "/ticker/admin/") => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("ticker.html").as_bytes()),
+                ("GET", "/ticker/admin") | ("GET", "/ticker/admin/") => respond(&mut s, "200 OK", "text/html; charset=utf-8", super::ticker_pub::page_for_hub().as_bytes()),
                 ("GET", "/ticker/admin.json") => respond(&mut s, "200 OK", "application/json; charset=utf-8", hub.ticker_admin_json().as_bytes()),
                 ("POST", "/ticker/admin/release") => { let v = arg("id").map(|i| hub.decide(i, true)).unwrap_or(false); ok(&mut s, v) }
                 ("POST", "/ticker/admin/discard") => { let v = arg("id").map(|i| hub.decide(i, false)).unwrap_or(false); ok(&mut s, v) }

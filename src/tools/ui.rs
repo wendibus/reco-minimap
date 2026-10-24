@@ -443,6 +443,15 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
                 if p["ticker_approve"].as_bool() == Some(true) {
                     pushs(&mut a, &["--ticker-approve"]);
                 }
+                // copies of the public feed for a web site (static files; the upload needs curl)
+                if p["ticker_export"].as_bool() == Some(true) {
+                    pushs(&mut a, &["--ticker-export", &dir.join("out").join("ticker").to_string_lossy()]);
+                }
+                for (flag, key) in [("--ticker-push", "ticker_push"), ("--ticker-key", "ticker_key")] {
+                    if !get_s(p, key).trim().is_empty() {
+                        pushs(&mut a, &[flag, get_s(p, key).trim()]);
+                    }
+                }
                 if p["network"].as_bool() == Some(true) {
                     pushs(&mut a, &["--host", "0.0.0.0"]);
                 }
@@ -770,16 +779,19 @@ mod tests {
     #[test]
     fn the_live_job_passes_the_ticker_settings() {
         let p = json!({"model_dir": "/m", "source": "/v.mp4", "ep": "cpu", "size": "1920x1080", "fps": 25, "port": 8765,
-            "ticker_names": "both", "home_name": " Sharks ", "away_name": "", "network": true, "ticker_approve": true});
+            "ticker_names": "both", "home_name": " Sharks ", "away_name": "", "network": true, "ticker_approve": true, "ticker_export": true, "ticker_push": " https://dav.example.org/t.json ", "ticker_key": ""});
         let a = build_args("live", Path::new("/nonexistent-project"), &p).unwrap();
         assert_eq!(pair(&a, "--ticker-names").as_deref(), Some("both"));
         assert_eq!(pair(&a, "--home-name").as_deref(), Some("Sharks"));
         assert!(pair(&a, "--away-name").is_none(), "an empty name is not passed");
         assert_eq!(pair(&a, "--host").as_deref(), Some("0.0.0.0"));
         assert!(a.contains(&"--ticker-approve".to_string()));
+        assert!(pair(&a, "--ticker-export").unwrap().ends_with("ticker"));
+        assert_eq!(pair(&a, "--ticker-push").as_deref(), Some("https://dav.example.org/t.json"));
+        assert!(pair(&a, "--ticker-key").is_none(), "an empty key is not passed");
         // the safe default: nothing about names, local only
         let b = build_args("live", Path::new("/nonexistent-project"), &json!({"model_dir": "/m", "source": "/v.mp4", "ep": "cpu", "size": "1920x1080", "fps": 25, "port": 8765, "ticker_names": "evil"})).unwrap();
-        assert!(!b.contains(&"--ticker-names".to_string()) && !b.contains(&"--host".to_string()) && !b.contains(&"--ticker-approve".to_string()), "{b:?}");
+        assert!(!b.contains(&"--ticker-names".to_string()) && !b.contains(&"--host".to_string()) && !b.contains(&"--ticker-approve".to_string()) && !b.contains(&"--ticker-export".to_string()) && !b.contains(&"--ticker-push".to_string()), "{b:?}");
     }
 
     #[test]

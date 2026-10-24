@@ -1,5 +1,5 @@
 //! Serves the live ticker with made-up events, to look at the page without a video:
-//!   cargo run --features tools --example ticker_demo -- [--port 8765] [--names both] [--sport football] [--approve]
+//!   cargo run --features tools --example ticker_demo -- [--port 8765] [--names both] [--sport football] [--approve] [--export dir]
 //! then open http://127.0.0.1:8765/ticker
 use reco_minimap::tools::live::{self, Hub, TickerCfg};
 use serde_json::json;
@@ -20,6 +20,11 @@ fn main() {
     let hub = Hub::with_ticker("{}".into(), Some(cfg));
     let addr = live::serve(hub.clone(), "127.0.0.1", arg("--port", "8765").parse().unwrap()).unwrap();
     eprintln!("http://{addr}/ticker");
+    if let Some(dir) = args.iter().position(|a| a == "--export").and_then(|i| args.get(i + 1)) {
+        let sink = live::ticker_sink_dir(dir);
+        reco_minimap::tools::ticker_pub::check(&sink).unwrap();
+        reco_minimap::tools::ticker_pub::spawn(hub.clone(), sink);
+    }
     let script = [
         json!({"type": "scene", "kind": "tip_off", "team": "none", "side": null, "t": 2.0, "borderline": false}),
         json!({"type": "scene", "kind": "shot3", "team": "home", "side": "r", "t": 95.0, "borderline": true, "phase": "attempt"}),

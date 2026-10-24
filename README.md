@@ -322,7 +322,15 @@ reco-minimap live <source> --model … --court court.json --teams teams.json \
 * Detection runs as fast as it can (about 2–3 updates per second on an M4 Pro); the page predicts player movement from position and velocity and draws at the browser's frame rate.
 * Data for other programs: `/events` (server-sent events) and `/state.json`.
 * URL parameters: `?floor=1` dark floor for testing, `?lead=0.2` predict further ahead (negative = less, to match the stream delay), `?minalpha=1`, `?debug=1`.
-* Use `--host 0.0.0.0` to reach it from another computer.
+* Use `--host 0.0.0.0` to reach it from another computer. This also makes the overlay and position data (`/state.json`) visible to everyone on that network.
+
+### Live ticker
+
+While `live` runs, **`http://127.0.0.1:8765/ticker`** is a text feed for phones and browsers: substitutions and (with `--scenes`) game situations such as kick-off, throw-in, corner, penalty, free throw and shot attempts, newest first, with the video time. It works for every sport, in German, English, French and Spanish (the viewer picks the language on the page, `?lang=fr` presets it). The *Share* button hands the link to the phone's share sheet. For other devices on your Wi-Fi start with `--host 0.0.0.0` and send `http://<this-computer>:8765/ticker` (in the interface: *Reachable from other devices on the network*, the link is shown ready to copy).
+
+**Names or numbers:** `--ticker-names numbers|names|both` (default `numbers`). Names come from the squad lists, written after the number with `:` or `=`: `--roster-home "7:Anna Müller, 12:Ben, 1g:Tom"` (the keeper mark still works; names may contain spaces, not commas). With `numbers` the names are **never sent** to any device, which is the safe setting for youth teams; with `names` or `both` the page gets a switch (Numbers · Names · Both) so each viewer can reduce it, and `?show=numbers` presets a link. A number without a name is shown as `#7`. `--home-name` / `--away-name` set the team names in the header.
+
+The feed is built from automatic detection (jersey numbers need `--numbers`, and a *possible* substitution is marked unconfirmed), so it can be wrong or late; it keeps the last 600 entries and a phone that joins late catches up. Open it from outside your network only through a tunnel or server you control: the hub itself has no login.
 
 Opt-in `--adaptive-live` selects tiles near recent observations between full
 searches (`--sweep-secs 2`). Four rotating recovery tiles per update also search
@@ -348,7 +356,7 @@ Important: the minimap needs the **same full panorama you calibrated on**. The A
 | `scales <video> --model …` | Measure player size per image row → `scales.json` for `--tile auto` |
 | `colors <video> --model … [--court court.json]` | Detect the two shirt colours (and, with `--court`, the goalkeepers' for football, futsal, handball, hockey, lacrosse) → `teams.json` |
 | `run <video> --model …` | Process a video → minimap / overlay / panorama+minimap / JSON |
-| `live <source> --model …` | Live overlay and data stream |
+| `live <source> --model … [--ticker-names numbers\|names\|both] [--home-name …] [--away-name …] [--host 0.0.0.0]` | Live overlay, data stream and the text ticker at `/ticker` |
 | `replay <detections.jsonl> --court … --teams …` | Re-run tracking, ball and game situations from recorded detections (`run … --dets file`), without the video: seconds instead of minutes. Byte-identical to the run it was recorded from; use it to compare `--thr-player`, team colours or tracker changes |
 | `stats <states.jsonl>` | Numbers about a run: slots, jumps, ball states, substitutions |
 | `import-model <path> --to <dir>` | Verify and copy a Reco Trainer model |

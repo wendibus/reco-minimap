@@ -431,6 +431,18 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
                 }
             } else {
                 pushs(&mut a, &["--size", &get_s(p, "size"), "--fps", &get_s(p, "fps"), "--port", &get_s(p, "port")]);
+                // live ticker: what the public page shows, team names, and whether other devices may reach it
+                if matches!(get_s(p, "ticker_names").as_str(), "numbers" | "names" | "both") {
+                    pushs(&mut a, &["--ticker-names", &get_s(p, "ticker_names")]);
+                }
+                for (flag, key) in [("--home-name", "home_name"), ("--away-name", "away_name")] {
+                    if !get_s(p, key).trim().is_empty() {
+                        pushs(&mut a, &[flag, get_s(p, key).trim()]);
+                    }
+                }
+                if p["network"].as_bool() == Some(true) {
+                    pushs(&mut a, &["--host", "0.0.0.0"]);
+                }
                 if p["realtime"].as_bool() == Some(true) {
                     pushs(&mut a, &["--realtime"]);
                 }
@@ -559,7 +571,7 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
             let sports: Vec<Value> = BUILTIN_IDS.iter().filter_map(|id| SportProfile::builtin(id)).map(|p| json!({"id": p.id, "field": [p.field.length, p.field.width], "team_size": p.team_size, "referees": p.referees, "keepers": crate::sport::has_keepers(&p.id)})).collect();
             let ort = super::infer::ensure_ort_runtime().err();
             jres(&mut s, json!({"ok": true, "home": home_dir().to_string_lossy(), "default_dir": default_project_dir().to_string_lossy(), "sports": sports,
-                                "coreml": cfg!(feature = "coreml"), "ocr": {"path": super::ocr::default_model_path().to_string_lossy(), "exists": super::ocr::default_model_path().exists()}, "ort_error": ort, "version": env!("CARGO_PKG_VERSION"), "dialogs": cfg!(target_os = "macos") || cfg!(target_os = "windows") || Command::new("zenity").arg("--version").output().is_ok()}));
+                                "coreml": cfg!(feature = "coreml"), "ocr": {"path": super::ocr::default_model_path().to_string_lossy(), "exists": super::ocr::default_model_path().exists()}, "ort_error": ort, "version": env!("CARGO_PKG_VERSION"), "lan_ip": super::board_srv::lan_address(), "dialogs": cfg!(target_os = "macos") || cfg!(target_os = "windows") || Command::new("zenity").arg("--version").output().is_ok()}));
         }
         ("GET", "/api/update") => {
             let u = ui.update.lock().unwrap().clone();
@@ -750,6 +762,20 @@ mod tests {
         assert!(!b.contains(&"--states".to_string()), "{b:?}");
         assert!(build_args("board", &d, &json!({"file": "/x.jsonl"})).is_err(), "moment is required");
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn the_live_job_passes_the_ticker_settings() {
+        let p = json!({"model_dir": "/m", "source": "/v.mp4", "ep": "cpu", "size": "1920x1080", "fps": 25, "port": 8765,
+            "ticker_names": "both", "home_name": " Sharks ", "away_name": "", "network": true});
+        let a = build_args("live", Path::new("/nonexistent-project"), &p).unwrap();
+        assert_eq!(pair(&a, "--ticker-names").as_deref(), Some("both"));
+        assert_eq!(pair(&a, "--home-name").as_deref(), Some("Sharks"));
+        assert!(pair(&a, "--away-name").is_none(), "an empty name is not passed");
+        assert_eq!(pair(&a, "--host").as_deref(), Some("0.0.0.0"));
+        // the safe default: nothing about names, local only
+        let b = build_args("live", Path::new("/nonexistent-project"), &json!({"model_dir": "/m", "source": "/v.mp4", "ep": "cpu", "size": "1920x1080", "fps": 25, "port": 8765, "ticker_names": "evil"})).unwrap();
+        assert!(!b.contains(&"--ticker-names".to_string()) && !b.contains(&"--host".to_string()), "{b:?}");
     }
 
     #[test]

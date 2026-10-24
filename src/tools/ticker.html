@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>reco-minimap ticker</title>
+<style>
+:root{--bg:#10141a;--card:#1a2129;--line:#2a343f;--fg:#e9edf1;--dim:#8e9ba8;--acc:#3fa7ff;--home:#e63946;--away:#3b82f6}
+@media (prefers-color-scheme:light){:root{--bg:#eef1f4;--card:#fff;--line:#d3dae1;--fg:#18202a;--dim:#5d6a77;--acc:#0a74da}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-text-size-adjust:100%}
+main{max-width:640px;margin:0 auto;padding:max(12px,env(safe-area-inset-top)) 14px max(24px,env(safe-area-inset-bottom))}
+header{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-bottom:10px}
+h1{font-size:20px;margin:0;flex:1 1 100%}
+h1 .vs{color:var(--dim);font-weight:400;padding:0 6px}
+.home{color:var(--home)}.away{color:var(--away)}
+.sub{color:var(--dim);font-size:13px;flex:1 1 100%}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#43c37b;margin-right:6px;animation:p 1.6s infinite}
+.dot.off{background:#c9a227;animation:none}
+@keyframes p{50%{opacity:.35}}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0 14px}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{border:0;border-radius:0;border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+button,select{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:10px;min-height:40px;padding:0 12px;cursor:pointer}
+button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+li{display:flex;gap:12px;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:12px;padding:10px 12px;animation:in .35s ease-out}
+li.home{border-left-color:var(--home)}li.away{border-left-color:var(--away)}
+li.weak{opacity:.78}
+@keyframes in{from{opacity:0;transform:translateY(-6px)}}
+.t{font-variant-numeric:tabular-nums;color:var(--dim);min-width:3.2em;font-size:14px;padding-top:2px}
+.x{flex:1}
+.x b{font-weight:600}
+.tag{display:inline-block;font-size:12px;color:var(--dim);border:1px solid var(--line);border-radius:6px;padding:0 6px;margin-left:6px}
+#empty{color:var(--dim);text-align:center;padding:40px 10px}
+footer{color:var(--dim);font-size:12px;margin-top:18px;text-align:center}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1 id="title"><span class="home" id="th"></span><span class="vs">–</span><span class="away" id="ta"></span></h1>
+  <div class="sub"><span class="dot off" id="dot"></span><span id="status"></span></div>
+</header>
+<div class="bar">
+  <div class="seg" id="mode" hidden>
+    <button data-m="numbers" data-i="ticker.m_numbers"></button>
+    <button data-m="names" data-i="ticker.m_names"></button>
+    <button data-m="both" data-i="ticker.m_both"></button>
+  </div>
+  <select id="lang" aria-label="language"></select>
+  <button id="share" data-i="ticker.share"></button>
+</div>
+<div id="empty" data-i="ticker.empty"></div>
+<ol id="feed"></ol>
+<footer data-i="ticker.note"></footer>
+</main>
+<script src="/i18n.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const Q = new URLSearchParams(location.search);
+let cfg = { names: 'numbers', teams: { home: '', away: '' }, players: { home: {}, away: {} }, sport: '' };
+let events = [], seq = 0, mode = 'numbers', lastOk = 0, failed = 0;
+
+const clock = t => { const s = Math.max(0, Math.round(t || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const has = k => { try { return I18N.en[k] !== undefined; } catch (e) { return false; } };
+
+function teamName(t) { return (cfg.teams && cfg.teams[t]) || (t === 'home' || t === 'away' ? T('team.' + t) : ''); }
+// A player as the viewer wants to see it: "#7", "Anna" or "#7 Anna". Without a name the number stands in.
+function who(team, n) {
+  if (n == null) return T('ticker.someone');
+  const name = cfg.players && cfg.players[team] && cfg.players[team][String(n)];
+  if (mode === 'names') return name ? esc(name) : '#' + n;
+  if (mode === 'both') return name ? '#' + n + ' ' + esc(name) : '#' + n;
+  return '#' + n;
+}
+
+function describe(ev) {
+  const team = teamName(ev.team), tb = team ? '<b>' + esc(team) + '</b>' : '';
+  if (ev.type === 'sub') {
+    if (ev.kind === 'confirmed') return { text: T('ticker.sub', { team: tb, out: who(ev.team, ev.out), in: who(ev.team, ev.in) }), weak: false };
+    return { text: T('ticker.sub_possible', { team: tb, out: who(ev.team, ev.out) }), weak: true, tag: T('ticker.unconfirmed') };
+  }
+  if (ev.type === 'scene') {
+    let k = ev.kind;
+    if (k === 'kickoff' && cfg.sport === 'handball') k = 'throw_off';
+    else if (k === 'throw_in' && cfg.sport === 'basketball') k = 'inbound';
+    else if (k === 'free_throw' && ev.phase === 'attempt') k = 'free_throw_attempt';
+    const label = T('scene.' + k) + (ev.side === 'l' ? ' ←' : ev.side === 'r' ? ' →' : '');
+    return { text: tb ? label + ' · ' + tb : label, weak: false, tag: ev.borderline ? T('scene.borderline') : '' };
+  }
+  return null;
+}
+
+function draw() {
+  $('th').textContent = teamName('home'); $('ta').textContent = teamName('away');
+  const list = $('feed'); const rows = [];
+  for (let i = events.length - 1; i >= 0; i--) {
+    const ev = events[i], d = describe(ev); if (!d) continue;
+    rows.push(`<li class="${ev.team === 'home' || ev.team === 'away' ? ev.team : ''}${d.weak ? ' weak' : ''}" data-seq="${ev.seq}"><span class="t">${clock(ev.t)}</span><span class="x">${d.text}${d.tag ? '<span class="tag">' + esc(d.tag) + '</span>' : ''}</span></li>`);
+  }
+  // only the list changes; entries already shown keep their place (no flicker on every poll)
+  const html = rows.join('');
+  if (list.dataset.h !== html) { list.innerHTML = html; list.dataset.h = html; }
+  $('empty').style.display = rows.length ? 'none' : '';
+  const sport = cfg.sport && has('sport.' + cfg.sport) ? T('sport.' + cfg.sport) : '';
+  const live = Date.now() - lastOk < 12000;
+  $('dot').className = 'dot' + (live ? '' : ' off');
+  $('status').textContent = (sport ? sport + ' · ' : '') + (live ? T('ticker.live') : T('ticker.offline'));
+  document.querySelectorAll('#mode button').forEach(b => b.classList.toggle('on', b.dataset.m === mode));
+}
+
+async function poll() {
+  try {
+    const r = await fetch('/ticker.json?since=' + seq, { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    const j = await r.json();
+    cfg = j.config || cfg;
+    if (j.seq < seq) { events = []; seq = 0; return poll(); } // the program restarted
+    events = events.concat(j.events || []); seq = j.seq; lastOk = Date.now(); failed = 0;
+    setupMode();
+  } catch (e) { failed++; }
+  draw();
+}
+
+// The viewer may only choose among what the operator allows: with "numbers" no names are ever sent.
+function setupMode() {
+  const allowNames = cfg.names !== 'numbers';
+  $('mode').hidden = !allowNames;
+  const wanted = (Q.get('show') || saved() || cfg.names || 'numbers');
+  mode = !allowNames ? 'numbers' : (['numbers', 'names', 'both'].includes(wanted) ? wanted : cfg.names);
+}
+function saved() { try { return localStorage.getItem('ticker.mode'); } catch (e) { return null; } }
+
+function applyI18n() {
+  document.querySelectorAll('[data-i]').forEach(e => { e.textContent = T(e.dataset.i); });
+  document.documentElement.lang = LANG; document.title = T('ticker.title');
+  $('lang').innerHTML = Object.keys(I18N).map(k => `<option value="${k}"${k === LANG ? ' selected' : ''}>${esc(I18N[k]['lang.name'])}</option>`).join('');
+  draw();
+}
+
+document.querySelectorAll('#mode button').forEach(b => { b.onclick = () => { mode = b.dataset.m; try { localStorage.setItem('ticker.mode', mode); } catch (e) {} draw(); }; });
+$('lang').onchange = e => { setLang(e.target.value); applyI18n(); };
+$('share').onclick = async () => {
+  const url = location.origin + location.pathname + '?lang=' + LANG + (mode !== 'numbers' ? '&show=' + mode : '');
+  try { if (navigator.share) { await navigator.share({ title: T('ticker.title'), url }); return; } } catch (e) { return; }
+  try { await navigator.clipboard.writeText(url); $('share').textContent = T('ticker.copied'); setTimeout(() => { $('share').textContent = T('ticker.share'); }, 1800); } catch (e) { prompt(T('ticker.share'), url); }
+};
+
+applyI18n();
+poll(); setInterval(poll, 3000);
+</script>
+</body>
+</html>

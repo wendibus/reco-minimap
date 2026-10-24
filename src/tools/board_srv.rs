@@ -41,7 +41,7 @@ fn make_key() -> String {
 
 /// The address other devices on this network would use (found by asking the OS which interface it
 /// would use for an outside route; nothing is sent).
-fn lan_address() -> Option<String> {
+pub(crate) fn lan_address() -> Option<String> {
     let s = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
     s.connect("192.0.2.1:9").ok()?;
     Some(s.local_addr().ok()?.ip().to_string())

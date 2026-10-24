@@ -1160,12 +1160,29 @@ fn cmd_live(o: &Opts, input: &str) {
 
     let draw_home = o.s("draw-home").and_then(parse_hex).unwrap_or(home);
     let draw_away = o.s("draw-away").and_then(parse_hex).unwrap_or(away);
-    let hub = Hub::new(serde_json::json!({"home": hex(draw_home), "away": hex(draw_away), "referee": "#000000", "ball": "#ff8c00", "floor": "#262c34", "linecolor": "#e1e4e8",
-        "sport": profile.id, "numbers": o.has("numbers"), "field": [profile.field.length, profile.field.width], "lines": profile.lines.iter().map(|pl| pl.iter().map(|p| [(p.x * 100.0).round() / 100.0, (p.y * 100.0).round() / 100.0]).collect::<Vec<_>>()).collect::<Vec<_>>()}).to_string());
+    // live ticker: what the public page may show (names only when the operator allows them)
+    let ticker_mode = match o.s("ticker-names") {
+        None => "numbers",
+        Some(m) => reco_minimap::tools::live::TickerCfg::parse_mode(m).unwrap_or_else(|| fail(tr!("--ticker-names: '{m}' ist unbekannt (numbers | names | both)", "--ticker-names: '{m}' is unknown (numbers | names | both)", "--ticker-names : « {m} » est inconnu (numbers | names | both)", "--ticker-names: '{m}' es desconocido (numbers | names | both)"))),
+    };
+    let ticker = reco_minimap::tools::live::TickerCfg {
+        names: ticker_mode.to_string(),
+        home_name: o.s("home-name").unwrap_or("").to_string(),
+        away_name: o.s("away-name").unwrap_or("").to_string(),
+        home_players: o.s("roster-home").map(reco_minimap::jersey::parse_roster_names).unwrap_or_default(),
+        away_players: o.s("roster-away").map(reco_minimap::jersey::parse_roster_names).unwrap_or_default(),
+        sport: profile.id.clone(),
+    };
+    let hub = Hub::with_ticker(serde_json::json!({"home": hex(draw_home), "away": hex(draw_away), "referee": "#000000", "ball": "#ff8c00", "floor": "#262c34", "linecolor": "#e1e4e8",
+        "sport": profile.id, "numbers": o.has("numbers"), "field": [profile.field.length, profile.field.width], "lines": profile.lines.iter().map(|pl| pl.iter().map(|p| [(p.x * 100.0).round() / 100.0, (p.y * 100.0).round() / 100.0]).collect::<Vec<_>>()).collect::<Vec<_>>()}).to_string(), Some(ticker));
     let host = o.s("host").unwrap_or("127.0.0.1").to_string();
     let addr = live::serve(hub.clone(), &host, o.u("port", 8765) as u16).unwrap_or_else(|e| fail(e));
     eprintln!("{}", tr!("\nLive-Overlay: http://{addr}/", "\nLive overlay: http://{addr}/", "\nIncrustation en direct : http://{addr}/", "\nSuperposición en directo: http://{addr}/"));
     eprintln!("{}", trs!("  OBS: Quelle hinzufügen -> Browser -> URL oben, Breite 1400 / Höhe 800 (oder passend), Hintergrund bleibt transparent.", "  OBS: add a source -> Browser -> the URL above, width 1400 / height 800 (or as needed); the background stays transparent.", "  OBS : ajouter une source -> Navigateur -> l'URL ci-dessus, largeur 1400 / hauteur 800 (ou selon besoin) ; le fond reste transparent.", "  OBS: añade una fuente -> Navegador -> la URL de arriba, ancho 1400 / alto 800 (o lo que convenga); el fondo queda transparente."));
+    eprintln!("{}", tr!("Live-Ticker: http://{addr}/ticker   (Anzeige: {})", "Live ticker: http://{addr}/ticker   (shows: {})", "Fil en direct : http://{addr}/ticker   (affiche : {})", "Resumen en directo: http://{addr}/ticker   (muestra: {})", match ticker_mode { "names" => trs!("Namen", "names", "noms", "nombres"), "both" => trs!("Nummern und Namen", "numbers and names", "numéros et noms", "números y nombres"), _ => trs!("nur Nummern", "numbers only", "numéros seulement", "solo números") }));
+    if host == "127.0.0.1" {
+        eprintln!("{}", trs!("  Von anderen Geräten erreichbar mit --host 0.0.0.0 (dann sehen alle im Netz auch die Overlay- und Positionsdaten).", "  Reachable from other devices with --host 0.0.0.0 (everyone on the network then also sees the overlay and position data).", "  Accessible depuis d'autres appareils avec --host 0.0.0.0 (tout le réseau voit alors aussi l'overlay et les positions).", "  Accesible desde otros dispositivos con --host 0.0.0.0 (entonces toda la red ve también la superposición y las posiciones)."));
+    }
     eprintln!("{}", tr!("  Zum Testen im Browser: http://{addr}/?floor=1&debug=1      Daten: http://{addr}/state.json\n", "  To test in a browser: http://{addr}/?floor=1&debug=1      data: http://{addr}/state.json\n", "  Pour tester dans un navigateur : http://{addr}/?floor=1&debug=1      données : http://{addr}/state.json\n", "  Para probar en un navegador: http://{addr}/?floor=1&debug=1      datos: http://{addr}/state.json\n"));
 
     let mut jsonl = o.s("json").map(|p| std::io::BufWriter::new(std::fs::File::create(p).unwrap_or_else(|e| fail(format!("{p}: {e}")))));
@@ -1280,6 +1297,9 @@ fn cmd_live(o: &Opts, input: &str) {
         if let Some(j) = jsonl.as_mut() {
             let _ = writeln!(j, "{line}");
             let _ = j.flush(); // live log: keep it readable while running
+        }
+        if let Some(ev) = v["events"].as_array() {
+            hub.push_events(ev);
         }
         hub.publish(line);
         n += 1;

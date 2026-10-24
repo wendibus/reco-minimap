@@ -1,6 +1,6 @@
 [package]
 name = "reco-minimap"
-version = "0.7.0"
+version = "0.8.0"
 # Beim Einhängen in den reco-Workspace: edition/rust-version/license per `.workspace = true`.
 edition = "2021"
 license = "AGPL-3.0-only"
@@ -23,4 +23,9 @@ zip = { version = "2", default-features = false, features = ["deflate"], optiona
 [[bin]]
 name = "reco-minimap"
 path = "src/bin/reco-minimap.rs"
+required-features = ["tools"]
+
+[[example]]
+name = "ticker_demo"
+path = "examples/ticker_demo.rs"
 required-features = ["tools"]

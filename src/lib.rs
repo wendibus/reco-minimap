@@ -9,6 +9,7 @@
 //! everything downstream. Pure Rust, no dependencies.
 
 pub mod ball;
+pub mod board;
 pub mod detect;
 pub mod geom;
 pub mod identity;

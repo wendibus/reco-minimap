@@ -16,6 +16,9 @@ reco-minimap – Minimap (Court, Spieler, Schiris, Ball) aus einem Reco-Panorama
                          Situationen schicken: Sekunden statt Minuten, z.B. um --thr-player oder Farben zu vergleichen
   reco-minimap stats     <states.jsonl>            Zahlen-Report zu einem run-Ergebnis (Slots, Sprünge, Ball)
   reco-minimap review-identities <states.jsonl> --annotations review.json --out reviewed.jsonl   Kader und manuelle Korrekturen anwenden
+  reco-minimap snapshot  <states.jsonl> --court court.json --teams teams.json --at 12:34 [--trail 5] [--out scene.json] [--svg scene.svg]
+                         einen Moment aus einem Lauf als Taktikboard-Szene (JSON, siehe docs/BOARD.md) und/oder SVG herausschneiden
+  reco-minimap svg       <scene.json> [--out scene.svg]     eine Szenendatei als SVG zeichnen (--no-numbers --no-trails --no-stripes --width px)
   reco-minimap colors    <video> --model <ordner|.onnx> [--court court.json] [--home-hint #rrggbb] [--out teams.json]
   reco-minimap run       <video> --model <ordner|.onnx> --court court.json (--teams teams.json | --home #hex --away #hex)
                          [--minimap out.mp4] [--alpha out.mov] [--pip out.mp4] [--json out.jsonl]

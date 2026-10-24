@@ -322,11 +322,61 @@ fn main() {
         "import-model" => cmd_import_model(&o, &input),
         "ocr-bench" => cmd_ocr_bench(&o, &input),
         "colors" => cmd_colors(&o, &input),
+        "snapshot" => cmd_snapshot(&o, &input),
+        "svg" => cmd_svg(&o, &input),
         "run" => cmd_run(&o, &input),
         "replay" => cmd_replay(&o, &input),
         "live" => cmd_live(&o, &input),
         other => fail(tr!("unbekannter Befehl '{other}' (calibrate | selfcheck | colors | run)", "unknown command '{other}' (see --help)", "commande inconnue « {other} » (voir --help)", "comando desconocido '{other}' (ver --help)")),
     }
+}
+
+// ---------------------------------------------------------------- tactics board
+
+fn svg_style(o: &Opts) -> reco_minimap::board::SvgStyle {
+    let mut st = reco_minimap::board::SvgStyle::default();
+    st.width_px = o.f("width", st.width_px as f64) as f32;
+    st.numbers = !o.has("no-numbers");
+    st.trails = !o.has("no-trails");
+    st.stripes = !o.has("no-stripes");
+    st
+}
+
+/// `snapshot`: cut one moment out of a run (`run --json`) as a board scene (JSON) and/or SVG.
+fn cmd_snapshot(o: &Opts, input: &str) {
+    use reco_minimap::tools::board_io::{scene_from_states, scene_to_json, SceneColours};
+    let (_, profile) = load_court(o.s("court").unwrap_or_else(|| fail(trs!("--court court.json fehlt", "--court court.json is missing", "--court court.json manquant", "falta --court court.json"))));
+    let teams = read_teams(o);
+    let at = clock_opt(o, "at").unwrap_or_else(|| fail(trs!("--at fehlt: Zeitpunkt in Sekunden oder min:s (Videozeit)", "--at is missing: the moment in seconds or min:s (video time)", "--at manquant : l'instant en secondes ou min:s (temps de la vidéo)", "falta --at: el momento en segundos o min:s (tiempo del vídeo)")));
+    let colours = SceneColours {
+        home: o.s("draw-home").and_then(parse_hex).unwrap_or(teams.home),
+        away: o.s("draw-away").and_then(parse_hex).unwrap_or(teams.away),
+        home_keeper: o.s("draw-home-gk").and_then(parse_hex),
+        away_keeper: o.s("draw-away-gk").and_then(parse_hex),
+    };
+    let scene = scene_from_states(std::path::Path::new(input), at, o.f("trail", 5.0).max(0.0), &profile, colours).unwrap_or_else(|e| fail(e));
+    let out = o.s("out").unwrap_or("scene.json");
+    std::fs::write(out, serde_json::to_string_pretty(&scene_to_json(&scene)).unwrap()).unwrap_or_else(|e| fail(format!("{out}: {e}")));
+    println!("{}", tr!("Szene bei {:.1} s: {} Spieler, {} Schiedsrichter -> {out}", "Scene at {:.1} s: {} players, {} referees -> {out}", "Scène à {:.1} s : {} joueurs, {} arbitres -> {out}", "Escena en {:.1} s: {} jugadores, {} árbitros -> {out}", scene.t, scene.players.len(), scene.referees.len()));
+    if let Some(svg) = o.s("svg") {
+        std::fs::write(svg, reco_minimap::board::to_svg(&scene, &svg_style(o))).unwrap_or_else(|e| fail(format!("{svg}: {e}")));
+        println!("SVG -> {svg}");
+    }
+}
+
+/// `svg`: draw a board scene file (JSON) as SVG - also for scenes a board app has edited.
+fn cmd_svg(o: &Opts, input: &str) {
+    use reco_minimap::tools::board_io::scene_from_json;
+    let text = std::fs::read_to_string(input).unwrap_or_else(|e| fail(format!("{input}: {e}")));
+    let v: serde_json::Value = serde_json::from_str(&text).unwrap_or_else(|e| fail(format!("{input}: {e}")));
+    let mut scene = scene_from_json(&v).unwrap_or_else(|e| fail(format!("{input}: {e}")));
+    if let Some(c) = o.s("draw-home").and_then(parse_hex) { scene.home = c; }
+    if let Some(c) = o.s("draw-away").and_then(parse_hex) { scene.away = c; }
+    if let Some(c) = o.s("draw-home-gk").and_then(parse_hex) { scene.home_keeper = Some(c); }
+    if let Some(c) = o.s("draw-away-gk").and_then(parse_hex) { scene.away_keeper = Some(c); }
+    let out = o.s("out").map(|s| s.to_string()).unwrap_or_else(|| std::path::Path::new(input).with_extension("svg").to_string_lossy().into_owned());
+    std::fs::write(&out, reco_minimap::board::to_svg(&scene, &svg_style(o))).unwrap_or_else(|e| fail(format!("{out}: {e}")));
+    println!("SVG -> {out}");
 }
 
 // ---------------------------------------------------------------- update

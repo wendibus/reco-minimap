@@ -328,6 +328,8 @@ reco-minimap live <source> --model … --court court.json --teams teams.json \
 
 **Full guide with a picture and installation steps: [Live ticker (English)](docs/TICKER.md) · [Live-Ticker (Deutsch)](docs/TICKER.de.md) · [Fil en direct (Français)](docs/TICKER.fr.md) · [Resumen en directo (Español)](docs/TICKER.es.md).**
 
+![How the live ticker works](docs/img/ticker-flow.en.svg)
+
 While `live` runs, **`http://127.0.0.1:8765/ticker`** is a text feed for phones and browsers: substitutions and (with `--scenes`) game situations such as kick-off, throw-in, corner, penalty, free throw and shot attempts, newest first, with the video time. It works for every sport, in German, English, French and Spanish (the viewer picks the language on the page, `?lang=fr` presets it). The *Share* button hands the link to the phone's share sheet. For other devices on your Wi-Fi start with `--host 0.0.0.0` and send `http://<this-computer>:8765/ticker` (in the interface: *Reachable from other devices on the network*, the link is shown ready to copy).
 
 **Names or numbers:** `--ticker-names numbers|names|both` (default `numbers`). Names come from the squad lists, written after the number with `:` or `=`: `--roster-home "7:Anna Müller, 12:Ben, 1g:Tom"` (the keeper mark still works; names may contain spaces, not commas). With `numbers` the names are **never sent** to any device, which is the safe setting for youth teams; with `names` or `both` the page gets a switch (Numbers · Names · Both) so each viewer can reduce it, and `?show=numbers` presets a link. A number without a name is shown as `#7`. `--home-name` / `--away-name` set the team names in the header.

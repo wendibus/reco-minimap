@@ -31,19 +31,20 @@ Everything runs locally. No video, frame or model leaves your computer. The only
 2. [Install](#install)
 3. [Quick start](#quick-start)
 4. [Shirt colours and goalkeepers](#shirt-colours-and-goalkeepers)
-5. [Sports](#sports)
-6. [Models from Reco Trainer](#models-from-reco-trainer)
-7. [Jersey numbers and substitutions](#jersey-numbers-and-substitutions)
-8. [Game situations (scenes)](#game-situations-scenes)
-9. [Live mode and OBS](#live-mode-and-obs)
-10. [Command-line reference](#command-line-reference)
-11. [Output formats](#output-formats)
-12. [Project folder](#project-folder)
-13. [Performance](#performance)
-14. [Known limitations](#known-limitations)
-15. [Use as a Rust library](#use-as-a-rust-library)
-16. [Development](#development)
-17. [License and credits](#license-and-credits)
+5. [Tactics board scenes](#tactics-board-scenes)
+6. [Sports](#sports)
+7. [Models from Reco Trainer](#models-from-reco-trainer)
+8. [Jersey numbers and substitutions](#jersey-numbers-and-substitutions)
+9. [Game situations (scenes)](#game-situations-scenes)
+10. [Live mode and OBS](#live-mode-and-obs)
+11. [Command-line reference](#command-line-reference)
+12. [Output formats](#output-formats)
+13. [Project folder](#project-folder)
+14. [Performance](#performance)
+15. [Known limitations](#known-limitations)
+16. [Use as a Rust library](#use-as-a-rust-library)
+17. [Development](#development)
+18. [License and credits](#license-and-credits)
 
 Step-by-step guides: [Walkthrough (English)](docs/WALKTHROUGH.md) · [Anleitung (Deutsch)](docs/WALKTHROUGH.de.md) · [Guide (Français)](docs/WALKTHROUGH.fr.md) · [Guía (Español)](docs/WALKTHROUGH.es.md) · Game situations per sport: [Scenarios (English)](docs/SCENARIOS.md) · [Szenarien (Deutsch)](docs/SZENARIEN.de.md) · [Scénarios (Français)](docs/SCENARIOS.fr.md) · [Escenarios (Español)](docs/SCENARIOS.es.md)
 
@@ -198,6 +199,15 @@ The interface runs the same check when it starts and shows a notice with an *Ins
 * A keeper is counted as a member of his team (the fifth, sixth ... player slot) and drawn in the team colour **with diagonal stripes** (stripe colour: black or white, whichever contrasts; set it with `--draw-home-gk` / `--draw-away-gk`, or `--no-stripes` for plain dots). The browser overlay for OBS stripes them too.
 * **Only where it makes sense:** the options exist for football, futsal, handball, hockey and lacrosse. In basketball, volleyball, rugby, American football and custom pitches the interface does not show them, `colors` does not look for keepers, and keeper colours or `g` marks found in an old `teams.json` or squad list are ignored (with a note).
 * If a keeper's kit is almost the same colour as the referee's (both black, say), the program cannot tell them apart by colour; use a different `--ref-color` or let the model's referee class decide.
+
+## Tactics board scenes
+
+For a tactics board ("what if" from a paused moment) `reco-minimap snapshot` cuts one moment out of a run and writes a **scene file** (JSON: field lines in metres, players with team, number, keeper flag and trail, referees, ball) and, if you like, an **SVG** drawing of it. `reco-minimap svg` redraws a scene file, for example after a board app has moved the players. Format and SVG structure: [docs/BOARD.md](docs/BOARD.md).
+
+```bash
+reco-minimap run game.mp4 --model … --court court.json --teams teams.json --json game.jsonl
+reco-minimap snapshot game.jsonl --court court.json --teams teams.json --at 12:34 --trail 5 --out scene.json --svg scene.svg
+```
 
 ## Sports
 
@@ -354,6 +364,8 @@ Common options (see `reco-minimap --help` for all):
 | `--roi x0,y0,x1,y1` | Search only a band of the panorama (fractions) |
 | `--minimap f.mp4 --alpha f.mov --pip f.mp4 --json f.jsonl` | Outputs of `run` (`--alpha-bg 0.6` adds a dark backing) |
 | `--draw-home #fff --draw-away #2f6bff --ref-color #000` | Display colours, referee shirt colour |
+| `snapshot <states.jsonl> --court … --teams … --at 12:34 [--trail 5] [--out scene.json] [--svg scene.svg]` | Cut one moment out of a run as a tactics-board scene (JSON) and/or SVG |
+| `svg <scene.json> [--out x.svg]` | Draw a scene file as SVG (`--no-numbers`, `--no-trails`, `--no-stripes`, `--width`, `--draw-*`) |
 | `--draw-home-gk #hex --draw-away-gk #hex`, `--no-stripes` | Stripe colour of the goalkeepers in the minimap; plain dots |
 | `--home-gk #hex --away-gk #hex`, `--no-gk`, `--gk-swap` | Goalkeeper shirt colours, ignore them, exchange the two keepers' teams |
 | `--roster-home 1g,4,7,12gk` | In a squad list, `g` / `gk` / `tw` behind a number marks a goalkeeper |

@@ -204,6 +204,14 @@ The interface runs the same check when it starts and shows a notice with an *Ins
 
 For a tactics board ("what if" from a paused moment) `reco-minimap snapshot` cuts one moment out of a run and writes a **scene file** (JSON: field lines in metres, players with team, number, keeper flag and trail, referees, ball) and, if you like, an **SVG** drawing of it. `reco-minimap svg` redraws a scene file, for example after a board app has moved the players. Format and SVG structure: [docs/BOARD.md](docs/BOARD.md).
 
+`reco-minimap board` opens the **tactics board** in the browser (also in the interface, step 6 · Evaluation): pause a run at a moment, drag players and the ball, draw arrows and freehand lines, add **steps** to play a "what if" line (the players glide from step to step), swap ends, change numbers and keepers, then save the scene or export SVG/PNG. It is a web page, so it works the same on a laptop, an iPad or an Android tablet; Apple Pencil and touch are supported. For a tablet on the same Wi-Fi start it with `--lan` and open the printed link on the tablet (the link carries a secret key; use it only on networks you trust). `--export board.html` writes the page as a single file that opens without the program (load a scene there with *Open*).
+
+```bash
+reco-minimap board scene.json --states game.jsonl --at 12:34 --court court.json --teams teams.json
+```
+
+With `--states` a new scene is cut from the run (overwriting `scene.json`); without it an existing scene is opened as you saved it.
+
 ```bash
 reco-minimap run game.mp4 --model … --court court.json --teams teams.json --json game.jsonl
 reco-minimap snapshot game.jsonl --court court.json --teams teams.json --at 12:34 --trail 5 --out scene.json --svg scene.svg
@@ -365,7 +373,8 @@ Common options (see `reco-minimap --help` for all):
 | `--minimap f.mp4 --alpha f.mov --pip f.mp4 --json f.jsonl` | Outputs of `run` (`--alpha-bg 0.6` adds a dark backing) |
 | `--draw-home #fff --draw-away #2f6bff --ref-color #000` | Display colours, referee shirt colour |
 | `snapshot <states.jsonl> --court … --teams … --at 12:34 [--trail 5] [--out scene.json] [--svg scene.svg]` | Cut one moment out of a run as a tactics-board scene (JSON) and/or SVG |
-| `svg <scene.json> [--out x.svg]` | Draw a scene file as SVG (`--no-numbers`, `--no-trails`, `--no-stripes`, `--width`, `--draw-*`) |
+| `board [scene.json] [--states … --at … --court …] [--port N] [--lan] [--export board.html]` | Open the tactics board in the browser (move players, arrows, steps, save, SVG/PNG) |
+| `svg <scene.json> [--step N] [--out x.svg]` | Draw a scene file as SVG (`--no-numbers`, `--no-trails`, `--no-stripes`, `--width`, `--draw-*`) |
 | `--draw-home-gk #hex --draw-away-gk #hex`, `--no-stripes` | Stripe colour of the goalkeepers in the minimap; plain dots |
 | `--home-gk #hex --away-gk #hex`, `--no-gk`, `--gk-swap` | Goalkeeper shirt colours, ignore them, exchange the two keepers' teams |
 | `--roster-home 1g,4,7,12gk` | In a squad list, `g` / `gk` / `tw` behind a number marks a goalkeeper |

@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>reco-minimap board</title>
+<style>
+:root{--bg:#14181d;--panel:#1d232b;--line:#2c3540;--fg:#e8ecf0;--dim:#93a0ad;--acc:#3fa7ff;--ok:#43c37b;--bad:#ff6b6b}
+@media (prefers-color-scheme:light){:root{--bg:#eef1f4;--panel:#fff;--line:#cfd6dd;--fg:#1a2229;--dim:#5b6874;--acc:#0a74da;--ok:#1e9a5a;--bad:#d03a3a}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;flex-direction:column;-webkit-text-size-adjust:100%}
+header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px max(12px,env(safe-area-inset-left));background:var(--panel);border-bottom:1px solid var(--line)}
+.grp{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.sep{width:1px;height:28px;background:var(--line);margin:0 4px}
+button,select,input[type=number]{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:10px;min-height:44px;min-width:44px;padding:0 12px}
+button{cursor:pointer;touch-action:manipulation}
+button:hover{border-color:var(--acc)}
+button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+button:disabled{opacity:.4;cursor:default}
+button.sw{width:44px;padding:0;border-radius:50%}
+button.sw.on{outline:3px solid var(--acc);outline-offset:2px;background:inherit}
+label.chk{display:flex;gap:6px;align-items:center;min-height:44px;color:var(--dim)}
+label.chk input{width:20px;height:20px}
+#stage{flex:1;min-height:0;padding:8px max(12px,env(safe-area-inset-left)) 0;display:flex}
+#board{flex:1;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none;border-radius:12px;background:#262c34}
+#sel{display:none;gap:10px;align-items:center;flex-wrap:wrap;padding:6px 12px;border-top:1px solid var(--line);background:var(--panel)}
+#sel.show{display:flex}
+#sel input[type=number]{width:84px}
+footer{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px max(12px,env(safe-area-inset-left)) max(8px,env(safe-area-inset-bottom));background:var(--panel);border-top:1px solid var(--line)}
+.chip{min-width:44px}
+#msg{margin-left:auto;color:var(--dim);font-size:13px}
+#msg.ok{color:var(--ok)}#msg.bad{color:var(--bad)}
+#empty{display:none;position:absolute;inset:0;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--dim);pointer-events:none}
+#empty.show{display:flex}
+#stagewrap{position:relative;flex:1;min-height:0;display:flex;flex-direction:column}
+.drop #board{outline:3px dashed var(--acc)}
+</style>
+</head>
+<body>
+<header>
+  <div class="grp" id="tools">
+    <button data-mode="move" class="on" data-i="board.move"></button>
+    <button data-mode="arrow" data-i="board.arrow"></button>
+    <button data-mode="pen" data-i="board.pen"></button>
+    <button data-mode="erase" data-i="board.erase"></button>
+  </div>
+  <div class="grp" id="cols"></div>
+  <div class="sep"></div>
+  <div class="grp">
+    <button id="undo" data-i="board.undo"></button>
+    <button id="redo" data-i="board.redo"></button>
+    <button id="mirror" data-i="board.mirror"></button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <button id="addh" data-i="board.add_home"></button>
+    <button id="adda" data-i="board.add_away"></button>
+  </div>
+  <div class="grp" style="margin-left:auto">
+    <select id="lang" aria-label="language"></select>
+  </div>
+</header>
+<div id="stagewrap">
+  <div id="stage"><svg id="board" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg></div>
+  <div id="empty"><div><p style="font-size:18px;color:var(--fg)" data-i="board.empty"></p><p data-i="board.hint"></p></div></div>
+</div>
+<div id="sel">
+  <strong id="selname"></strong>
+  <label class="chk"><span data-i="board.number"></span> <input id="selnum" type="number" min="0" max="999" inputmode="numeric"></label>
+  <label class="chk" id="selgkw"><input id="selgk" type="checkbox"> <span data-i="board.keeper"></span></label>
+  <button id="seldel" data-i="board.delete"></button>
+</div>
+<footer>
+  <div class="grp" id="steps"></div>
+  <button id="stepadd" data-i="board.step_add"></button>
+  <button id="stepdel" data-i="board.step_del"></button>
+  <button id="play" data-i="board.play"></button>
+  <div class="sep"></div>
+  <label class="chk"><input type="checkbox" id="oghost" checked> <span data-i="board.ghost"></span></label>
+  <label class="chk"><input type="checkbox" id="otrail" checked> <span data-i="board.trails"></span></label>
+  <label class="chk"><input type="checkbox" id="onum" checked> <span data-i="board.numbers"></span></label>
+  <div class="sep"></div>
+  <button id="save" data-i="board.save"></button>
+  <button id="exsvg">SVG</button>
+  <button id="expng">PNG</button>
+  <button id="open" data-i="board.open"></button>
+  <input id="file" type="file" accept=".json,application/json" hidden>
+  <span id="msg"></span>
+</footer>
+<script src="/i18n.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const Q = new URLSearchParams(location.search), KEY = Q.get('k') || '';
+const SERVED = location.protocol === 'http:' || location.protocol === 'https:';
+const KEEPER_SPORTS = ['football', 'futsal', 'handball', 'hockey', 'lacrosse'];
+const COLOURS = ['#ffcc00', '#ff4d4d', '#ffffff', '#4dd2ff'];
+const STEP_SECS = 1.4;
+
+let doc = null, roster = [], steps = [], orig = {}, cur = 0, sel = null;
+let mode = 'move', colour = COLOURS[0], dirty = false, draft = null, drag = null, anim = null;
+const undoS = [], redoS = [];
+const opt = { ghost: true, trail: true, num: true };
+
+// ---------------------------------------------------------------- helpers
+const r2 = v => Math.round(v * 100) / 100;
+const L = () => (doc ? doc.field.length : 40), W = () => (doc ? doc.field.width : 20);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+function lum(hex) { const n = parseInt(hex.slice(1), 16); return 0.2126 * (n >> 16) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255); }
+function mix(hex, to, f) { const a = parseInt(hex.slice(1), 16), b = parseInt(to.slice(1), 16); const c = s => Math.round(((a >> s) & 255) * (1 - f) + ((b >> s) & 255) * f); return '#' + [16, 8, 0].map(s => c(s).toString(16).padStart(2, '0')).join(''); }
+function say(text, cls) { const m = $('msg'); m.textContent = text || ''; m.className = cls || ''; if (text) { clearTimeout(say.t); say.t = setTimeout(() => { m.textContent = ''; }, 4000); } }
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+const player = id => roster.find(r => r.id === id);
+const teamColour = t => (doc.teams[t] && doc.teams[t].color) || (t === 'home' ? '#e63946' : '#3b82f6');
+const keeperColour = t => (doc.teams[t] && doc.teams[t].keeper_color) || null;
+const isKeeperSport = () => !!doc && (KEEPER_SPORTS.includes(doc.sport) || roster.some(r => r.keeper));
+
+// ---------------------------------------------------------------- scene <-> state
+function load(scene) {
+  if (!scene || scene.format !== 'reco-minimap-board') throw new Error(T('board.bad_file'));
+  if (!scene.field || !scene.players) throw new Error(T('board.bad_file'));
+  doc = scene;
+  doc.teams = doc.teams || {};
+  roster = scene.players.map(p => ({ id: p.id, team: p.team, number: p.number == null ? null : p.number, keeper: !!p.keeper }));
+  orig = {};
+  const base = {};
+  scene.players.forEach(p => { base[p.id] = [p.x, p.y]; orig[p.id] = [p.x, p.y]; });
+  const ballOf = b => ({ state: (b && b.state) || 'unknown', holder: b && b.holder != null ? b.holder : null, x: b && b.x != null ? b.x : null, y: b && b.y != null ? b.y : null });
+  if (Array.isArray(scene.steps) && scene.steps.length) {
+    let prev = base;
+    steps = scene.steps.map((s, i) => {
+      const pos = {};
+      roster.forEach(r => { pos[r.id] = (prev[r.id] || base[r.id] || [L() / 2, W() / 2]).slice(); });
+      (s.players || []).forEach(q => { if (pos[q.id]) pos[q.id] = [q.x, q.y]; });
+      prev = pos;
+      return { name: s.name || '', pos, ball: ballOf(s.ball || (i === 0 ? scene.ball : null)), marks: (s.marks || []).map(m => ({ ...m, points: m.points.map(p => p.slice()) })) };
+    });
+  } else {
+    const pos = {};
+    roster.forEach(r => { pos[r.id] = base[r.id].slice(); });
+    steps = [{ name: '', pos, ball: ballOf(scene.ball), marks: (scene.marks || []).map(m => ({ ...m, points: m.points.map(p => p.slice()) })) }];
+  }
+  cur = 0; sel = null; undoS.length = 0; redoS.length = 0; dirty = false; draft = null; stopPlay();
+  $('empty').classList.remove('show');
+  setupView(); refresh();
+}
+
+function serialize() {
+  const out = JSON.parse(JSON.stringify(doc));
+  const s0 = steps[0];
+  out.players = roster.map(r => {
+    const b = doc.players.find(p => p.id === r.id) || {};
+    return { ...b, id: r.id, team: r.team, number: r.number, keeper: r.keeper, x: r2(s0.pos[r.id][0]), y: r2(s0.pos[r.id][1]), trail: b.trail || [] };
+  });
+  const ballOut = s => { const p = ballPos(s, s.pos); return { state: s.ball.holder != null ? 'held' : (p ? 'free' : s.ball.state), holder: s.ball.holder, x: p ? r2(p[0]) : null, y: p ? r2(p[1]) : null }; };
+  out.ball = ballOut(s0);
+  out.marks = s0.marks.map(m => ({ ...m, points: m.points.map(p => [r2(p[0]), r2(p[1])]) }));
+  if (steps.length > 1) {
+    out.steps = steps.map(s => ({ name: s.name, players: roster.map(r => ({ id: r.id, x: r2(s.pos[r.id][0]), y: r2(s.pos[r.id][1]) })), ball: ballOut(s), marks: s.marks.map(m => ({ ...m, points: m.points.map(p => [r2(p[0]), r2(p[1])]) })) }));
+  } else delete out.steps;
+  return out;
+}
+
+function ballPos(s, pos) {
+  if (s.ball.holder != null && pos[s.ball.holder]) return pos[s.ball.holder];
+  if (s.ball.x != null && s.ball.y != null) return [s.ball.x, s.ball.y];
+  return null;
+}
+
+// ---------------------------------------------------------------- undo
+const snap = () => JSON.stringify({ roster, steps, cur });
+function commit() { undoS.push(snap()); if (undoS.length > 100) undoS.shift(); redoS.length = 0; dirty = true; }
+function restore(str) { const o = JSON.parse(str); roster = o.roster; steps = o.steps; cur = Math.min(o.cur, steps.length - 1); if (sel != null && !player(sel)) sel = null; dirty = true; refresh(); }
+function undo() { if (!undoS.length) return; redoS.push(snap()); restore(undoS.pop()); }
+function redo() { if (!redoS.length) return; undoS.push(snap()); restore(redoS.pop()); }
+
+// ---------------------------------------------------------------- drawing
+function viewState() {
+  if (!anim) return { pos: steps[cur].pos, ball: ballPos(steps[cur], steps[cur].pos), marks: steps[cur].marks, step: cur };
+  const i = Math.min(Math.floor(anim.t), steps.length - 2), f = clamp(anim.t - i, 0, 1), a = steps[i], b = steps[i + 1];
+  const e = f < .5 ? 2 * f * f : 1 - Math.pow(-2 * f + 2, 2) / 2;
+  const pos = {};
+  roster.forEach(r => { const p = a.pos[r.id], q = b.pos[r.id]; pos[r.id] = [p[0] + (q[0] - p[0]) * e, p[1] + (q[1] - p[1]) * e]; });
+  const pa = ballPos(a, pos), pb = ballPos(b, pos);
+  let ball = pb || pa;
+  if (pa && pb) ball = (a.ball.holder != null && a.ball.holder === b.ball.holder) ? pos[a.ball.holder] : [pa[0] + (pb[0] - pa[0]) * e, pa[1] + (pb[1] - pa[1]) * e];
+  return { pos, ball, marks: f < .5 ? a.marks : b.marks, step: f < .5 ? i : i + 1 };
+}
+
+function markSvg(m) {
+  if (m.points.length < 2) return '';
+  const c = m.color || '#ffcc00', P = m.points;
+  if (m.type === 'arrow') {
+    const a = P[P.length - 2], b = P[P.length - 1], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.max(Math.hypot(dx, dy), 1e-3), ux = dx / l, uy = dy / l, h = Math.min(.9, l * .6);
+    const bx = b[0] - ux * h, by = b[1] - uy * h, hx = -uy * h * .5, hy = ux * h * .5;
+    const line = P.slice(0, -1).map(p => p[0] + ',' + p[1]).concat([bx + ',' + by]).join(' ');
+    return `<g class="mark arrow" stroke="${c}"><polyline stroke-width=".2" points="${line}"/><polygon fill="${c}" stroke="none" points="${b[0]},${b[1]} ${bx + hx},${by + hy} ${bx - hx},${by - hy}"/></g>`;
+  }
+  return `<polyline class="mark pen" stroke="${c}" stroke-width=".2" points="${P.map(p => p[0] + ',' + p[1]).join(' ')}"/>`;
+}
+
+function render(clean) {
+  const v = viewState(), pad = 1.5, l = L(), w = W();
+  let o = `<defs>`;
+  ['home', 'away'].forEach(t => {
+    const tc = teamColour(t), kc = keeperColour(t) || mix(tc, '#ffffff', .75);
+    o += `<pattern id="kp-${t}" width=".5" height=".5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width=".25" height=".5" fill="${kc}"/><rect x=".25" width=".25" height=".5" fill="${tc}"/></pattern>`;
+  });
+  o += `</defs><rect x="${-pad}" y="${-pad}" width="${l + 2 * pad}" height="${w + 2 * pad}" fill="#262c34"/>`;
+  o += `<g fill="none" stroke="#e1e4e8" stroke-width=".08" stroke-linecap="round" stroke-linejoin="round">` + (doc.lines || []).map(pl => `<polyline points="${pl.map(p => p[0] + ',' + p[1]).join(' ')}"/>`).join('') + `</g>`;
+  if (!clean && opt.ghost && !anim && cur > 0) {
+    const pv = steps[cur - 1];
+    roster.forEach(r => { const a = pv.pos[r.id], b = v.pos[r.id]; if (dist(a, b) > .3) o += `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="${teamColour(r.team)}" stroke-width=".12" stroke-dasharray=".4 .3" opacity=".55"/><circle cx="${a[0]}" cy="${a[1]}" r=".8" fill="${teamColour(r.team)}" opacity=".25"/>`; });
+  }
+  if (opt.trail && v.step === 0 && !anim) {
+    (doc.players || []).forEach(p => { const r = player(p.id); if (!r || !p.trail || p.trail.length < 2) return; if (dist(orig[p.id], v.pos[p.id]) > .3) return; o += `<polyline fill="none" stroke="${teamColour(r.team)}" stroke-width=".14" opacity=".5" stroke-linecap="round" points="${p.trail.map(q => q[0] + ',' + q[1]).join(' ')}"/>`; });
+  }
+  o += `<g fill="none" stroke-linecap="round" stroke-linejoin="round">` + v.marks.map(markSvg).join('') + (draft ? markSvg(draft) : '') + `</g>`;
+  (doc.referees || []).forEach(p => { o += `<rect x="${p.x - .6}" y="${p.y - .6}" width="1.2" height="1.2" fill="#f2c94c" opacity=".9"/>`; });
+  roster.forEach(r => {
+    const p = v.pos[r.id], tc = teamColour(r.team), fill = r.keeper ? `url(#kp-${r.team})` : tc, txt = lum(tc) > 150 ? '#111' : '#fff';
+    o += `<g data-id="${r.id}"><circle cx="${p[0]}" cy="${p[1]}" r=".9" fill="${tc}" stroke="#000" stroke-opacity=".5" stroke-width=".1"/>`;
+    if (r.keeper) o += `<circle cx="${p[0]}" cy="${p[1]}" r=".9" fill="${fill}" stroke="#000" stroke-opacity=".5" stroke-width=".1"/>`;
+    if (opt.num && r.number != null) o += `<text x="${p[0]}" y="${p[1] + .38}" text-anchor="middle" font-size="1.1" font-weight="700" font-family="system-ui,sans-serif" fill="${r.keeper ? '#111' : txt}" ${r.keeper ? 'stroke="#fff" stroke-width=".18" paint-order="stroke"' : ''}>${r.number}</text>`;
+    if (!clean && sel === r.id) o += `<circle cx="${p[0]}" cy="${p[1]}" r="1.35" fill="none" stroke="#3fa7ff" stroke-width=".18"/>`;
+    o += `</g>`;
+  });
+  if (v.ball) {
+    const held = !anim && steps[cur].ball.holder != null, bx = v.ball[0] + (held ? .85 : 0), by = v.ball[1] - (held ? .5 : 0);
+    o += `<circle cx="${bx}" cy="${by}" r=".42" fill="#fff" stroke="#111" stroke-width=".12"/>`;
+  }
+  return { inner: o, vb: `${-pad} ${-pad} ${l + 2 * pad} ${w + 2 * pad}` };
+}
+
+function paint() { if (!doc) return; const r = render(false); const b = $('board'); b.setAttribute('viewBox', r.vb); b.innerHTML = r.inner; }
+function setupView() { $('board').setAttribute('viewBox', `${-1.5} ${-1.5} ${L() + 3} ${W() + 3}`); }
+
+// ---------------------------------------------------------------- panels
+function refresh() {
+  paint();
+  const box = $('steps'); box.innerHTML = '';
+  steps.forEach((s, i) => { const b = document.createElement('button'); b.className = 'chip' + (i === cur ? ' on' : ''); b.textContent = String(i + 1); b.title = s.name || (T('board.step') + ' ' + (i + 1)); b.onclick = () => { stopPlay(); cur = i; draft = null; refresh(); }; box.appendChild(b); });
+  $('stepdel').disabled = steps.length < 2; $('play').disabled = steps.length < 2;
+  $('undo').disabled = !undoS.length; $('redo').disabled = !redoS.length;
+  const r = sel != null ? player(sel) : null;
+  $('sel').classList.toggle('show', !!r);
+  if (r) {
+    $('selname').textContent = (r.team === 'home' ? T('board.home') : T('board.away')) + ' #' + (r.number == null ? '–' : r.number);
+    if (document.activeElement !== $('selnum')) $('selnum').value = r.number == null ? '' : r.number;
+    $('selgk').checked = r.keeper; $('selgkw').style.display = isKeeperSport() ? '' : 'none';
+  }
+  $('play').textContent = anim ? T('board.stop') : T('board.play');
+  document.querySelectorAll('#tools button').forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
+  document.querySelectorAll('#cols button').forEach(b => b.classList.toggle('on', b.dataset.c === colour));
+  $('save').textContent = T('board.save') + (dirty ? ' •' : '');
+}
+
+function applyI18n() {
+  document.querySelectorAll('[data-i]').forEach(e => { e.textContent = T(e.dataset.i); });
+  document.documentElement.lang = LANG; document.title = T('board.title');
+  const s = $('lang'); s.innerHTML = Object.keys(I18N).map(k => `<option value="${k}"${k === LANG ? ' selected' : ''}>${esc(I18N[k]['lang.name'])}</option>`).join('');
+  document.querySelectorAll('#cols button').forEach(b => { b.title = T('board.colour'); });
+  refresh();
+}
+
+// ---------------------------------------------------------------- pointer
+function toField(e) {
+  const b = $('board'), m = b.getScreenCTM(); if (!m) return [0, 0];
+  const pt = b.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+  const q = pt.matrixTransform(m.inverse()); return [q.x, q.y];
+}
+function segDist(p, a, b) { const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1e-9, t = clamp(((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2, 0, 1); return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy); }
+function eraseAt(p) {
+  const ms = steps[cur].marks; let hit = -1, best = 1.1;
+  ms.forEach((m, i) => { for (let k = 1; k < m.points.length; k++) { const d = segDist(p, m.points[k - 1], m.points[k]); if (d < best) { best = d; hit = i; } } });
+  if (hit >= 0) { commit(); ms.splice(hit, 1); refresh(); }
+}
+function nearestPlayer(p, pos, maxd, exceptId) {
+  let best = null, bd = maxd;
+  roster.forEach(r => { if (r.id === exceptId) return; const d = dist(p, pos[r.id]); if (d < bd) { bd = d; best = r.id; } });
+  return best;
+}
+
+const bd = $('board');
+bd.addEventListener('pointerdown', e => {
+  if (!doc || anim) return;
+  e.preventDefault(); bd.setPointerCapture(e.pointerId);
+  const p = toField(e), st = steps[cur];
+  if (mode === 'move') {
+    const bp = ballPos(st, st.pos), ballHit = bp && dist(p, [bp[0] + (st.ball.holder != null ? .85 : 0), bp[1] - (st.ball.holder != null ? .5 : 0)]) < 1.0;
+    if (ballHit) { drag = { kind: 'ball', moved: false }; return; }
+    const id = nearestPlayer(p, st.pos, 1.8);
+    if (id != null) { sel = id; drag = { kind: 'player', id, dx: st.pos[id][0] - p[0], dy: st.pos[id][1] - p[1], moved: false }; } else sel = null;
+    refresh();
+  } else if (mode === 'arrow') draft = { type: 'arrow', color: colour, points: [p, p.slice()] };
+  else if (mode === 'pen') draft = { type: 'pen', color: colour, points: [p] };
+  else if (mode === 'erase') { drag = { kind: 'erase' }; eraseAt(p); }
+});
+bd.addEventListener('pointermove', e => {
+  if (!doc) return;
+  const p = toField(e), st = steps[cur];
+  if (draft) {
+    if (draft.type === 'arrow') draft.points[1] = p; else { const last = draft.points[draft.points.length - 1]; if (dist(p, last) > .3) draft.points.push(p); }
+    paint(); return;
+  }
+  if (!drag) return;
+  if (drag.kind === 'erase') return eraseAt(p);
+  if (!drag.moved) { commit(); drag.moved = true; }
+  if (drag.kind === 'player') {
+    st.pos[drag.id] = [clamp(p[0] + drag.dx, -1, L() + 1), clamp(p[1] + drag.dy, -1, W() + 1)];
+  } else {
+    st.ball.holder = null; st.ball.state = 'free'; st.ball.x = clamp(p[0], -1, L() + 1); st.ball.y = clamp(p[1], -1, W() + 1);
+  }
+  paint();
+});
+function endDrag() {
+  if (draft) {
+    const d = draft; draft = null;
+    const len = d.points.length > 1 ? dist(d.points[0], d.points[d.points.length - 1]) : 0;
+    if ((d.type === 'arrow' && len > 1) || (d.type === 'pen' && d.points.length > 3)) { commit(); steps[cur].marks.push(d); }
+  }
+  if (drag && drag.kind === 'ball' && drag.moved) {
+    const st = steps[cur], h = nearestPlayer([st.ball.x, st.ball.y], st.pos, 1.4);
+    if (h != null) { st.ball.holder = h; st.ball.state = 'held'; st.ball.x = st.pos[h][0]; st.ball.y = st.pos[h][1]; }
+  }
+  if (drag && drag.kind === 'player' && drag.moved) {
+    const st = steps[cur]; if (st.ball.holder === drag.id) { st.ball.x = st.pos[drag.id][0]; st.ball.y = st.pos[drag.id][1]; }
+  }
+  drag = null; refresh();
+}
+bd.addEventListener('pointerup', endDrag);
+bd.addEventListener('pointercancel', endDrag);
+
+// ---------------------------------------------------------------- actions
+function addPlayer(team) {
+  if (!doc) return;
+  commit();
+  const id = roster.reduce((m, r) => Math.max(m, r.id), 0) + 1;
+  const used = roster.filter(r => r.team === team).map(r => r.number);
+  let n = 1; while (used.includes(n)) n++;
+  roster.push({ id, team, number: n, keeper: false });
+  steps.forEach(s => { s.pos[id] = [L() / 2 + (team === 'home' ? -3 : 3), W() / 2]; });
+  sel = id; refresh();
+}
+function deleteSelected() {
+  if (sel == null) return;
+  commit();
+  const id = sel; roster = roster.filter(r => r.id !== id);
+  steps.forEach(s => { delete s.pos[id]; if (s.ball.holder === id) { s.ball.holder = null; s.ball.state = 'free'; } });
+  sel = null; refresh();
+}
+function mirror() {
+  if (!doc) return; commit();
+  const f = p => [L() - p[0], W() - p[1]];
+  steps.forEach(s => {
+    roster.forEach(r => { s.pos[r.id] = f(s.pos[r.id]); });
+    if (s.ball.x != null) { const q = f([s.ball.x, s.ball.y]); s.ball.x = q[0]; s.ball.y = q[1]; }
+    s.marks.forEach(m => { m.points = m.points.map(f); });
+  });
+  refresh();
+}
+function addStep() {
+  if (!doc) return; commit();
+  const s = steps[cur], pos = {}; roster.forEach(r => { pos[r.id] = s.pos[r.id].slice(); });
+  steps.splice(cur + 1, 0, { name: '', pos, ball: { ...s.ball }, marks: [] }); cur++; refresh();
+}
+function delStep() { if (steps.length < 2) return; commit(); steps.splice(cur, 1); cur = Math.min(cur, steps.length - 1); refresh(); }
+function stopPlay() { if (anim) { cancelAnimationFrame(anim.raf); anim = null; } }
+function togglePlay() {
+  if (anim) { stopPlay(); refresh(); return; }
+  if (steps.length < 2) return;
+  cur = 0; let last = performance.now();
+  anim = { t: 0, raf: 0 };
+  const tick = now => {
+    if (!anim) return;
+    anim.t += (now - last) / 1000 / STEP_SECS; last = now;
+    if (anim.t >= steps.length - 1) { cur = steps.length - 1; stopPlay(); refresh(); return; }
+    cur = Math.floor(anim.t); paint(); anim.raf = requestAnimationFrame(tick);
+  };
+  anim.raf = requestAnimationFrame(tick); refresh();
+}
+
+// ---------------------------------------------------------------- files
+function download(name, blob) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
+const baseName = () => 'board-' + (doc && doc.sport ? doc.sport : 'scene') + (steps.length > 1 ? '-step' + (cur + 1) : '');
+async function save() {
+  if (!doc) return;
+  const text = JSON.stringify(serialize(), null, 2);
+  if (SERVED) {
+    try {
+      const r = await fetch('/scene.json' + (KEY ? '?k=' + encodeURIComponent(KEY) : ''), { method: 'POST', headers: { 'x-board-key': KEY }, body: text });
+      if (!r.ok) throw new Error(await r.text());
+      dirty = false; say(T('board.saved'), 'ok'); refresh(); return;
+    } catch (e) { say(T('board.save_failed', { m: e.message }), 'bad'); }
+  }
+  download(baseName() + '.json', new Blob([text], { type: 'application/json' })); dirty = false; say(T('board.downloaded'), 'ok'); refresh();
+}
+function svgText() {
+  const r = render(true), l = L() + 3, w = W() + 3;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${r.vb}" width="900" height="${Math.round(900 * w / l)}">${r.inner}</svg>`;
+}
+function exportSvg() { if (doc) download(baseName() + '.svg', new Blob([svgText()], { type: 'image/svg+xml' })); }
+function exportPng() {
+  if (!doc) return;
+  const l = L() + 3, w = W() + 3, img = new Image();
+  img.onload = () => {
+    const c = document.createElement('canvas'); c.width = 1800; c.height = Math.round(1800 * w / l);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    c.toBlob(b => b && download(baseName() + '.png', b), 'image/png');
+  };
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgText());
+}
+function openFile(f) {
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => { try { load(JSON.parse(rd.result)); say(T('board.opened', { n: f.name }), 'ok'); } catch (e) { say(e.message || T('board.bad_file'), 'bad'); } };
+  rd.readAsText(f);
+}
+
+// ---------------------------------------------------------------- wiring
+COLOURS.forEach(c => { const b = document.createElement('button'); b.className = 'sw'; b.dataset.c = c; b.style.background = c; b.onclick = () => { colour = c; if (mode === 'move' || mode === 'erase') mode = 'arrow'; refresh(); }; $('cols').appendChild(b); });
+document.querySelectorAll('#tools button').forEach(b => { b.onclick = () => { mode = b.dataset.mode; draft = null; refresh(); }; });
+$('undo').onclick = undo; $('redo').onclick = redo; $('mirror').onclick = mirror;
+$('addh').onclick = () => addPlayer('home'); $('adda').onclick = () => addPlayer('away');
+$('stepadd').onclick = addStep; $('stepdel').onclick = delStep; $('play').onclick = togglePlay;
+$('save').onclick = save; $('exsvg').onclick = exportSvg; $('expng').onclick = exportPng;
+$('open').onclick = () => $('file').click(); $('file').onchange = e => { openFile(e.target.files[0]); e.target.value = ''; };
+$('seldel').onclick = deleteSelected;
+$('selnum').oninput = e => { const r = player(sel); if (!r) return; if (!r._c) { commit(); r._c = true; clearTimeout(r._t); } r.number = e.target.value === '' ? null : clamp(parseInt(e.target.value, 10) || 0, 0, 999); clearTimeout(r._t); r._t = setTimeout(() => { delete r._c; delete r._t; }, 900); paint(); $('selname').textContent = (r.team === 'home' ? T('board.home') : T('board.away')) + ' #' + (r.number == null ? '–' : r.number); };
+$('selgk').onchange = e => { const r = player(sel); if (!r) return; commit(); r.keeper = e.target.checked; if (r.keeper) roster.forEach(o => { if (o.team === r.team && o.id !== r.id && o.keeper) o.keeper = false; }); refresh(); };
+$('oghost').onchange = e => { opt.ghost = e.target.checked; paint(); };
+$('otrail').onchange = e => { opt.trail = e.target.checked; paint(); };
+$('onum').onchange = e => { opt.num = e.target.checked; paint(); };
+$('lang').onchange = e => { setLang(e.target.value); applyI18n(); };
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  const k = e.key.toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+  else if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); redo(); }
+  else if ((e.ctrlKey || e.metaKey) && k === 's') { e.preventDefault(); save(); }
+  else if ((k === 'delete' || k === 'backspace') && sel != null) deleteSelected();
+});
+window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+['dragenter', 'dragover'].forEach(n => document.body.addEventListener(n, e => { e.preventDefault(); document.body.classList.add('drop'); }));
+['dragleave', 'drop'].forEach(n => document.body.addEventListener(n, e => { e.preventDefault(); document.body.classList.remove('drop'); }));
+document.body.addEventListener('drop', e => openFile(e.dataTransfer.files[0]));
+
+applyI18n();
+(async () => {
+  if (SERVED) {
+    try {
+      const r = await fetch('/scene.json' + (KEY ? '?k=' + encodeURIComponent(KEY) : ''), { headers: { 'x-board-key': KEY } });
+      if (r.ok) { load(await r.json()); return; }
+    } catch (e) { /* fall through to the empty state */ }
+  }
+  $('empty').classList.add('show');
+})();
+</script>
+</body>
+</html>

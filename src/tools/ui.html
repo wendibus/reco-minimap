@@ -160,8 +160,10 @@ function bindLive(){if(!activeModel()||!S.files.court||!S.files.teams)return;bin
  $('blive').onclick=()=>{const l=P().live,c=P().colors;runJob('live',{...common(),source:l.source,size:l.size,fps:l.fps,port:l.port,realtime:l.realtime,adaptive:l.adaptive===true,draw_home:c.draw_home,draw_away:c.draw_away,ref_color:c.ref_color},()=>render());setTimeout(render,400);};
  $('bstop').onclick=()=>{if(JOB)api('/api/job/'+JOB.id+'/cancel',{});};}
 function renderEval(){const outs=(S.files.out||[]).filter(x=>x.name.endsWith('.jsonl'));
- return `<section class="card"><h2>${T('eval.title')}</h2><label>${T('eval.file')}</label><select id="evf">${outs.map(x=>`<option value="${esc(x.path)}">${esc(x.name)}</option>`).join('')}</select><div class="row" style="margin-top:10px"><button class="b p" id="bev" ${outs.length?'':'disabled'}>${T('eval.btn')}</button><button class="b" id="bevrev" ${outs.length?'':'disabled'}>${T('btn.reveal')}</button></div></section>`;}
-function bindEval(){const b=$('bev');if(b)b.onclick=()=>runJob('stats',{file:$('evf').value});const r=$('bevrev');if(r)r.onclick=()=>showFile($('evf').value,false);}
+ return `<section class="card"><h2>${T('eval.title')}</h2><label>${T('eval.file')}</label><select id="evf">${outs.map(x=>`<option value="${esc(x.path)}">${esc(x.name)}</option>`).join('')}</select><div class="row" style="margin-top:10px"><button class="b p" id="bev" ${outs.length?'':'disabled'}>${T('eval.btn')}</button><button class="b" id="bevrev" ${outs.length?'':'disabled'}>${T('btn.reveal')}</button></div></section>
+ <section class="card"><h2>${T('board.title')}</h2><div class="mu small">${T('board.ui_hint')}</div><div class="row" style="margin-top:8px"><span class="mu">${T('board.ui_at')}</span><input type="text" id="bat" value="${esc(P().board_at||'')}" placeholder="12:30" style="width:90px"><span class="mu">${T('board.ui_trail')}</span><input type="number" id="btrail" value="${P().board_trail||5}" min="0" style="width:70px"><button class="b p" id="bboard" ${outs.length&&S.files.court?'':'disabled'}>${T('board.ui_open')}</button></div></section>`;}
+function bindEval(){const bb=$('bboard');if(bb)bb.onclick=()=>{const c=P().colors||{};P().board_at=$('bat').value.trim();P().board_trail=+$('btrail').value||5;save();runJob('board',{file:$('evf').value,at:P().board_at,trail:P().board_trail,draw_home:c.draw_home,draw_away:c.draw_away});};
+ const b=$('bev');if(b)b.onclick=()=>runJob('stats',{file:$('evf').value});const r=$('bevrev');if(r)r.onclick=()=>showFile($('evf').value,false);}
 // result files: show in the file manager, or open with the default program; says why if it cannot
 async function showFile(path,open){const r=await api('/api/reveal',{path,open});if(!r.ok)log(T('status.error',{m:r.error}));}
 document.addEventListener('click',e=>{const el=e.target.closest&&e.target.closest('[data-rev],[data-open]');if(!el)return;e.preventDefault();if(el.dataset.open!==undefined)showFile(el.dataset.open,true);else showFile(el.dataset.rev,false);});
@@ -177,7 +179,7 @@ async function pollUpdate(tries){const r=await api('/api/update');if(r.ok&&r.upd
 
 // ---------- jobs + log
 function log(t){const el=$('log');el.textContent+=t+'\n';el.scrollTop=el.scrollHeight;}
-async function runJob(kind,params,onDone,onFail){if(JOB&&JOB.status==='running'&&kind!=='live'){log('… '+T('status.running'));return;}
+async function runJob(kind,params,onDone,onFail){if(JOB&&JOB.status==='running'&&kind!=='live'&&kind!=='board'){log('… '+T('status.running'));return;}
  const r=await api('/api/job/start',{dir:S.dir,kind,params});if(!r.ok){log(T('status.error',{m:r.error}));if(onFail)onFail();return;}
  JOB={id:r.id,kind,status:'running',from:0};$('log').textContent='';$('cancel').style.display='';setJst();poll(onDone,onFail);}
 function setJst(){const s=JOB?JOB.status:'idle';$('jst').textContent=T('status.'+(s==='cancelled'?'failed':s));$('jst').className=s==='done'?'ok':s==='failed'||s==='cancelled'?'bad':'mu';}

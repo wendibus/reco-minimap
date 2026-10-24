@@ -35,7 +35,7 @@ struct Ui {
     update: Mutex<Option<Value>>,
 }
 
-fn respond(s: &mut TcpStream, code: &str, ctype: &str, body: &[u8]) {
+pub(crate) fn respond(s: &mut TcpStream, code: &str, ctype: &str, body: &[u8]) {
     let head = format!("HTTP/1.1 {code}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n", body.len());
     let _ = s.write_all(head.as_bytes());
     let _ = s.write_all(body);
@@ -68,11 +68,11 @@ pub fn request_allowed(host: Option<&str>, origin: Option<&str>) -> bool {
     }
 }
 
-fn header<'a>(head: &'a str, name: &str) -> Option<&'a str> {
+pub(crate) fn header<'a>(head: &'a str, name: &str) -> Option<&'a str> {
     head.lines().skip(1).find_map(|l| l.split_once(':').filter(|(k, _)| k.trim().eq_ignore_ascii_case(name)).map(|(_, v)| v.trim()))
 }
 
-fn read_request(s: &mut TcpStream) -> Option<(String, String, String, String, String)> {
+pub(crate) fn read_request(s: &mut TcpStream) -> Option<(String, String, String, String, String)> {
     let _ = s.set_read_timeout(Some(Duration::from_secs(10)));
     let mut buf = Vec::new();
     let mut tmp = [0u8; 8192];
@@ -108,7 +108,7 @@ fn read_request(s: &mut TcpStream) -> Option<(String, String, String, String, St
     Some((method, path, query, body, head))
 }
 
-fn qparam(query: &str, key: &str) -> Option<String> {
+pub(crate) fn qparam(query: &str, key: &str) -> Option<String> {
     query.split('&').find_map(|kv| kv.split_once('=').filter(|(k, _)| *k == key).map(|(_, v)| v.to_string()))
 }
 
@@ -439,6 +439,30 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
                 }
             }
         }
+        "board" => {
+            let f = get_s(p, "file");
+            need(&f, trs!("Datei", "file", "fichier", "archivo"))?;
+            let at = get_s(p, "at");
+            need(&at, trs!("Zeitpunkt", "moment", "instant", "momento"))?;
+            let stem = Path::new(&f).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+            let scene = dir.join("out").join(format!("{}-board-{}.json", sanitize(&stem), sanitize(&at.replace(':', "m"))));
+            pushs(&mut a, &["board", &scene.to_string_lossy(), "--port", "0"]);
+            // a board that was saved before is opened as it is; only a new moment is cut from the run
+            if !scene.exists() {
+                if !dir.join("court.json").exists() {
+                    return Err(trs!("Kalibrierung fehlt (court.json)", "calibration is missing (court.json)", "calibrage manquant (court.json)", "falta la calibración (court.json)").into());
+                }
+                pushs(&mut a, &["--states", &f, "--at", &at, "--trail", &get_s(p, "trail"), "--court", "court.json"]);
+                if dir.join("teams.json").exists() {
+                    pushs(&mut a, &["--teams", "teams.json"]);
+                }
+                for (flag, key) in [("--draw-home", "draw_home"), ("--draw-away", "draw_away")] {
+                    if !get_s(p, key).is_empty() {
+                        pushs(&mut a, &[flag, &get_s(p, key)]);
+                    }
+                }
+            }
+        }
         "fetch_ocr" => pushs(&mut a, &["fetch-ocr"]),
         "update" => pushs(&mut a, &["update", "--yes"]),
         "stats" => {
@@ -701,6 +725,31 @@ mod tests {
         assert_eq!(pair(&a, "--torso").as_deref(), Some("0.3,0.65"));
         assert!(!a.contains(&"--shirt-match".to_string()) && pair(&a, "--referees").is_none());
         assert!(pair(&args("scales", fig), "--torso").is_none());
+    }
+
+    #[test]
+    fn the_board_job_opens_a_saved_board_and_cuts_a_new_moment() {
+        let d = std::env::temp_dir().join(format!("reco-ui-board-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("out")).unwrap();
+        let p = json!({"file": "/p/game one.jsonl", "at": "12:30", "trail": 4, "lang": "de", "draw_home": "#ffffff"});
+        assert!(build_args("board", &d, &p).is_err(), "no calibration yet");
+        std::fs::write(d.join("court.json"), "{}").unwrap();
+        let a = build_args("board", &d, &p).unwrap();
+        assert_eq!(a[0], "board");
+        assert!(a[1].ends_with("game_one-board-12m30.json"), "{a:?}");
+        assert_eq!(pair(&a, "--states").as_deref(), Some("/p/game one.jsonl"));
+        assert_eq!(pair(&a, "--at").as_deref(), Some("12:30"));
+        assert_eq!(pair(&a, "--trail").as_deref(), Some("4"));
+        assert_eq!(pair(&a, "--draw-home").as_deref(), Some("#ffffff"));
+        assert_eq!(pair(&a, "--port").as_deref(), Some("0"));
+        assert_eq!(pair(&a, "--lang").as_deref(), Some("de"));
+        // once saved, the board opens as the coach left it instead of being cut again
+        std::fs::write(&a[1], "{}").unwrap();
+        let b = build_args("board", &d, &p).unwrap();
+        assert!(!b.contains(&"--states".to_string()), "{b:?}");
+        assert!(build_args("board", &d, &json!({"file": "/x.jsonl"})).is_err(), "moment is required");
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

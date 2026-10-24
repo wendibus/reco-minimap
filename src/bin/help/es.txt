@@ -19,6 +19,8 @@ reco-minimap – minimapa (campo, jugadores, árbitros, balón) a partir de un p
   reco-minimap snapshot  <states.jsonl> --court court.json --teams teams.json --at 12:34 [--trail 5] [--out scene.json] [--svg scene.svg]
                          extraer un momento de un proceso como escena de pizarra táctica (JSON, ver docs/BOARD.md) y/o SVG
   reco-minimap svg       <scene.json> [--out scene.svg]     dibujar un archivo de escena como SVG (--no-numbers --no-trails --no-stripes --width px)
+  reco-minimap board     [scene.json] [--states juego.jsonl --at 12:34 --court court.json --teams teams.json --trail 5] [--port N] [--lan] [--export board.html]
+                    abrir la pizarra táctica en el navegador: mover jugadores, dibujar flechas, recorrer una jugada «¿y si…?» por pasos, guardar, exportar SVG/PNG
   reco-minimap colors    <vídeo> --model <carpeta|.onnx> [--court court.json] [--home-hint #rrggbb] [--out teams.json]
   reco-minimap run       <vídeo> --model <carpeta|.onnx> --court court.json (--teams teams.json | --home #hex --away #hex)
                          [--minimap out.mp4] [--alpha out.mov] [--pip out.mp4] [--json out.jsonl]

@@ -324,7 +324,7 @@ fn the_upload_sends_the_feed_with_put_and_the_key() {
 
 #[test]
 fn the_push_address_is_checked_and_passwords_are_not_printed() {
-    assert!(ticker_pub::check(&Sink { push: Some("ftp://x/y".into()), ..Default::default() }).is_err());
+    assert!(ticker_pub::check(&Sink { push: Some("gopher://x/y".into()), ..Default::default() }).is_err());
     assert!(ticker_pub::check(&Sink { push: Some("https://example.org/t.json".into()), ..Default::default() }).is_ok() || std::process::Command::new("curl").arg("--version").output().is_err());
     assert_eq!(ticker_pub::mask_url("https://user:pw@dav.example.org/f/t.json"), "https://***@dav.example.org/f/t.json");
     assert_eq!(ticker_pub::mask_url("https://example.org/a@b"), "https://example.org/a@b");

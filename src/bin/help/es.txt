@@ -5,6 +5,7 @@ reco-minimap – minimapa (campo, jugadores, árbitros, balón) a partir de un p
   reco-minimap selfcheck <vídeo> --model <carpeta|.onnx> [--samples 12] [--annotate <carpeta>]
   reco-minimap scales    <vídeo> --model <carpeta|.onnx> [--court court.json] [--samples 12] [--out scales.json]
   reco-minimap live      <fuente> --model <..> --court court.json --teams teams.json   minimapa en directo para OBS/Spieldock (superposición en el navegador)
+                    + página del resumen en directo en /ticker: --ticker-names numbers|names|both (por defecto numbers)  --home-name --away-name  (nombres en la plantilla: --roster-home "7:Anna, 12:Ben")
   reco-minimap import-model <carpeta|.onnx> --to <carpeta de modelos>   comprobar y copiar un modelo de Reco Trainer
   reco-minimap ui [--port 8788] [--no-open] [--no-update-check]                          interfaz en el navegador (Deutsch/English/Français/Español)
   reco-minimap --version                                              mostrar la versión instalada

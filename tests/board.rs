@@ -224,7 +224,7 @@ fn start_board(scene: &PathBuf, extra: &[&str]) -> Server {
 fn http(port: u16, method: &str, path: &str, host: &str, body: &str) -> (u16, String) {
     let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
     s.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
-    write!(s, "{method} {path} HTTP/1.1\r\nHost: {host}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+    s.write_all(format!("{method} {path} HTTP/1.1\r\nHost: {host}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).unwrap();
     let mut out = String::new();
     s.read_to_string(&mut out).unwrap();
     let status = out.split_whitespace().nth(1).unwrap().parse().unwrap();

@@ -144,7 +144,7 @@ pub fn ctc_roster(probs: &[f32], t: usize, roster: &[u8]) -> Option<(u8, f32)> {
 /// Goalkeeper numbers in a roster string: a number followed directly by `g`, `gk`, `tw`, `t`, `k`, `p` or `*`
 /// (goalkeeper / Torwart / keeper / portero), e.g. "1g, 4, 5, 12tw" -> `[1, 12]`. Use [`parse_roster`] for all numbers.
 pub fn parse_roster_keepers(s: &str) -> Vec<u8> {
-    let b: Vec<char> = s.chars().collect();
+    let b: Vec<char> = strip_names(s).chars().collect();
     let (mut i, mut out) = (0, Vec::new());
     while i < b.len() {
         if b[i].is_ascii_digit() {
@@ -169,8 +169,44 @@ pub fn parse_roster_keepers(s: &str) -> Vec<u8> {
 
 /// Parse a roster string such as "4, 5,7;10 12" into numbers (a trailing keeper mark such as "1g" is ignored here).
 pub fn parse_roster(s: &str) -> Vec<u8> {
-    let mut v: Vec<u8> = s.split(|c: char| !c.is_ascii_digit()).filter_map(|x| x.parse().ok()).collect();
+    let mut v: Vec<u8> = strip_names(s).split(|c: char| !c.is_ascii_digit()).filter_map(|x| x.parse().ok()).collect();
     v.sort_unstable();
     v.dedup();
     v
+}
+
+/// A roster string without the names: `7:Anna Müller, 12=Ben` -> `7, 12`. A name follows its number after `:` or `=`
+/// and runs to the next `,` `;` or line break, so it may contain spaces (and no digits are read out of it).
+fn strip_names(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut in_name = false;
+    for c in s.chars() {
+        match c {
+            ',' | ';' | '\n' => {
+                in_name = false;
+                out.push(c);
+            }
+            ':' | '=' if !in_name => in_name = true,
+            _ if in_name => {}
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// Names given in a roster string: `"7:Anna Müller, 1g=Ben, 4"` -> `[(7, "Anna Müller"), (1, "Ben")]`.
+/// Entries without a name are left out; a number given twice keeps its first name.
+pub fn parse_roster_names(s: &str) -> Vec<(u8, String)> {
+    let mut out: Vec<(u8, String)> = Vec::new();
+    for tok in s.split(|c| c == ',' || c == ';' || c == '\n') {
+        let Some((num, name)) = tok.split_once(|c| c == ':' || c == '=') else { continue };
+        let name = name.trim();
+        let digits: String = num.trim().chars().take_while(|c| c.is_ascii_digit()).collect();
+        if let (Ok(n), false) = (digits.parse::<u8>(), name.is_empty()) {
+            if !out.iter().any(|(m, _)| *m == n) {
+                out.push((n, name.to_string()));
+            }
+        }
+    }
+    out
 }

@@ -5,6 +5,7 @@ reco-minimap – Minimap (Court, Spieler, Schiris, Ball) aus einem Reco-Panorama
   reco-minimap selfcheck <video> --model <ordner|.onnx> [--samples 12] [--annotate <ordner>]
   reco-minimap scales    <video> --model <ordner|.onnx> [--court court.json] [--samples 12] [--out scales.json]
   reco-minimap live      <quelle> --model <..> --court court.json --teams teams.json   Live-Minimap für OBS/Spieldock (Browser-Overlay)
+                    + Live-Ticker-Seite unter /ticker: --ticker-names numbers|names|both (Standard numbers)  --home-name --away-name  (Namen im Kader: --roster-home "7:Anna, 12:Ben")
   reco-minimap import-model <ordner|.onnx> --to <modelle-ordner>   Reco-Trainer-Modell prüfen und kopieren
   reco-minimap ui [--port 8788] [--no-open] [--no-update-check]                          Oberfläche im Browser (Deutsch/English/Français/Español)
   reco-minimap --version                                              installierte Version anzeigen

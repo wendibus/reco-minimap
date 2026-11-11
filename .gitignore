@@ -6,5 +6,6 @@ Cargo.lock.bak
 court.json
 teams.json
 check/
+check_full/
 .DS_Store
 !docs/media/*.mp4

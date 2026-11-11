@@ -122,6 +122,8 @@ fn ort_candidates() -> Vec<PathBuf> {
     let mut v: Vec<PathBuf> = Vec::new();
     if let Some(d) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.to_path_buf())) {
         v.push(d.join(name));
+        // inside the Mac app the library sits in Contents/Frameworks
+        v.push(d.join("../Frameworks").join(name));
     }
     if cfg!(target_os = "macos") {
         for d in ["/opt/homebrew/lib", "/opt/homebrew/opt/onnxruntime/lib", "/usr/local/lib", "/usr/local/opt/onnxruntime/lib"] {

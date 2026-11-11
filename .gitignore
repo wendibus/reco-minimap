@@ -9,3 +9,4 @@ check/
 check_full/
 .DS_Store
 !docs/media/*.mp4
+dist/

@@ -107,6 +107,19 @@ Put the `export ORT_DYLIB_PATH=…` line into `~/.zshrc` so it survives new term
 
 If you cannot use CoreML, build with `--features tools` and pass `--ep cpu` (about 9× slower on an M4 Pro).
 
+### macOS app
+
+`scripts/package-mac.sh` builds **Reco Minimap.app**: the same Rust program in an app bundle, with ONNX Runtime inside. Double-click it and it serves the interface, opens it in your browser and stays in the Dock; a click on the Dock icon brings the interface back, *Quit* stops running jobs. On the command line the program inside (`Reco Minimap.app/Contents/MacOS/reco-minimap`) works as before.
+
+```bash
+export RECO_ORT_DYLIB="$HOME/ortvenv/lib/python3.14/site-packages/onnxruntime/capi/libonnxruntime.1.30.0.dylib"
+export RECO_SIGN_IDENTITY="Developer ID Application: …"   # leave out for an ad-hoc signature (this Mac only)
+export RECO_NOTARY_PROFILE="…"                             # optional: notarize with Apple and staple
+scripts/package-mac.sh                                     # dist/Reco Minimap.app and a zip
+```
+
+ffmpeg and ffprobe are not inside the app; install them with `brew install ffmpeg`. The app does not update itself: download the new version and replace it.
+
 ### Linux
 
 ```bash

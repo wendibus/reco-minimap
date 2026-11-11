@@ -8,6 +8,8 @@ pub mod colors;
 pub mod i18n;
 pub mod infer;
 pub mod live;
+#[cfg(target_os = "macos")]
+pub mod mac_app;
 pub mod models;
 pub mod ocr;
 pub mod review;

@@ -274,6 +274,21 @@ fn median(v: &mut Vec<f32>) -> Option<f32> {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // Started from the Finder as the Mac app: serve the interface and stay in the Dock.
+    #[cfg(target_os = "macos")]
+    if reco_minimap::tools::mac_app::in_bundle() && (args.is_empty() || args[0].starts_with("-psn")) {
+        i18n::set_lang(i18n::from_env());
+        reco_minimap::tools::mac_app::extend_path();
+        match reco_minimap::tools::ui::serve(8788, true, false, true) {
+            Ok(url) => reco_minimap::tools::mac_app::run(url),
+            Err(e) => fail::<()>(e),
+        }
+    }
+    // Jobs the Mac app starts are this same program: they need ffmpeg from Homebrew too.
+    #[cfg(target_os = "macos")]
+    if reco_minimap::tools::mac_app::in_bundle() {
+        reco_minimap::tools::mac_app::extend_path();
+    }
     if args.is_empty() || args[0] == "--help" || args[0] == "-h" || args[0] == "help" {
         // `--help --lang fr` and `help --lang fr` work too
         let lang = args.iter().position(|a| a == "--lang").and_then(|i| args.get(i + 1)).and_then(|l| i18n::Lang::parse(l));

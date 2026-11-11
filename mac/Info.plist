@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleDisplayName</key>
+    <string>Reco Minimap</string>
+    <key>CFBundleExecutable</key>
+    <string>reco-minimap</string>
+    <key>CFBundleIdentifier</key>
+    <string>io.reco.minimap</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>Reco Minimap</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon.icns</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>__VERSION__</string>
+    <key>CFBundleVersion</key>
+    <string>__VERSION__</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>12.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.sports</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSHumanReadableCopyright</key>
+    <string>AGPL-3.0-only</string>
+    <key>NSRemovableVolumesUsageDescription</key>
+    <string>Reco Minimap liest Videos von diesem Datenträger und speichert Ergebnisse im Projektordner. / Reco Minimap reads videos from this volume and stores results in the project folder.</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>Reco Minimap liest Videos und Modelle aus dem gewählten Ordner. / Reco Minimap reads videos and models from the folder you choose.</string>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>Reco Minimap liest Videos und Modelle aus dem gewählten Ordner. / Reco Minimap reads videos and models from the folder you choose.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>Reco Minimap liest Videos und Modelle aus dem gewählten Ordner. / Reco Minimap reads videos and models from the folder you choose.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Reco Minimap zeigt den Dateiauswahldialog. / Reco Minimap shows the file chooser.</string>
+</dict>
+</plist>

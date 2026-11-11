@@ -488,6 +488,15 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
             }
         }
         "fetch_ocr" => pushs(&mut a, &["fetch-ocr"]),
+        "update" if is_mac_app() => {
+            return Err(trs!(
+                "Die Mac-App aktualisiert sich nicht selbst. Lade die neue Version von der Release-Seite und ersetze die App.",
+                "The Mac app does not update itself. Download the new version from the release page and replace the app.",
+                "L'app Mac ne se met pas à jour elle-même. Téléchargez la nouvelle version depuis la page des versions et remplacez l'app.",
+                "La app de Mac no se actualiza sola. Descarga la nueva versión desde la página de versiones y reemplaza la app."
+            )
+            .into())
+        }
         "update" => pushs(&mut a, &["update", "--yes"]),
         "stats" => {
             let f = get_s(p, "file");
@@ -563,6 +572,7 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
     }
     match (method.as_str(), path.as_str()) {
         ("GET", "/") => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("ui.html").as_bytes()),
+        ("GET", "/theme.css") => respond(&mut s, "200 OK", "text/css; charset=utf-8", include_str!("theme.css").as_bytes()),
         ("GET", "/guide") => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("guide.html").as_bytes()),
         ("GET", "/guide.md") => {
             let lang = query.split('&').find_map(|kv| kv.strip_prefix("lang=")).and_then(super::i18n::Lang::parse).unwrap_or_else(super::i18n::lang);
@@ -682,6 +692,25 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
     }
 }
 
+/// The running interface, so that quitting the program can stop its jobs.
+static RUNNING: std::sync::OnceLock<Arc<Ui>> = std::sync::OnceLock::new();
+
+/// Stops every running job (used when the Mac app quits).
+pub fn cancel_all() {
+    if let Some(ui) = RUNNING.get() {
+        for job in ui.jobs.lock().unwrap().values() {
+            if let Some(child) = job.child.lock().unwrap().as_mut() {
+                let _ = child.kill();
+            }
+        }
+    }
+}
+
+/// True when the program is the Mac app: it is signed as a whole and cannot rebuild itself.
+fn is_mac_app() -> bool {
+    cfg!(target_os = "macos") && std::env::current_exe().map(|p| p.to_string_lossy().contains(".app/Contents/MacOS/")).unwrap_or(false)
+}
+
 /// Start the UI server; returns the URL (blocks forever if `block`).
 pub fn serve(port: u16, open: bool, block: bool, update_check: bool) -> Result<String, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -695,6 +724,7 @@ pub fn serve(port: u16, open: bool, block: bool, update_check: bool) -> Result<S
     let listener = listener.ok_or(trs!("Kein freier Port (--port ändern)", "No free port (change --port)", "Aucun port libre (changer --port)", "No hay ningún puerto libre (cambia --port)"))?;
     let url = format!("http://127.0.0.1:{}/", listener.local_addr().map_err(|e| e.to_string())?.port());
     let ui = Arc::new(Ui { exe, jobs: Mutex::new(HashMap::new()), next: AtomicU64::new(1), update: Mutex::new(None) });
+    let _ = RUNNING.set(ui.clone());
     if update_check && std::env::var_os("RECO_MINIMAP_NO_UPDATE_CHECK").is_none() {
         // in the background: the page must not wait for the network
         let u = ui.clone();

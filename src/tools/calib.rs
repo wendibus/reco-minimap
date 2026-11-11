@@ -167,6 +167,7 @@ fn handle(mut s: TcpStream, st: &Shared) {
 
     match (method, path) {
         ("GET", "/") => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("calib.html").as_bytes()),
+        ("GET", "/theme.css") => respond(&mut s, "200 OK", "text/css; charset=utf-8", include_str!("theme.css").as_bytes()),
         ("GET", "/i18n.js") => respond(&mut s, "200 OK", "application/javascript; charset=utf-8", include_str!("i18n.js").as_bytes()),
         ("GET", "/frame.png") => respond(&mut s, "200 OK", "image/png", &st.png),
         ("GET", "/api/info") => {

@@ -1,27 +1,24 @@
 <!doctype html>
 <html lang="de"><head><meta charset="utf-8"><title>reco-minimap</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-:root{color-scheme:dark;--bg:#14171c;--panel:#1c2027;--line:#2c323c;--fg:#e6e9ee;--mut:#8b94a3;--acc:#ff8c00;--ok:#4cd964;--bad:#ff5a5a}
-*{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:14px/1.4 -apple-system,system-ui,sans-serif}
+<link rel="stylesheet" href="/theme.css"><style>
+html,body{height:100%}
 #app{display:grid;grid-template-columns:1fr 340px;height:100%}
-#stage{position:relative;overflow:hidden;cursor:crosshair}
+#stage{position:relative;overflow:hidden;cursor:crosshair;background:var(--stage)}
 canvas#cv{position:absolute;inset:0;width:100%;height:100%}
-canvas#loupe{position:absolute;right:12px;top:12px;width:168px;height:168px;border:2px solid var(--acc);border-radius:8px;background:#000;pointer-events:none}
-aside{background:var(--panel);border-left:1px solid var(--line);padding:14px;overflow:auto;display:flex;flex-direction:column;gap:10px}
-h1{font-size:15px;margin:0}p{margin:0;color:var(--mut)}
-.row{display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:center;padding:6px 8px;border-radius:6px;cursor:pointer;border:1px solid transparent}
-.row:hover{background:#242a33}.row.cur{border-color:var(--acc);background:#2a2216}
-.num{width:22px;height:22px;border-radius:50%;background:#2c323c;display:grid;place-items:center;font-size:12px}
-.row.done .num{background:var(--ok);color:#000}
-.res{font-variant-numeric:tabular-nums;color:var(--mut);font-size:12px}
-button{background:#2c323c;color:var(--fg);border:1px solid #3a4250;border-radius:6px;padding:7px 10px;cursor:pointer}
-button.primary{background:var(--acc);color:#000;border-color:var(--acc);font-weight:600}
-button:disabled{opacity:.4;cursor:default}
-#q{padding:8px 10px;border-radius:6px;background:#242a33}
-#legendbox{position:sticky;top:-14px;z-index:1;background:var(--panel);padding:6px 0 2px}
-canvas#legend{display:block;width:100%;border:1px solid var(--line);border-radius:6px;background:#262c34}
-.good{color:var(--ok)}.warn{color:var(--bad)}
+canvas#loupe{position:absolute;right:12px;top:12px;width:168px;height:168px;border:2px solid var(--ball);border-radius:10px;background:#000;pointer-events:none}
+aside{background:var(--sidebar);border-left:.5px solid var(--sep);padding:14px;overflow:auto;display:flex;flex-direction:column;gap:10px}
+h1{font-size:15px;font-weight:650;letter-spacing:-.01em;margin:0}p{margin:0;color:var(--label-2);font-size:12px}
+.row{display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:center;padding:6px 8px;border-radius:8px;cursor:pointer;font-size:12.5px}
+.row:hover{background:var(--fill-2)}.row.cur{background:color-mix(in srgb,var(--accent) 16%,transparent);box-shadow:inset 3px 0 0 var(--accent)}
+.num{width:22px;height:22px;border-radius:50%;background:var(--fill);display:grid;place-items:center;font-size:11px;font-weight:600}
+.row.done .num{background:var(--sys-green);color:#fff}
+.res{font-variant-numeric:tabular-nums;color:var(--label-2);font-size:11.5px}
+aside button{min-height:30px;padding:5px 12px;border:.5px solid var(--control-border);border-radius:var(--radius-control);background:var(--control);color:var(--label);font-size:12px;font-weight:500;box-shadow:var(--control-shadow)}
+#q{padding:9px 11px;border-radius:9px;background:var(--content);box-shadow:var(--card-shadow);font-weight:600}
+#legendbox{position:sticky;top:-14px;z-index:1;background:var(--window);padding:6px 0 2px;border-radius:8px}
+canvas#legend{display:block;width:100%;border:.5px solid var(--sep);border-radius:8px;background:#262c34}
+.good{color:var(--sys-green)}.warn{color:var(--sys-red)}
 </style></head><body>
 <div id="app">
  <div id="stage"><canvas id="cv"></canvas><canvas id="loupe" width="168" height="168"></canvas></div>

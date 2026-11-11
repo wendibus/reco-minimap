@@ -1,14 +1,19 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>reco-minimap</title>
-<style>
-:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#14171c;color:#e6e9ee;font:16px/1.55 system-ui}
-header{display:flex;gap:16px;align-items:center;padding:12px 20px;border-bottom:1px solid #343c48;position:sticky;top:0;background:#14171c}
-header h1{font-size:18px;margin:0}.sp{flex:1}.mu{color:#aab3c0;font-size:13px}select{font:inherit;color:inherit;background:#10141a;border:1px solid #515a68;border-radius:5px;padding:5px}
-main{max-width:860px;margin:auto;padding:8px 20px 60px}a{color:#7fb7ff}h1,h2,h3{line-height:1.25}h2{margin-top:36px;border-bottom:1px solid #343c48;padding-bottom:6px}h3{margin-top:26px}
-code{font:13px ui-monospace,Menlo,monospace;background:#1c2027;border:1px solid #343c48;border-radius:4px;padding:1px 5px}pre{background:#1c2027;border:1px solid #343c48;border-radius:8px;padding:12px;overflow:auto}pre code{border:0;padding:0;background:none}
-blockquote{margin:14px 0;padding:8px 14px;border-left:3px solid #ff8c00;background:#1c2027;border-radius:0 6px 6px 0}table{border-collapse:collapse;margin:12px 0;display:block;overflow:auto}td,th{border:1px solid #343c48;padding:6px 10px;text-align:left;vertical-align:top}li{margin:4px 0}img{max-width:100%;height:auto;border:1px solid #343c48;border-radius:8px;display:block;margin:6px 0 4px}p>img+img{margin-top:8px}p img[width]{display:inline-block;vertical-align:top}hr{border:0;border-top:1px solid #343c48;margin:28px 0}
+<link rel="stylesheet" href="/theme.css"><style>
+body{font-size:15px;line-height:1.55}
+header{position:sticky;top:0;z-index:2}
+.sp{flex:1}.field-label{color:var(--label-2);font-size:11px;font-weight:600}
+main{max-width:860px;margin:auto;padding:8px 20px 60px}h1,h2,h3{line-height:1.25;letter-spacing:-.01em}
+main h2{margin-top:36px;border-bottom:.5px solid var(--sep-strong);padding-bottom:6px}main h3{margin-top:26px}
+code{font:12.5px ui-monospace,"SF Mono",Menlo,monospace;background:var(--fill);border-radius:5px;padding:1px 5px}
+pre{background:var(--content);box-shadow:var(--card-shadow);border-radius:10px;padding:12px;overflow:auto}pre code{padding:0;background:none}
+blockquote{margin:14px 0;padding:8px 14px;border-left:3px solid var(--ball);background:var(--sys-orange-fill);border-radius:0 8px 8px 0}
+table{border-collapse:collapse;margin:12px 0;display:block;overflow:auto}td,th{border:.5px solid var(--sep-strong);padding:6px 10px;text-align:left;vertical-align:top}li{margin:4px 0}
+img{max-width:100%;height:auto;border-radius:10px;box-shadow:var(--card-shadow);display:block;margin:6px 0 4px}p>img+img{margin-top:8px}p img[width]{display:inline-block;vertical-align:top}
+hr{border:0;border-top:.5px solid var(--sep-strong);margin:28px 0}
 </style></head><body>
-<header><h1>reco-minimap</h1><span class="mu" id="ver"></span><a href="/" id="back"></a><span class="sp"></span><span class="mu" id="h_lang"></span><select id="lang"></select></header>
+<header class="toolbar"><span class="brand-mark" aria-hidden="true">M</span><div class="brand-block"><h1>Reco Minimap</h1></div><span class="version" id="ver"></span><a class="toolbar-link" href="/" id="back"></a><span class="sp"></span><span class="field-label" id="h_lang"></span><select id="lang"></select></header>
 <main id="doc"></main>
 <script src="/i18n.js"></script>
 <script>

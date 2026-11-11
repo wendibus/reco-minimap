@@ -73,14 +73,18 @@ fi
 codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 
 ZIP_PATH="$OUT_DIR/Reco-Minimap-Mac-$VERSION.zip"
-rm -f "$ZIP_PATH"
-ditto -c -k --keepParent "$APP_DIR" "$ZIP_PATH"
+# Zip without resource forks and extended attributes: on a volume that keeps them in "._" files
+# (exFAT) they would otherwise end up inside the app and break the signature for other unzip tools.
+zip_app() {
+  rm -f "$ZIP_PATH"
+  ditto -c -k --norsrc --noextattr --keepParent "$APP_DIR" "$ZIP_PATH"
+}
+zip_app
 
 if [[ "$SIGN_IDENTITY" != "-" && -n "${RECO_NOTARY_PROFILE:-}" ]]; then
   xcrun notarytool submit "$ZIP_PATH" --keychain-profile "$RECO_NOTARY_PROFILE" --wait
   xcrun stapler staple "$APP_DIR"
-  rm -f "$ZIP_PATH"
-  ditto -c -k --keepParent "$APP_DIR" "$ZIP_PATH"
+  zip_app
   spctl --assess --type execute --verbose=2 "$APP_DIR"
 fi
 

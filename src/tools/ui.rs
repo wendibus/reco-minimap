@@ -27,6 +27,9 @@ struct Job {
     child: Mutex<Option<Child>>,
     /// Latest `@@progress` report of the command (see [`super::progress`]).
     progress: Mutex<Value>,
+    /// When the first progress fraction arrived (time remaining is measured from there, not
+    /// from the start, so loading the model does not inflate it).
+    first_progress: Mutex<Option<(std::time::Instant, f64)>>,
     started: std::time::Instant,
     /// Files this job writes; removed again when the user cancels and discards.
     outputs: Vec<PathBuf>,
@@ -53,7 +56,10 @@ fn job_json(id: u64, j: &Job) -> Value {
     let status = j.status.lock().unwrap().clone();
     let elapsed = j.started.elapsed().as_secs_f64();
     let frac = pr["progress"].as_f64();
-    let eta = frac.filter(|f| *f > 0.02 && *f < 1.0 && status == "running").map(|f| elapsed * (1.0 - f) / f);
+    let eta = match (frac, *j.first_progress.lock().unwrap()) {
+        (Some(f), Some((t0, f0))) if status == "running" && f < 1.0 && f - f0 > 0.01 && t0.elapsed().as_secs_f64() > 3.0 => Some(t0.elapsed().as_secs_f64() * (1.0 - f) / (f - f0)),
+        _ => None,
+    };
     json!({"id": id, "type": j.kind, "status": status, "cancellable": status == "running",
         "keepable": matches!(j.kind.as_str(), "run" | "scales" | "colors" | "selfcheck" | "live"),
         "progress": pr["progress"], "stage": pr["stage"], "message": pr["message"],
@@ -341,6 +347,9 @@ fn take_line(job: &Job, text: String, cr: bool) {
             let (before, rest) = text.split_at(i);
             push_line(job, before.to_string(), true);
             if let Some(v) = super::progress::parse(rest) {
+                if let Some(f) = v["progress"].as_f64() {
+                    job.first_progress.lock().unwrap().get_or_insert((std::time::Instant::now(), f));
+                }
                 *job.progress.lock().unwrap() = v;
             }
         }
@@ -609,6 +618,7 @@ fn start_job(ui: &Arc<Ui>, dir: &Path, kind: &str, params: &Value) -> Result<u64
         code: Mutex::new(None),
         child: Mutex::new(None),
         progress: Mutex::new(Value::Null),
+        first_progress: Mutex::new(None),
         started: std::time::Instant::now(),
         outputs: job_outputs(dir, &args),
         stop_file,
@@ -669,7 +679,10 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
         super::i18n::set_lang(l);
     }
     match (method.as_str(), path.as_str()) {
-        ("GET", "/") => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("ui.html").as_bytes()),
+        // the React interface (web/, built into webui/ by `npm run build`)
+        ("GET", "/") => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("webui/index.html").as_bytes()),
+        ("GET", "/app.js") => respond(&mut s, "200 OK", "application/javascript; charset=utf-8", include_str!("webui/app.js").as_bytes()),
+        ("GET", "/app.css") => respond(&mut s, "200 OK", "text/css; charset=utf-8", include_str!("webui/app.css").as_bytes()),
         ("GET", "/theme.css") => respond(&mut s, "200 OK", "text/css; charset=utf-8", include_str!("theme.css").as_bytes()),
         ("GET", "/guide") => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("guide.html").as_bytes()),
         ("GET", "/guide.md") => {

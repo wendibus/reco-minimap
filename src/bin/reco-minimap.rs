@@ -1499,6 +1499,7 @@ fn state_json_with(s: &FrameState, scenes: &[SceneEvent]) -> serde_json::Value {
 
 fn cmd_run(o: &Opts, input: &str) {
     let info = open_info(o, input);
+    progress::report(None, None, trs!("Modell wird geladen …", "Loading the model …", "Chargement du modèle …", "Cargando el modelo …"));
     let mut model = load_model(o);
     model.cfg.thr_player = thr_players(o).0;
     let tiles = plan(o, &info);

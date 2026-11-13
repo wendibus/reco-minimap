@@ -8,8 +8,8 @@
 
 While `reco-minimap live` watches the panorama video, it notices **substitutions** and **game situations** (kick-off, throw-in, corner, penalty, free throw, shot attempts – which ones depends on the sport). The ticker turns these into a short text feed, newest first, with the video time:
 
-> 3:01 Substitution Sharks: #7 off, #12 on
-> 1:35 3-point attempt → Sharks (close to the line)
+> 3:01 Substitution Home: #7 off, #12 on
+> 1:35 3-point attempt → Home (close to the line)
 
 It works for every sport and shows in German, English, French and Spanish (each viewer picks the language). You can show it on phones in the hall, put it on your club's web site, and decide whether it shows **numbers**, **names** or **both** – and whether every entry waits for **your OK** first.
 

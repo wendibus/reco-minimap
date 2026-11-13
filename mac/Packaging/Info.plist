@@ -7,7 +7,7 @@
     <key>CFBundleDisplayName</key>
     <string>Reco Minimap</string>
     <key>CFBundleExecutable</key>
-    <string>reco-minimap</string>
+    <string>RecoMinimapMac</string>
     <key>CFBundleIdentifier</key>
     <string>io.reco.minimap</string>
     <key>CFBundleInfoDictionaryVersion</key>
@@ -23,7 +23,14 @@
     <key>CFBundleVersion</key>
     <string>__VERSION__</string>
     <key>LSMinimumSystemVersion</key>
-    <string>12.0</string>
+    <string>14.0</string>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.sports</string>
     <key>NSHighResolutionCapable</key>
@@ -38,6 +45,8 @@
     <string>Reco Minimap liest Videos und Modelle aus dem gewählten Ordner. / Reco Minimap reads videos and models from the folder you choose.</string>
     <key>NSDownloadsFolderUsageDescription</key>
     <string>Reco Minimap liest Videos und Modelle aus dem gewählten Ordner. / Reco Minimap reads videos and models from the folder you choose.</string>
+    <key>NSNetworkVolumesUsageDescription</key>
+    <string>Reco Minimap liest Videos von diesem Netzwerkvolume. / Reco Minimap reads videos from this network volume.</string>
     <key>NSAppleEventsUsageDescription</key>
     <string>Reco Minimap zeigt den Dateiauswahldialog. / Reco Minimap shows the file chooser.</string>
 </dict>

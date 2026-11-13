@@ -13,3 +13,5 @@ dist/
 
 # React interface: dependencies only (the build in src/tools/webui is committed)
 web/node_modules/
+mac/.build/
+mac/dist/

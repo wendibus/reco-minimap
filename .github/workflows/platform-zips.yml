@@ -1,0 +1,54 @@
+# Windows and Linux downloads (zip with start script). Runs only when started by hand or for a
+# version tag; the zips are attached to the workflow run (and to the release of that tag).
+name: platform zips
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  zip:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            ort_asset: win-x64
+          - os: ubuntu-22.04
+            ort_asset: linux-x64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: ONNX Runtime (newest release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="$(gh release view --repo microsoft/onnxruntime --json tagName -q .tagName)"
+          V="${TAG#v}"
+          if [[ "${{ matrix.ort_asset }}" == win-x64 ]]; then
+            gh release download "$TAG" --repo microsoft/onnxruntime --pattern "onnxruntime-win-x64-$V.zip" --dir ort
+            (cd ort && unzip -q "onnxruntime-win-x64-$V.zip")
+            echo "RECO_ORT_LIB=$PWD/ort/onnxruntime-win-x64-$V/lib/onnxruntime.dll" >> "$GITHUB_ENV"
+          else
+            gh release download "$TAG" --repo microsoft/onnxruntime --pattern "onnxruntime-linux-x64-$V.tgz" --dir ort
+            (cd ort && tar xzf "onnxruntime-linux-x64-$V.tgz")
+            echo "RECO_ORT_LIB=$(ls $PWD/ort/onnxruntime-linux-x64-$V/lib/libonnxruntime.so.* | head -1)" >> "$GITHUB_ENV"
+          fi
+      - name: Build and zip
+        run: scripts/package-platform.sh dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zip-${{ matrix.ort_asset }}
+          path: dist/*.zip
+      - name: Attach to the release of this tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${GITHUB_REF_NAME}" dist/*.zip --clobber || echo "no release for this tag yet"

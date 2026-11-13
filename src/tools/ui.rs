@@ -740,6 +740,11 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
                 Err(e) => err(&mut s, e),
             }
         }
+        // for the Mac launcher: may it quit / install an update without cancelling work?
+        ("GET", "/api/status") => {
+            let busy = ui.jobs.lock().unwrap().values().any(|j| matches!(j.status.lock().unwrap().as_str(), "running" | "cancelling"));
+            jres(&mut s, json!({"ok": true, "busy": busy}));
+        }
         ("POST", "/api/stats") => match stats_for(Path::new(&get_s(&b, "dir")), &get_s(&b, "file")) {
             Ok(v) => jres(&mut s, json!({"ok": true, "stats": v})),
             Err(e) => err(&mut s, e),

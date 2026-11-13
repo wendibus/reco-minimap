@@ -1,6 +1,6 @@
 # Anleitung: von zwei Kameravideos zur Minimap
 
-Diese Anleitung führt dich von „Ich habe ein Panoramavideo und ein trainiertes Modell“ bis zu „Ich habe ein Minimap-Video“. Sie folgt den sieben Schritten der Oberfläche. Beim ersten Mal brauchst du etwa 30 Minuten; bei späteren Spielen sind es wenige Minuten Klicken plus Rechenzeit.
+Diese Anleitung führt dich von „Ich habe ein Panoramavideo“ bis zu „Ich habe ein Minimap-Video“. Sie folgt den sieben Schritten der Oberfläche. Beim ersten Mal brauchst du etwa 30 Minuten; bei späteren Spielen sind es wenige Minuten Klicken plus Rechenzeit.
 
 <p><img src="media/demo-pip.webp" alt="Ergebnis" width="58%"> <img src="media/demo-minimap.webp" alt="Ergebnis" width="40%"></p>
 
@@ -10,7 +10,7 @@ Diese Anleitung führt dich von „Ich habe ein Panoramavideo und ein trainierte
 
 * Das installierte Programm, siehe [Installation](#installation) unten.
 * Ein **Panoramavideo des ganzen Spielfelds** – das gestitchte Bild aus Reco, **nicht** der KI-Bildausschnitt. Hast du nur ein linkes und ein rechtes Video, stitche sie zuerst mit Reco. Für die Minimap reicht ein Export mit 1920×1080; für Trikotnummern brauchst du einen größeren (siehe Schritt 4).
-* Ein **Modell aus Reco Trainer** (Ordner mit `runtime.json`, `model-card.json` und einer `.onnx`-Datei).
+* Ein **Erkennungsmodell** – musst du nicht mitbringen: Ohne eigenes nimmt das Programm das allgemeine Modell von **Reco camera** (in Schritt 1 einmal laden, 10,4 MB). Genauer, vor allem beim Ball, ist ein in **Reco Trainer** für deine Sportart trainiertes Modell (Ordner mit `runtime.json`, `model-card.json` und einer `.onnx`-Datei).
 * Optional: die Rückennummern beider Kader, wenn Nummern auf den Scheiben stehen sollen.
 
 Oberfläche starten:
@@ -30,7 +30,7 @@ Der Browser öffnet `http://127.0.0.1:8788/`. Oben rechts wählst du die Sprache
 | Rust | stabile Toolchain (gebaut und getestet mit **1.91**) |
 | ffmpeg + ffprobe | im `PATH` (`brew install ffmpeg`) |
 | ONNX Runtime | dynamische Bibliothek **1.24 oder neuer** |
-| Ein Erkennungsmodell | ein RF-DETR-Export im ONNX-Format, z. B. aus Reco Trainer |
+| Ein Erkennungsmodell | Standard: das Modell von Reco camera (lädt die Oberfläche in Schritt 1); besser: ein RF-DETR-Export aus Reco Trainer für deine Sportart |
 
 **macOS**
 
@@ -62,7 +62,7 @@ Die Arbeit teilt sich in zwei Teile: **einmal einrichten**, dann **pro Spiel ver
 
 **Einmal pro Halle und Kameraposition** (Schritte 1 bis 3)
 
-1. Sportart wählen und das Modell importieren.
+1. Sportart wählen und das Modell festlegen: das Standardmodell von Reco camera oder ein importiertes aus Reco Trainer.
 2. Ein Panoramavideo aus dieser Halle wählen.
 3. Kalibrieren: Feldpunkte anklicken, Spielergrößen messen, Trikotfarben festlegen.
 
@@ -95,10 +95,14 @@ Das Ergebnis liegt im Projektordner (`court.json`, `scales.json`, `teams.json`) 
 ## Schritt 1 · Sportart & Modell
 
 1. **Sportart wählen.** Die Liste entspricht Reco Trainer. Die graue Zeile darunter zeigt Feldgröße, Spieler pro Team und Schiedsrichter-Plätze. Für eine Sportart, die nicht in der Liste steht, wähle *Andere Sportart (Rechteckfeld)* und trage Länge, Breite, Spielerzahl und Schiedsrichter ein.
-2. **Modell importieren.** Klicke *Ordner wählen und importieren …* und wähle den Ordner aus Reco Trainer (oder *.onnx-Datei wählen und importieren …* für eine einzelne Datei). Du kannst auch einen Pfad eintippen und *Pfad importieren* drücken.
+2. **Modell wählen.** Ohne eigene Wahl nutzt das Programm das **Modell von Reco camera** (*Reco camera (YOLO26n)*, markiert mit *Standard* und *alle Sportarten*). Es ist dasselbe allgemeine Modell, mit dem Reco camera die KI-Kamera führt: Es erkennt Personen und Bälle in jeder Sportart ohne Training, kennt aber keine Schiedsrichter – die findet das Programm über die Trikotfarbe (Schritt 3c).
+   * Beim ersten Mal steht dort *Modell laden*: Es lädt das Modell einmal für alle Projekte (10,4 MB) und prüft die Prüfsumme.
+   * Darunter steht **Reco-Trainer-Modelle für** deine Sportart: wie viele du schon importiert hast und was der Modell-Hub von Reco Trainer für diese Sportart anbietet. Ist ein passendes Modell importiert, wählst du es mit einem Klick (*… verwenden*). Ein für die Sportart trainiertes Modell findet Ball und Schiedsrichter meist deutlich besser.
+   * Laden direkt aus dem Modell-Hub kommt später; bis dahin lädst du ein Modell in Reco Trainer, exportierst es und importierst es hier.
+3. **Modell importieren.** Klicke *Ordner wählen und importieren …* und wähle den Ordner aus Reco Trainer (oder *.onnx-Datei wählen und importieren …* für eine einzelne Datei). Du kannst auch einen Pfad eintippen und *Pfad importieren* drücken.
    * Das Programm prüft die Prüfsumme der Gewichte. *Prüfsumme stimmt* ist das Ziel; eine beschädigte Datei wird abgelehnt.
-   * Es zeigt Klassen (`ball, player, referee, ignore`), Eingabegröße und die Sportart, für die das Modell trainiert wurde. Nennt das Modell eine Sportart, wird sie für dich gewählt. Weicht sie von deiner Wahl ab, erscheint ein roter Hinweis.
-3. **Modell prüfen** (braucht ein Video aus Schritt 2, du kannst also später zurückkommen): *Modell am Video prüfen* lässt das Modell auf ein paar Bildern laufen und schreibt einen Bericht ins Protokoll unten. Darauf achten:
+   * Es zeigt Klassen (bei Reco-Trainer-Modellen z. B. `ball, player, referee, ignore`, beim Standardmodell `person, sports ball`), Eingabegröße und die Sportart, für die das Modell trainiert wurde. Nennt das Modell eine Sportart, wird sie für dich gewählt. Weicht sie von deiner Wahl ab, erscheint ein roter Hinweis.
+4. **Modell prüfen** (braucht ein Video aus Schritt 2, du kannst also später zurückkommen): *Modell am Video prüfen* lässt das Modell auf ein paar Bildern laufen und schreibt einen Bericht ins Protokoll unten. Darauf achten:
    * *Spieler pro Bild (Median)* nahe der Spielerzahl auf dem Feld (10 beim Basketball). Deutlich weniger heißt: Das Modell übersieht Spieler in dieser Größe – mach trotzdem weiter, Schritt 3 verbessert das.
    * `Wandzeit pro Bild` ist die Zeit pro Bild. Auf einem M4 Pro mit CoreML sind es einige hundert Millisekunden.
    * Es zeigt, ob die Annahmen über die Modellausgabe stimmen („Boxen liegen in 0..1“, „die meisten Treffer liegen auf ‚player‘“).
@@ -270,6 +274,12 @@ Wähle eine `.jsonl`-Datei aus `out/`. Die Statistik richtet sich nach der Sport
 
 ## Aktualisieren
 
+**Mac-App:** Beim Start fragt die App, wenn eine neue Version erschienen ist: *Version … ist verfügbar. Jetzt installieren?* Sie lädt das Update, prüft dessen Signatur, wechselt und startet sich neu; deine Projekte bleiben, wie sie sind. Läuft gerade ein Vorgang, wartet das Update. Von Hand: Menü *Reco Minimap → Nach Updates suchen …*.
+
+**Windows- und Linux-Zip:** die neue Zip-Datei von der Release-Seite laden und entpacken.
+
+**Selbst gebaut (cargo):** so wie unten beschrieben.
+
 Beim Start fragt die Oberfläche einmal bei GitHub nach, ob es eine neuere Version gibt. Dabei wird nur die Anfrage selbst gesendet, keine Videos, Bilder oder Projektdaten.
 
 * Gibt es eine, erscheint oben ein **blauer Hinweis** mit der Versionsnummer, einem Link *Was ist neu?* und dem Knopf *Jetzt installieren*.
@@ -305,6 +315,8 @@ Das Overlay beginnt zur Startzeit des Abschnitts; nimm `-ss` beim Spielvideo, we
 | `zsh: command not found: #…` | Zeilen, die mit `#` beginnen, nicht ins Terminal einfügen – zsh behandelt sie dort nicht als Kommentar. |
 | *Farben ermitteln* schlägt fehl | Kalibrierung prüfen (nur Spieler innerhalb des kalibrierten Felds zählen) und die Farben von Hand setzen. |
 | Wenige Spieler erkannt | *Messen* (3b) ausführen. Das Programm folgt einem Spieler schon mit unsicheren Erkennungen (ab 0,30), startet einen Punkt aber erst bei einer sicheren (ab 0,60); ist das Modell auf deinem Material durchgehend unsicher, senke `--thr-player` auf der Kommandozeile (z. B. 0,5). Ein kleines oder unscharfes Bild begrenzt das Modell. |
+| Ball selten erkannt (Standardmodell) | Das allgemeine Modell von Reco camera ist beim Ball unsicherer. Ein in Reco Trainer für die Sportart trainiertes Modell importieren und in Schritt 1 wählen. Mit dem Standardmodell gelten niedrigere Schwellen (Spieler ab 0,35, Ball ab 0,20). |
+| *Modell laden* schlägt fehl | Es braucht einmal eine Verbindung zu GitHub. Hast du `yolo26n.onnx` schon (z. B. aus Reco camera): `reco-minimap fetch-model --from /pfad/zu/yolo26n.onnx`. |
 | Teamfarben falsch oder Scheiben in der falschen Farbe | Farben in 3c von Hand setzen. Bei kräftigen Farben oder farbigen Feldflächen *Farbprobe an die Trikotfarben anlehnen* einschalten. |
 | Zwei „Schiedsrichter“, obwohl keine da sind | *Spiel ohne Schiedsrichter* in 3c einschalten. |
 | Scheiben an falscher Stelle | Neu kalibrieren, mit mehr Punkten über das ganze Feld; das grüne Feld muss auf den echten Linien liegen. |

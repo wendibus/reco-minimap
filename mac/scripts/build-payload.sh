@@ -25,8 +25,17 @@ if [[ -z "${RECO_SKIP_NPM:-}" ]]; then
   (cd web && npm ci --no-audit --no-fund >/dev/null && npm run build >/dev/null)
 fi
 [[ -f src/tools/webui/index.html ]] || { echo "Built interface not found: src/tools/webui" >&2; exit 1; }
+# Nothing of this computer may end up in the program: compiled-in source paths (panic messages)
+# would show the home folder and the user name, so they are rewritten to neutral ones.
+export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$HOME/.cargo/registry/src=/cargo --remap-path-prefix=$HOME/.cargo/git/checkouts=/cargo-git --remap-path-prefix=$HOME/.rustup=/rustup --remap-path-prefix=$PWD=/reco-minimap"
 cargo build --release --features tools,coreml >&2
 TARGET_DIR="$(cargo metadata --format-version 1 --no-deps | sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p')"
+LEAK="$(strings -a "$TARGET_DIR/release/reco-minimap" | grep -E "$HOME|/Users/|/Volumes/|${USER:-nouser}" | head -3 || true)"
+if [[ -n "$LEAK" ]]; then
+  echo "The program still contains paths of this computer - not packaged:" >&2
+  echo "$LEAK" >&2
+  exit 1
+fi
 
 mkdir -p "$OUTPUT_DIR"
 OUTPUT_DIR="${OUTPUT_DIR:A}"

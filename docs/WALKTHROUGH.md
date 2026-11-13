@@ -306,6 +306,20 @@ The *Positions* card is a heat map: it shows where a team or the ball was during
 * **What for:** where does a team defend, how high does it stand, which side does it attack on, where does the ball spend the most time? Compare *Home* and *Away* in the same section, or two sections of the same team (e.g. first and second half as separate files).
 * **Limits:** players far from the camera are detected less often, so the far side often looks paler. Teams changing ends at half time mix if both halves are in one file. Positions outside the field do not count.
 
+### Team shape
+
+The *Team shape* card shows how wide and how deep each team stands. It only uses the player positions, so it needs no goal or shot detection.
+
+![Step 7 – team shape](img/en/step7-shape.webp)
+*Step 7: team shape, the width over time at the top, the average line-up with the ball in section 1 below.*
+
+* **Width and depth:** *Width* is measured across the field from the outermost player on one side to the one on the other, *depth* along the field. When 7 or more players of a team are visible, the player farthest from the team (usually the goalkeeper) is left out of the depth. A frame only counts when at least 3 players of the team are visible.
+* **With / without the ball:** At the top you see each team's averages, split by possession. Possession means: the team of the player who last had the ball. Without possession detection (for example in sports where the program does not determine a ball carrier) there is only *All*.
+* **Over time:** width or depth over time as a moving average, so the trend shows. Rest the mouse on the chart to see both teams' values at that time.
+* **Average line-up:** For each time section, and for *With the ball*, *Without the ball* or *All*, the field shows the average position of every player slot, the team centre (+) and a rectangle of the average width and depth. Slots visible in less than a fifth of the section are left out.
+* **What for:** Does a team stand tighter in section 3 than at the start? How much does it close up without the ball, how wide does it make the field with it?
+* **Limits:** The values describe the team, not single players: without jersey numbers two player slots can swap people, and the average line-up then blurs. Players far from the camera are found less often, which can underestimate the width.
+
 ### Key moments and clips
 
 The list shows attempts, game situations and confirmed substitutions with time, team and zone. Tick moments (*All* selects all) and click *Cut clips*: each gets a short clip from the video in `out/clips/`, from 6 s before to 4 s after the moment. *Show clips* opens the folder. The video from step 2 must still be in the same place.

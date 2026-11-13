@@ -306,6 +306,20 @@ La tarjeta *Posiciones* es un mapa de calor: muestra dónde estuvo un equipo o e
 * **Para qué:** ¿dónde defiende un equipo, a qué altura se coloca, por qué lado ataca, dónde pasa más tiempo el balón? Compara *Local* y *Visitante* en el mismo tramo, o dos tramos del mismo equipo (p. ej. primera y segunda parte como archivos separados).
 * **Límites:** los jugadores lejos de la cámara se detectan con menos frecuencia, así que el lado lejano suele verse más pálido. Los cambios de campo en el descanso se mezclan si ambas partes están en un solo archivo. Las posiciones fuera del campo no cuentan.
 
+### Forma del equipo
+
+La tarjeta *Forma del equipo* muestra qué tan ancho y profundo se coloca cada equipo. Solo usa las posiciones de los jugadores, así que no necesita detectar goles ni tiros.
+
+![Paso 7 – forma del equipo](img/es/step7-shape.webp)
+*Paso 7: forma del equipo, arriba la evolución de la anchura, abajo la colocación media con balón en la sección 1.*
+
+* **Anchura y profundidad:** la *anchura* se mide a lo ancho del campo, del jugador más abierto de un lado al del otro; la *profundidad*, a lo largo. Si hay 7 o más jugadores visibles de un equipo, el más alejado del equipo (normalmente el portero) no cuenta para la profundidad. Una imagen solo cuenta si se ven al menos 3 jugadores del equipo.
+* **Con / sin balón:** arriba están las medias de cada equipo, separadas según la posesión. Posesión significa: el equipo del último jugador que tuvo el balón. Sin detección de posesión (por ejemplo en deportes en los que el programa no determina quién lleva el balón) solo hay *Todo*.
+* **Evolución:** anchura o profundidad a lo largo del tiempo, como media móvil, para que se vea la tendencia. Deja el ratón sobre el gráfico para ver los valores de ambos equipos en ese momento.
+* **Colocación media:** para cada sección de tiempo, y para *Con balón*, *Sin balón* o *Todo*, el campo muestra la posición media de cada puesto, el centro del equipo (+) y un rectángulo con la anchura y profundidad medias. Los puestos visibles en menos de una quinta parte de la sección no aparecen.
+* **Para qué:** ¿Está un equipo más junto en la sección 3 que al principio? ¿Cuánto se cierra sin balón y cuánto abre el campo con balón?
+* **Límites:** los valores describen al equipo, no a jugadores concretos: sin dorsales, dos puestos pueden intercambiar persona y la colocación media se difumina. Los jugadores lejos de la cámara se detectan menos, lo que puede subestimar la anchura.
+
 ### Momentos clave y clips
 
 La lista muestra intentos, situaciones de juego y cambios confirmados con hora, equipo y zona. Marca momentos (*Todos* los marca todos) y haz clic en *Cortar clips*: cada uno da un clip breve del vídeo en `out/clips/`, de 6 s antes a 4 s después del momento. *Mostrar clips* abre la carpeta. El vídeo del paso 2 tiene que seguir en el mismo sitio.

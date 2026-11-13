@@ -306,6 +306,20 @@ La carte *Positions* est une carte de chaleur : elle montre où une équipe ou l
 * **À quoi elle sert :** où une équipe défend-elle, à quelle hauteur se place-t-elle, par quel côté attaque-t-elle, où le ballon passe-t-il le plus de temps ? Comparez *Domicile* et *Visiteurs* sur la même section, ou deux sections de la même équipe (p. ex. première et deuxième mi-temps en fichiers séparés).
 * **Limites :** les joueurs éloignés de la caméra sont moins souvent détectés, le côté lointain paraît donc souvent plus pâle. Les changements de côté à la mi-temps se mélangent si les deux mi-temps sont dans un seul fichier. Les positions hors du terrain ne comptent pas.
 
+### Forme de l’équipe
+
+La carte *Forme de l’équipe* montre la largeur et la profondeur de chaque équipe. Elle n’utilise que les positions des joueurs et n’a donc besoin d’aucune détection de but ou de tir.
+
+![Étape 7 – forme de l’équipe](img/fr/step7-shape.webp)
+*Étape 7 : forme de l’équipe, en haut l’évolution de la largeur, en bas le placement moyen avec le ballon dans la section 1.*
+
+* **Largeur et profondeur :** la *largeur* se mesure en travers du terrain, du joueur le plus excentré d’un côté à celui de l’autre, la *profondeur* dans la longueur. Quand 7 joueurs ou plus d’une équipe sont visibles, le joueur le plus éloigné de l’équipe (en général le gardien) n’entre pas dans la profondeur. Une image ne compte que si au moins 3 joueurs de l’équipe sont visibles.
+* **Avec / sans le ballon :** en haut, les moyennes de chaque équipe, séparées selon la possession. Possession signifie : l’équipe du dernier joueur qui avait le ballon. Sans détection de possession (par exemple dans les sports où le programme ne détermine pas de porteur du ballon), il n’y a que *Tout*.
+* **Évolution :** largeur ou profondeur au fil du temps, en moyenne glissante, pour voir la tendance. Laisse la souris sur le graphique pour voir les valeurs des deux équipes à ce moment.
+* **Placement moyen :** pour chaque section de temps, et pour *Avec le ballon*, *Sans le ballon* ou *Tout*, le terrain montre la position moyenne de chaque place de joueur, le centre de l’équipe (+) et un rectangle de la largeur et de la profondeur moyennes. Les places visibles moins d’un cinquième de la section sont omises.
+* **À quoi ça sert :** une équipe est-elle plus resserrée dans la section 3 qu’au début ? À quel point se resserre-t-elle sans le ballon, à quel point écarte-t-elle le jeu avec le ballon ?
+* **Limites :** les valeurs décrivent l’équipe, pas des joueurs isolés : sans numéros de maillot, deux places peuvent échanger de joueur et le placement moyen devient flou. Les joueurs loin de la caméra sont moins souvent détectés, ce qui peut sous-estimer la largeur.
+
 ### Moments clés et clips
 
 La liste montre les tentatives, les situations de jeu et les changements confirmés avec heure, équipe et zone. Cochez des moments (*Tous* sélectionne tout) et cliquez *Couper les clips* : chacun donne un court clip de la vidéo dans `out/clips/`, de 6 s avant à 4 s après le moment. *Montrer les clips* ouvre le dossier. La vidéo de l'étape 2 doit toujours se trouver au même endroit.

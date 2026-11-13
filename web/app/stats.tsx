@@ -11,6 +11,7 @@ type Stats = Json & {
   periods: { index: number; from: number; to: number; home: number; away: number; none: number }[];
   possession: { home: number; away: number; frames_held: number; ball_seen: number };
   thirds: number[]; heat: { nx: number; ny: number; home: number[]; away: number[]; ball: number[] };
+  shape?: Shape;
   moments: { t: number; type: 'attempt' | 'scene' | 'sub'; kind?: string; team: Team; zone?: string; out?: number | null; in?: number | null }[];
 };
 
@@ -20,6 +21,15 @@ function sections(sport: string) {
   const shots = sport === 'basketball' || goalSport;
   return { shots, zones: shots, periods: shots, possession: sport !== 'volleyball' && sport !== 'custom', thirds: goalSport || sport === 'rugby' || sport === 'american_football', heat: true };
 }
+
+type Spread = { w: number; d: number } | null;
+type Side = { w: number; d: number; cx: number; cy: number; frames: number; slots: { id: number; x: number; y: number; share: number }[] } | null;
+type Phase = 'all' | 'att' | 'def';
+type Shape = {
+  series: { t: number; home: Spread; away: Spread }[];
+  sections: { index: number; from: number; to: number; home: Record<Phase, Side>; away: Record<Phase, Side> }[];
+  home: Record<Phase, Spread>; away: Record<Phase, Spread>;
+};
 
 // ---------------------------------------------------------------- tooltip shared by all charts
 type Tip = { x: number; y: number; text: string } | null;
@@ -163,6 +173,8 @@ export function StatsPanel() {
       <Field s={stats}>{heatCells(stats, stats.heat[layer], stats.heat.nx, stats.heat.ny, layer === 'ball' ? 'var(--ball)' : 'var(--accent)', (n) => `${Math.round(n / Math.max(1, stats.heat[layer].reduce((a, b) => a + b, 0)) * 1000) / 10} %`)}</Field>
     </Card>}
 
+    {stats.shape && <ShapeCard s={stats} shape={stats.shape} colors={colors} names={teamName} />}
+
     <Card title={ts.moments} hint={ts.momentsHint}>
       {stats.moments.length === 0 ? <p className="mm-muted">{ts.noMoments}</p> : <>
         <div className="mm-row mm-gap mm-wrap">
@@ -225,5 +237,98 @@ function Periods({ s, colors, names, label }: { s: Stats; colors: Record<Team, s
         <text x={x0 + bw + gap / 2} y={H + 18} className="mm-tick" textAnchor="middle">{label(p.index)}</text>
       </g>;
     })}
+  </svg>;
+}
+
+// ---------------------------------------------------------------- team shape: width / depth over time, average line-up per section
+function ShapeCard({ s, shape, colors, names }: { s: Stats; shape: Shape; colors: Record<Team, string>; names: Record<Team, string> }) {
+  const { t } = useApp();
+  const ts = t.stats;
+  const [metric, setMetric] = useState<'w' | 'd'>('w');
+  const [sec, setSec] = useState(0);
+  const hasPhases = !!(shape.home.att || shape.away.att);
+  const [phase, setPhase] = useState<Phase>('att');
+  const ph: Phase = hasPhases ? phase : 'all';
+  const sides = ['home', 'away'] as const;
+  const m = (v: number) => `${v.toFixed(1)} m`;
+  if (!shape.home.all && !shape.away.all) return <Card title={ts.shape} hint={ts.shapeHint}><p className="mm-muted">{ts.noShape}</p></Card>;
+  const section = shape.sections[Math.min(sec, shape.sections.length - 1)];
+  const phaseName: Record<Phase, string> = { all: ts.phaseAll, att: ts.phaseAtt, def: ts.phaseDef };
+  const r = s.field.length / 90;
+  const row = (v: Spread, label: string) => v && <div className="mm-shape-row"><span>{label}</span><strong>{m(v.w)}</strong><span className="mm-muted">{ts.width}</span><strong>{m(v.d)}</strong><span className="mm-muted">{ts.depth}</span></div>;
+  return <Card title={ts.shape} hint={ts.shapeHint}>
+    <div className="mm-tiles mm-tiles-inline">
+      {sides.map((k) => shape[k].all && <div key={k} className="mm-tile">
+        <span className="mm-tile-label"><i className="mm-sw" style={{ background: colors[k] }} />{names[k]}</span>
+        {hasPhases ? <>{row(shape[k].att, ts.phaseAtt)}{row(shape[k].def, ts.phaseDef)}</> : row(shape[k].all, ts.phaseAll)}
+      </div>)}
+    </div>
+    <h3>{ts.overTime}</h3>
+    <div className="segmented" role="group">{(['w', 'd'] as const).map((k) => <button key={k} type="button" data-hint={t.hints.shapeMetric} className={metric === k ? 'active' : ''} onClick={() => setMetric(k)}>{k === 'w' ? ts.width : ts.depth}</button>)}</div>
+    <p className="mm-muted small">{metric === 'w' ? ts.widthHint : ts.depthHint}. {ts.smoothed}</p>
+    <ShapeLines shape={shape} metric={metric} colors={colors} names={names} />
+    <div className="mm-legend">{sides.map((k) => <span key={k}><i className="mm-sw" style={{ background: colors[k] }} />{names[k]}</span>)}</div>
+    <h3>{ts.formation}</h3>
+    <div className="mm-row mm-gap mm-wrap">
+      {hasPhases && <div className="segmented" role="group">{(['att', 'def', 'all'] as const).map((k) => <button key={k} type="button" data-hint={t.hints.shapePhase} className={phase === k ? 'active' : ''} onClick={() => setPhase(k)}>{phaseName[k]}</button>)}</div>}
+      <div className="segmented" role="group">{shape.sections.map((p, i) => <button key={p.index} type="button" data-hint={t.hints.shapeSection} className={sec === i ? 'active' : ''} onClick={() => setSec(i)}>{ts.period(p.index)}</button>)}</div>
+    </div>
+    <p className="mm-muted small">{clock(section.from)} – {clock(section.to)}{sides.map((k) => section[k][ph] ? ` · ${names[k]}: ${ts.width} ${m(section[k][ph]!.w)}, ${ts.depth} ${m(section[k][ph]!.d)}` : '').join('')}</p>
+    <Field s={s}>
+      {sides.map((k) => {
+        const v = section[k][ph];
+        if (!v) return null;
+        return <g key={k}>
+          <rect x={v.cx - v.d / 2} y={v.cy - v.w / 2} width={v.d} height={v.w} fill={colors[k]} fillOpacity={0.12} stroke={colors[k]} strokeWidth={r * 0.25} strokeDasharray={`${r} ${r * 0.6}`} {...tipHandlers(`${names[k]} · ${phaseName[ph]} · ${ts.width} ${m(v.w)} · ${ts.depth} ${m(v.d)}`)} />
+          <path d={`M${v.cx - r} ${v.cy}h${2 * r}M${v.cx} ${v.cy - r}v${2 * r}`} stroke="var(--label)" strokeWidth={r * 0.3} {...tipHandlers(`${names[k]} · ${ts.centre}`)} />
+          {v.slots.filter((p) => p.share >= 0.2).map((p) => <g key={p.id} className="mm-marker" {...tipHandlers(`${names[k]} · ${ts.slot(p.id)} · ${ts.seen} ${Math.round(p.share * 100)} %`)}>
+            <circle cx={p.x} cy={p.y} r={r * 2.2} fill="transparent" />
+            <circle cx={p.x} cy={p.y} r={r} fill={colors[k]} stroke="var(--content)" strokeWidth={r * 0.35} paintOrder="stroke" />
+            <circle cx={p.x} cy={p.y} r={r} fill="none" stroke="var(--label)" strokeOpacity={0.55} strokeWidth={r * 0.12} />
+          </g>)}
+        </g>;
+      })}
+    </Field>
+  </Card>;
+}
+
+function ShapeLines({ shape, metric, colors, names }: { shape: Shape; metric: 'w' | 'd'; colors: Record<Team, string>; names: Record<Team, string> }) {
+  // centred moving average over five bins (about a tenth of the video), gaps stay gaps
+  const pts = shape.series.map((p, i, all) => {
+    const win = all.slice(Math.max(0, i - 2), i + 3);
+    const avg = (k: 'home' | 'away'): Spread => {
+      if (!p[k]) return null;
+      const v = win.map((q) => q[k]).filter((q): q is NonNullable<Spread> => !!q);
+      return { w: v.reduce((a, q) => a + q.w, 0) / v.length, d: v.reduce((a, q) => a + q.d, 0) / v.length };
+    };
+    return { t: p.t, home: avg('home'), away: avg('away') };
+  });
+  const max = Math.max(1, ...pts.flatMap((p) => [p.home?.[metric] ?? 0, p.away?.[metric] ?? 0]));
+  const top = Math.ceil(max / 5) * 5;
+  const W = 640, H = 150, x0 = 34, x1 = W - 8, y0 = 10;
+  const t0 = pts[0]?.t ?? 0, t1 = pts[pts.length - 1]?.t ?? 1;
+  const X = (t: number) => x0 + ((t - t0) / Math.max(1e-6, t1 - t0)) * (x1 - x0);
+  const Y = (v: number) => H - (v / top) * (H - y0);
+  const path = (k: 'home' | 'away') => {
+    let d = '', pen = false;
+    for (const p of pts) { const v = p[k]?.[metric]; if (v == null) { pen = false; continue; } d += `${pen ? 'L' : 'M'}${X(p.t).toFixed(1)} ${Y(v).toFixed(1)}`; pen = true; }
+    return d;
+  };
+  const [hover, setHover] = useState<number | null>(null);
+  const step = (x1 - x0) / Math.max(1, pts.length - 1);
+  return <svg className="mm-periods mm-lines" viewBox={`0 0 ${W} ${H + 22}`} role="img" onPointerLeave={() => { setHover(null); setTipGlobal(null); }}>
+    <line x1={x0} x2={x1} y1={H} y2={H} className="mm-axis" />
+    {[0.5, 1].map((f) => <g key={f}><line x1={x0} x2={x1} y1={Y(top * f)} y2={Y(top * f)} className="mm-grid" /><text x={x0 - 4} y={Y(top * f) + 4} className="mm-tick" textAnchor="end">{Math.round(top * f)} m</text></g>)}
+    <text x={x0} y={H + 16} className="mm-tick">{clock(t0)}</text>
+    <text x={x1} y={H + 16} className="mm-tick" textAnchor="end">{clock(t1)}</text>
+    {hover != null && <line x1={X(pts[hover].t)} x2={X(pts[hover].t)} y1={y0} y2={H} className="mm-axis" />}
+    {(['home', 'away'] as const).map((k) => <g key={k} fill="none" strokeLinejoin="round" strokeLinecap="round">
+      <path d={path(k)} stroke="var(--label)" strokeOpacity={0.3} strokeWidth={3.5} />
+      <path d={path(k)} stroke={colors[k]} strokeWidth={2} />
+      {hover != null && pts[hover][k] && <circle cx={X(pts[hover].t)} cy={Y(pts[hover][k]![metric])} r={4} fill={colors[k]} stroke="var(--label)" strokeOpacity={0.5} />}
+    </g>)}
+    {pts.map((p, i) => <rect key={i} x={X(p.t) - step / 2} y={0} width={step} height={H} fill="transparent"
+      onPointerEnter={(e) => { setHover(i); setTipGlobal({ x: e.clientX, y: e.clientY, text: `${clock(p.t)} · ${(['home', 'away'] as const).map((k) => `${names[k]} ${p[k] ? p[k]![metric].toFixed(1) + ' m' : '–'}`).join(' · ')}` }); }}
+      onPointerMove={(e) => setTipGlobal({ x: e.clientX, y: e.clientY, text: `${clock(p.t)} · ${(['home', 'away'] as const).map((k) => `${names[k]} ${p[k] ? p[k]![metric].toFixed(1) + ' m' : '–'}`).join(' · ')}` })} />)}
   </svg>;
 }

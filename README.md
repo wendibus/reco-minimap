@@ -20,7 +20,7 @@ Everything runs locally. No video, frame or model leaves your computer. The only
 | **Jersey numbers** | Optional OCR on the player's back, constrained to your squad list, with substitution detection |
 | **Game situations** | Optional recognition of tip-off, free throw, throw-in, kick-off, corner, penalty, 7 m throw and basketball 2/3-point attempts, from formations on the field ([per sport](docs/SCENARIOS.md)) |
 | **Models** | Works out of the box with the general model of Reco camera (YOLO26n, every sport); step 1 shows the Reco Trainer models for the chosen sport and switches to one with a click ([Models](#models-from-reco-trainer)) |
-| **Statistics** | Per-sport shot charts, attempts by zone, attempts per time section, possession, ball position, heat maps and key moments with one-click clips ([Statistics](#statistics)) |
+| **Statistics** | Per-sport shot charts, attempts by zone, attempts per time section, possession, ball position, heat maps, team shape (width, depth, average line-up) and key moments with one-click clips ([Statistics](#statistics)) |
 | **Interface** | `reco-minimap ui` – seven steps from model import to statistics, with hover hints that can be switched off, a progress window that can stop a job (keeping or deleting what it wrote), with a notice when a newer version is available; the header shows the installed version and opens the built-in guide in your language (`reco-minimap --version` on the command line) |
 
 > **Status:** the pipeline, interface, calibration, tracking and live mode are tested end to end. Detection quality with a real Reco Trainer model was checked on basketball footage only; the other sports are supported by their field geometry. Jersey-number reading has only been measured on synthetic digits (see [Jersey numbers](#jersey-numbers-and-substitutions)). Details in [Known limitations](#known-limitations).
@@ -368,6 +368,7 @@ The statistics count **attempts**; whether a shot went in is not visible to the 
 | Time sections | attempts in equal parts of the video (4 in basketball and hockey, otherwise 2) with the home – away difference; there is no game clock |
 | Possession, thirds | share of time each team holds the ball; for field sports the share of the ball in each third |
 | Positions | heat maps of home, away and the ball |
+| Team shape | width and depth of each team, with and without the ball, over time, and the average line-up per time section (from positions only) |
 | Key moments | attempts, game situations, confirmed substitutions; tick them and cut short clips into `out/clips/` |
 
 ## Live mode and OBS

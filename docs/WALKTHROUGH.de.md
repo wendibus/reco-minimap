@@ -306,6 +306,20 @@ Die Karte *Positionen* ist eine Heatmap: Sie zeigt, wo sich ein Team oder der Ba
 * **Wofür:** Wo verteidigt ein Team, wie hoch steht es, über welche Seite greift es an, wo hält sich der Ball am längsten auf? Vergleiche *Heim* und *Gast* im selben Abschnitt, oder zwei Abschnitte desselben Teams (z. B. erste und zweite Halbzeit als eigene Dateien).
 * **Grenzen:** Spieler weit weg von der Kamera werden seltener erkannt, die ferne Seite erscheint deshalb oft blasser. Wechselnde Seiten zur Halbzeit vermischen sich, wenn beide Halbzeiten in einer Datei liegen. Positionen außerhalb des Felds zählen nicht.
 
+### Teamform
+
+Die Karte *Teamform* zeigt, wie breit und wie tief jedes Team steht. Sie rechnet nur mit den Positionen der Spieler und braucht deshalb keine Tor- oder Wurferkennung.
+
+![Schritt 7 – Teamform](img/de/step7-shape.webp)
+*Schritt 7: Teamform, oben der Verlauf der Breite, unten die durchschnittliche Aufstellung mit Ball in Abschnitt 1.*
+
+* **Breite und Tiefe:** Die *Breite* misst quer zum Feld vom äußersten Spieler auf der einen Seite bis zu dem auf der anderen, die *Tiefe* längs zum Feld. Sind 7 oder mehr Spieler eines Teams sichtbar, bleibt bei der Tiefe der Spieler weg, der am weitesten vom Team entfernt steht (meist der Torwart). Ein Bild zählt nur, wenn mindestens 3 Spieler des Teams sichtbar sind.
+* **Mit Ball / gegen den Ball:** Oben stehen für jedes Team die Durchschnittswerte, getrennt nach Ballbesitz. Ballbesitz heißt: Das Team des Spielers, der den Ball zuletzt hatte. Ohne Ballbesitz-Erkennung (z. B. in Sportarten, in denen das Programm keinen Ballführer bestimmt) gibt es nur *Alle*.
+* **Verlauf:** Breite oder Tiefe über die Zeit, als gleitender Mittelwert, damit der Trend sichtbar wird. Ruht die Maus auf dem Diagramm, siehst du die Werte beider Teams zu diesem Zeitpunkt.
+* **Durchschnittliche Aufstellung:** Für jeden Zeitabschnitt und wahlweise *Mit Ball*, *Gegen den Ball* oder *Alle* zeigt das Feld die mittlere Position jedes Spielerplatzes, den Teamschwerpunkt (+) und ein Rechteck aus mittlerer Breite und Tiefe. Plätze, die in weniger als einem Fünftel des Abschnitts sichtbar waren, fehlen.
+* **Wofür:** Steht ein Team in Abschnitt 3 enger als am Anfang? Wie weit zieht es sich gegen den Ball zusammen, wie weit macht es das Feld mit Ball breit?
+* **Grenzen:** Die Werte gelten für das Team, nicht für einzelne Spieler: Ohne Trikotnummern können zwei Spielerplätze die Person tauschen, und die durchschnittliche Aufstellung verwischt dann. Spieler weit weg von der Kamera werden seltener erkannt, was die Breite unterschätzen kann.
+
 ### Schlüsselmomente und Clips
 
 Die Liste zeigt Versuche, Spielsituationen und bestätigte Wechsel mit Zeit, Team und Zone. Hake Momente an (*Alle* wählt alle) und klicke *Clips schneiden*: Für jeden entsteht in `out/clips/` ein kurzer Clip aus dem Video, 6 s vor bis 4 s nach dem Moment. *Clips zeigen* öffnet den Ordner. Dafür muss das Video aus Schritt 2 noch am selben Ort liegen.

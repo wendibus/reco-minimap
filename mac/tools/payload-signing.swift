@@ -1,6 +1,7 @@
 // Signs update payloads with Ed25519 so the Reco Minimap app only installs updates you published.
 //
 //   swift mac/tools/payload-signing.swift keygen [keyfile]    one-time: create the key pair
+//   swift mac/tools/payload-signing.swift pubkey [keyfile]    print the public key of an existing key
 //   swift mac/tools/payload-signing.swift sign <file> [keyfile]   writes <file>.sig
 //   swift mac/tools/payload-signing.swift verify <file> <publicKeyBase64>
 //
@@ -39,6 +40,10 @@ case "keygen":
     print("Public key (paste into mac/Sources/LauncherCore/PayloadKey.swift (reco-minimap)):")
     print(key.publicKey.rawRepresentation.base64EncodedString())
 
+case "pubkey":
+    // prints the public key of an existing private key (e.g. after a terminal masked the keygen output)
+    print(loadPrivateKey(arguments.count > 2 ? arguments[2] : nil).publicKey.rawRepresentation.base64EncodedString())
+
 case "sign":
     guard arguments.count >= 3 else { fail("usage: sign <file> [keyfile]") }
     let file = URL(fileURLWithPath: arguments[2])
@@ -62,5 +67,5 @@ case "verify":
     if publicKey.isValidSignature(signature, for: data) { print("Signature OK") } else { fail("Signature INVALID") }
 
 default:
-    fail("usage: keygen [keyfile] | sign <file> [keyfile] | verify <file> <publicKeyBase64>")
+    fail("usage: keygen [keyfile] | pubkey [keyfile] | sign <file> [keyfile] | verify <file> <publicKeyBase64>")
 }

@@ -1,6 +1,6 @@
 # Walkthrough: from two camera videos to a minimap
 
-This guide takes you from "I have a panorama video and a trained model" to "I have a minimap video". It follows the seven steps of the interface. Allow about 30 minutes the first time; later games take a few minutes of clicking plus processing time.
+This guide takes you from "I have a panorama video" to "I have a minimap video". It follows the seven steps of the interface. Allow about 30 minutes the first time; later games take a few minutes of clicking plus processing time.
 
 <p><img src="media/demo-pip.webp" alt="Result" width="58%"> <img src="media/demo-minimap.webp" alt="Result" width="40%"></p>
 
@@ -10,7 +10,7 @@ This guide takes you from "I have a panorama video and a trained model" to "I ha
 
 * The reco-minimap program installed, see [Installation](#installation) below.
 * A **panorama video of the whole field** – the stitched picture from Reco, not the AI-cropped view. If you only have a left and a right camera video, stitch them with Reco first. A 1920×1080 export is enough for the minimap; for jersey numbers you want a larger one (see step 4).
-* A **model exported by Reco Trainer** (a folder with `runtime.json`, `model-card.json` and an `.onnx` file).
+* A **detection model** – you do not have to bring one: without your own, the program uses the general model of **Reco camera** (downloaded once in step 1, 10.4 MB). A model trained in **Reco Trainer** for your sport is more accurate, above all for the ball (a folder with `runtime.json`, `model-card.json` and an `.onnx` file).
 * Optional: the shirt numbers of both squads, if you want numbers on the dots.
 
 Start the interface:
@@ -30,7 +30,7 @@ Your browser opens at `http://127.0.0.1:8788/`. Pick your language at the top ri
 | Rust | stable toolchain (built and tested with **1.91**) |
 | ffmpeg + ffprobe | on your `PATH` (`brew install ffmpeg`) |
 | ONNX Runtime | shared library **1.24 or newer** |
-| A detection model | an RF-DETR ONNX export, e.g. from Reco Trainer |
+| A detection model | default: the model of Reco camera (the interface downloads it in step 1); better: an RF-DETR export from Reco Trainer for your sport |
 
 **macOS**
 
@@ -62,7 +62,7 @@ The work has two parts: **set up once**, then **process each game**.
 
 **Once per venue and camera position** (steps 1 to 3)
 
-1. Pick the sport and import the model.
+1. Pick the sport and settle the model: the default model of Reco camera or one imported from Reco Trainer.
 2. Choose a panorama video from that venue.
 3. Calibrate: click the field landmarks, measure player sizes, set the shirt colours.
 
@@ -95,10 +95,14 @@ The result lives in the project folder (`court.json`, `scales.json`, `teams.json
 ## Step 1 · Sport & model
 
 1. **Choose the sport.** The list matches Reco Trainer. The grey line below shows field size, players per team and referee slots. For a sport that is not listed, choose *Other sport (rectangular field)* and enter length, width, players per team and referees.
-2. **Import the model.** Click *Choose folder and import …* and select the folder from Reco Trainer (or *Choose .onnx file and import …* for a bare file). You can also type or paste a path and press *Import path*.
+2. **Choose the model.** Without a choice of your own, the program uses the **model of Reco camera** (*Reco camera (YOLO26n)*, marked *Default* and *all sports*). It is the same general model Reco camera uses to steer its AI camera: it finds people and balls in every sport without training, but knows no referees – the program finds those by their shirt colour (step 3c).
+   * The first time it shows *Download model*: this downloads the model once for all projects (10.4 MB) and checks its checksum.
+   * Below it, **Reco Trainer models for** your sport shows how many you have imported and what Reco Trainer's model hub offers for this sport. If a matching model is imported, one click selects it (*Use …*). A model trained for the sport usually finds the ball and the referees much better.
+   * Loading straight from the model hub comes later; until then, load a model in Reco Trainer, export it and import it here.
+3. **Import the model.** Click *Choose folder and import …* and select the folder from Reco Trainer (or *Choose .onnx file and import …* for a bare file). You can also type or paste a path and press *Import path*.
    * The program checks the checksum of the weights. *checksum OK* is what you want; a damaged file is refused.
-   * It shows the classes (`ball, player, referee, ignore`), the input size and the sport the model was trained for. If the model names a sport, that sport is selected for you. If it differs from your choice, a red note tells you.
-3. **Check the model** (needs a video from step 2, so you can come back to this): *Check model on the video* runs the model on a few frames and writes a report in the log at the bottom. What to look for:
+   * It shows the classes (for Reco Trainer models e.g. `ball, player, referee, ignore`, for the default model `person, sports ball`), the input size and the sport the model was trained for. If the model names a sport, that sport is selected for you. If it differs from your choice, a red note tells you.
+4. **Check the model** (needs a video from step 2, so you can come back to this): *Check model on the video* runs the model on a few frames and writes a report in the log at the bottom. What to look for:
    * *Players per frame (median)* close to the number on the field (10 for basketball). Much lower means the model misses players at this size – continue anyway, step 3 improves it.
    * `Wandzeit pro Bild` is the time per frame. On an M4 Pro with CoreML expect a few hundred milliseconds.
    * It tells you if the model's assumptions about its outputs are met ("boxes in 0..1", "most hits on `player`").
@@ -270,6 +274,12 @@ Choose a `.jsonl` file from `out/`. The statistics follow the sport of the calib
 
 ## Updating
 
+**Mac app:** when a new version is out, the app asks at start: *Version … is available. Install now?* It downloads the update, checks its signature, switches over and restarts; your projects stay as they are. While a task is running, the update waits. By hand: menu *Reco Minimap → Check for Updates…*.
+
+**Windows and Linux zip:** download the new zip from the release page and unpack it.
+
+**Built yourself (cargo):** as described below.
+
 When it starts, the interface asks GitHub once whether a newer version exists. Only the request itself is sent, no video, frame or project data.
 
 * If there is one, a **blue notice** appears at the top with the version number, a *What's new?* link and the button *Install now*.
@@ -305,6 +315,8 @@ The overlay starts at the segment's start time; use `-ss` on the game video if y
 | `zsh: command not found: #…` | Do not paste lines starting with `#` into the terminal – zsh does not treat them as comments. |
 | *Detect colours* fails | Check the calibration (only players inside the calibrated field are counted) and set the colours by hand. |
 | Few players detected | Run *Measure* (3b). The program already follows a player on uncertain detections (from 0.30) but only starts a dot on a confident one (from 0.60); if the model is uncertain throughout on your footage, lower `--thr-player` on the command line (e.g. 0.5). A small or blurry picture limits the model. |
+| Ball rarely found (default model) | The general model of Reco camera is less sure of the ball. Import a model trained in Reco Trainer for the sport and choose it in step 1. With the default model lower thresholds apply (players from 0.35, ball from 0.20). |
+| *Download model* fails | It needs a connection to GitHub once. If you already have `yolo26n.onnx` (e.g. from Reco camera): `reco-minimap fetch-model --from /path/to/yolo26n.onnx`. |
 | Team colours wrong, or dots in the wrong colour | Set the colours by hand in 3c. For strong colours or coloured court areas switch on *Match the colour sample to the shirt colours*. |
 | Two "referees" although there are none | Switch on *Game without referees* in 3c. |
 | Dots are in the wrong place | Calibrate again with more points spread over the whole field; the green field drawing must sit on the real lines. |

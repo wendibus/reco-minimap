@@ -19,6 +19,7 @@ Everything runs locally. No video, frame or model leaves your computer. The only
 | **Live** | Browser overlay for OBS plus a JSON event stream |
 | **Jersey numbers** | Optional OCR on the player's back, constrained to your squad list, with substitution detection |
 | **Game situations** | Optional recognition of tip-off, free throw, throw-in, kick-off, corner, penalty, 7 m throw and basketball 2/3-point attempts, from formations on the field ([per sport](docs/SCENARIOS.md)) |
+| **Models** | Works out of the box with the general model of Reco camera (YOLO26n, every sport); step 1 shows the Reco Trainer models for the chosen sport and switches to one with a click ([Models](#models-from-reco-trainer)) |
 | **Statistics** | Per-sport shot charts, attempts by zone, attempts per time section, possession, ball position, heat maps and key moments with one-click clips ([Statistics](#statistics)) |
 | **Interface** | `reco-minimap ui` – seven steps from model import to statistics, with hover hints that can be switched off, a progress window that can stop a job (keeping or deleting what it wrote), with a notice when a newer version is available; the header shows the installed version and opens the built-in guide in your language (`reco-minimap --version` on the command line) |
 
@@ -83,7 +84,7 @@ panorama video ──► tiles (sized by distance) ──► RF-DETR detector (O
 | Rust | stable toolchain, built and tested with **1.91** |
 | ffmpeg + ffprobe | on your `PATH` (`brew install ffmpeg`) |
 | ONNX Runtime | shared library **1.24 or newer** (see below) |
-| A detection model | an RF-DETR ONNX export, e.g. from Reco Trainer |
+| A detection model | optional: by default the model of Reco camera (YOLO26n, downloaded in step 1 or with `reco-minimap fetch-model`); better for the ball: an RF-DETR export from Reco Trainer for your sport |
 
 Tested on macOS (Apple silicon, M4 Pro). The test suite runs on Linux. **Windows and the NVIDIA (CUDA / TensorRT) and DirectML paths are implemented but not yet tested on real hardware** - reports welcome.
 
@@ -113,7 +114,7 @@ If you cannot use CoreML, build with `--features tools` and pass `--ep cpu` (abo
 
 **Reco Minimap.app** is a small signed launcher (Swift, in `mac/`), built the same way as Reco Trainer's. It shows the interface in its own window and runs the Rust program (the *payload*: `reco-minimap` plus ONNX Runtime with CoreML) in the background. Payloads live in `~/Library/Application Support/Reco Minimap/payloads/<version>/`, the log in `~/Library/Logs/Reco Minimap/reco-minimap.log`. Quitting the app stops every job.
 
-Updates come as signed payloads from the GitHub releases (`Reco.Minimap.Payload.<version>.zip` plus `.sig`, Ed25519). The launcher checks the signature before it switches over; a payload with a missing or wrong signature is never used.
+Updates come as signed payloads from the GitHub releases (`Reco.Minimap.Payload.<version>.zip` plus `.sig`, Ed25519). At start the app asks *Version … is available. Install now?* (or use *Reco Minimap → Check for Updates…*); it waits while a job is running, checks the signature, switches over and restarts. A payload with a missing or wrong signature is never used; projects are not touched.
 
 ```bash
 swift mac/tools/payload-signing.swift keygen   # once: key in ~/.reco-minimap/payload-signing.key,
@@ -193,7 +194,7 @@ reco-minimap fetch-ocr        # one-time download, about 11 MB
 reco-minimap ui               # opens http://127.0.0.1:8788/
 ```
 
-1. **Sport & model** – pick the sport, import the folder exported by Reco Trainer.
+1. **Sport & model** – pick the sport; the model of Reco camera is used by default (*Download model* once). For your sport, import the folder exported by Reco Trainer – step 1 shows which ones exist.
 2. **Video** – choose the full panorama (not the AI-cropped view).
 3. **Calibration** – click the field landmarks, measure player sizes, detect shirt colours.
 4. **Process** – choose segments and outputs, press *Start*.
@@ -590,6 +591,7 @@ Layout: `src/` core library (geometry, sport profiles, detection decoding, track
 * reco-minimap is released under the **GNU AGPL-3.0**, the same license as the Reco workspace it is designed to join (see [LICENSE](LICENSE)).
 * The number-reading model is the **PP-OCRv4** recognition network from [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR), ONNX export from [RapidOCR](https://github.com/RapidAI/RapidOCR), **Apache-2.0**. It is downloaded on request, not bundled.
 * Detection models come from [Reco Trainer](https://reco.cam); check that you have the rights to the training material before sharing weights.
+* The default model is **YOLO26n** by [Ultralytics](https://github.com/ultralytics/ultralytics) (**AGPL-3.0**), in the export that [Reco camera](https://github.com/reco-project/video-stitcher) publishes. It is downloaded on request, not bundled.
 * Built on [ONNX Runtime](https://onnxruntime.ai) through the [`ort`](https://github.com/pykeio/ort) crate and [ffmpeg](https://ffmpeg.org).
 
 ## Architecture update

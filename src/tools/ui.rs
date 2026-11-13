@@ -20,10 +20,45 @@ use super::video;
 use crate::sport::{SportProfile, BUILTIN_IDS};
 
 struct Job {
+    kind: String,
     lines: Mutex<Vec<(String, bool)>>,
-    status: Mutex<String>, // running | done | failed | cancelled
+    status: Mutex<String>, // running | cancelling | done | failed | cancelled
     code: Mutex<Option<i32>>,
     child: Mutex<Option<Child>>,
+    /// Latest `@@progress` report of the command (see [`super::progress`]).
+    progress: Mutex<Value>,
+    started: std::time::Instant,
+    /// Files this job writes; removed again when the user cancels and discards.
+    outputs: Vec<PathBuf>,
+    /// Appears when the user cancels and keeps: the command then stops at the next frame.
+    stop_file: PathBuf,
+    /// After a cancel: true = shortened result kept, false = discarded.
+    kept: Mutex<Option<bool>>,
+}
+
+/// Output files named in a job's arguments (relative ones are inside the project folder).
+fn job_outputs(dir: &Path, args: &[String]) -> Vec<PathBuf> {
+    args.windows(2)
+        .filter(|w| matches!(w[0].as_str(), "--minimap" | "--alpha" | "--pip" | "--json" | "--dets"))
+        .map(|w| {
+            let p = PathBuf::from(&w[1]);
+            if p.is_absolute() { p } else { dir.join(p) }
+        })
+        .collect()
+}
+
+/// The job as the page sees it (same field names as the Reco Trainer job dialog).
+fn job_json(id: u64, j: &Job) -> Value {
+    let pr = j.progress.lock().unwrap().clone();
+    let status = j.status.lock().unwrap().clone();
+    let elapsed = j.started.elapsed().as_secs_f64();
+    let frac = pr["progress"].as_f64();
+    let eta = frac.filter(|f| *f > 0.02 && *f < 1.0 && status == "running").map(|f| elapsed * (1.0 - f) / f);
+    json!({"id": id, "type": j.kind, "status": status, "cancellable": status == "running",
+        "keepable": matches!(j.kind.as_str(), "run" | "scales" | "colors" | "selfcheck" | "live"),
+        "progress": pr["progress"], "stage": pr["stage"], "message": pr["message"],
+        "elapsedSeconds": (elapsed * 10.0).round() / 10.0, "etaSeconds": eta.map(|e| e.round()),
+        "kept": *j.kept.lock().unwrap(), "code": *j.code.lock().unwrap()})
 }
 
 struct Ui {
@@ -270,6 +305,18 @@ fn load_project(dir: &Path) -> Result<Value, String> {
     Ok(json!({"ok": true, "dir": dir.to_string_lossy(), "project": proj, "models": models, "files": project_files(dir)}))
 }
 
+/// Statistics of one result file of the project, for the sport it was calibrated for.
+fn stats_for(dir: &Path, file: &str) -> Result<Value, String> {
+    let path = if Path::new(file).is_absolute() { PathBuf::from(file) } else { dir.join(file) };
+    let txt = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let frames: Vec<Value> = txt.lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
+    if frames.len() < 2 {
+        return Err(trs!("zu wenige Bilder in der Datei", "too few frames in the file", "trop peu d'images dans le fichier", "muy pocas imágenes en el archivo").into());
+    }
+    let profile = CourtCalib::load(&dir.join("court.json").to_string_lossy()).map(|c| c.profile()).map_err(|e| e.to_string())?;
+    Ok(super::stats::report(&profile, &frames))
+}
+
 // ---------------------------------------------------------------- jobs
 
 fn push_line(job: &Job, text: String, progress: bool) {
@@ -287,6 +334,20 @@ fn push_line(job: &Job, text: String, progress: bool) {
     }
 }
 
+/// One finished line of the command's output: progress reports go to the job state, the rest to the log.
+fn take_line(job: &Job, text: String, cr: bool) {
+    match text.find(super::progress::PREFIX) {
+        Some(i) => {
+            let (before, rest) = text.split_at(i);
+            push_line(job, before.to_string(), true);
+            if let Some(v) = super::progress::parse(rest) {
+                *job.progress.lock().unwrap() = v;
+            }
+        }
+        None => push_line(job, text, cr),
+    }
+}
+
 fn pump(mut r: impl Read, job: Arc<Job>) {
     let (mut cur, mut buf) = (Vec::new(), [0u8; 4096]);
     loop {
@@ -296,7 +357,7 @@ fn pump(mut r: impl Read, job: Arc<Job>) {
                 for &b in &buf[..n] {
                     if b == b'\n' || b == b'\r' {
                         if !cur.is_empty() {
-                            push_line(&job, String::from_utf8_lossy(&cur).to_string(), b == b'\r');
+                            take_line(&job, String::from_utf8_lossy(&cur).to_string(), b == b'\r');
                             cur.clear();
                         }
                     } else {
@@ -307,7 +368,7 @@ fn pump(mut r: impl Read, job: Arc<Job>) {
         }
     }
     if !cur.is_empty() {
-        push_line(&job, String::from_utf8_lossy(&cur).to_string(), false);
+        take_line(&job, String::from_utf8_lossy(&cur).to_string(), false);
     }
 }
 
@@ -498,6 +559,20 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
             .into())
         }
         "update" => pushs(&mut a, &["update", "--yes"]),
+        "clip" => {
+            // highlight clips around key moments of the statistics, into out/clips/
+            let at: Vec<String> = p["at"].as_array().map(|a| a.iter().filter_map(|v| v.as_f64()).map(|t| format!("{t:.2}")).collect()).unwrap_or_default();
+            need(&video, trs!("Video", "video", "vidéo", "vídeo"))?;
+            if at.is_empty() {
+                return Err(trs!("kein Moment gewählt", "no moment chosen", "aucun moment choisi", "ningún momento elegido").into());
+            }
+            pushs(&mut a, &["clip", &video, "--at", &at.join(","), "--out", "out/clips"]);
+            for k in ["before", "after"] {
+                if let Some(v) = p[k].as_f64() {
+                    pushs(&mut a, &[&format!("--{k}"), &v.to_string()]);
+                }
+            }
+        }
         "stats" => {
             let f = get_s(p, "file");
             need(&f, trs!("Datei", "file", "fichier", "archivo"))?;
@@ -523,9 +598,22 @@ fn pushs(a: &mut Vec<String>, xs: &[&str]) {
 
 fn start_job(ui: &Arc<Ui>, dir: &Path, kind: &str, params: &Value) -> Result<u64, String> {
     let args = build_args(kind, dir, params)?;
-    let mut child = Command::new(&ui.exe).args(&args).current_dir(dir).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| tr!("Start fehlgeschlagen: {e}", "could not start: {e}", "échec du démarrage : {e}", "no se pudo iniciar: {e}"))?;
     let id = ui.next.fetch_add(1, Ordering::SeqCst);
-    let job = Arc::new(Job { lines: Mutex::new(vec![(format!("$ reco-minimap {}", args.iter().map(|a| if a.contains(' ') { format!("'{a}'") } else { a.clone() }).collect::<Vec<_>>().join(" ")), false)]), status: Mutex::new("running".into()), code: Mutex::new(None), child: Mutex::new(None) });
+    let stop_file = std::env::temp_dir().join(format!("reco-minimap-stop-{}-{id}", std::process::id()));
+    let _ = std::fs::remove_file(&stop_file);
+    let mut child = Command::new(&ui.exe).args(&args).current_dir(dir).env("RECO_MINIMAP_PROGRESS", "1").env("RECO_MINIMAP_STOP", &stop_file).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| tr!("Start fehlgeschlagen: {e}", "could not start: {e}", "échec du démarrage : {e}", "no se pudo iniciar: {e}"))?;
+    let job = Arc::new(Job {
+        kind: kind.to_string(),
+        lines: Mutex::new(vec![(format!("$ reco-minimap {}", args.iter().map(|a| if a.contains(' ') { format!("'{a}'") } else { a.clone() }).collect::<Vec<_>>().join(" ")), false)]),
+        status: Mutex::new("running".into()),
+        code: Mutex::new(None),
+        child: Mutex::new(None),
+        progress: Mutex::new(Value::Null),
+        started: std::time::Instant::now(),
+        outputs: job_outputs(dir, &args),
+        stop_file,
+        kept: Mutex::new(None),
+    });
     let (so, se) = (child.stdout.take(), child.stderr.take());
     *job.child.lock().unwrap() = Some(child);
     for r in [so.map(|x| Box::new(x) as Box<dyn Read + Send>), se.map(|x| Box::new(x) as Box<dyn Read + Send>)].into_iter().flatten() {
@@ -539,10 +627,20 @@ fn start_job(ui: &Arc<Ui>, dir: &Path, kind: &str, params: &Value) -> Result<u64
             let mut g = j.child.lock().unwrap();
             if let Some(c) = g.as_mut() {
                 if let Ok(Some(st)) = c.try_wait() {
-                    let cancelled = *j.status.lock().unwrap() == "cancelled";
                     *j.code.lock().unwrap() = st.code();
-                    if !cancelled {
-                        *j.status.lock().unwrap() = if st.success() { "done".into() } else { "failed".into() };
+                    let _ = std::fs::remove_file(&j.stop_file);
+                    let mut status = j.status.lock().unwrap();
+                    match status.as_str() {
+                        // stopped gently: the files are complete up to the stop
+                        "cancelling" => *status = "cancelled".into(),
+                        "cancelled" => {
+                            if *j.kept.lock().unwrap() == Some(false) {
+                                for f in &j.outputs {
+                                    let _ = std::fs::remove_file(f);
+                                }
+                            }
+                        }
+                        _ => *status = if st.success() { "done".into() } else { "failed".into() },
                     }
                     return;
                 }
@@ -629,6 +727,10 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
                 Err(e) => err(&mut s, e),
             }
         }
+        ("POST", "/api/stats") => match stats_for(Path::new(&get_s(&b, "dir")), &get_s(&b, "file")) {
+            Ok(v) => jres(&mut s, json!({"ok": true, "stats": v})),
+            Err(e) => err(&mut s, e),
+        },
         ("POST", "/api/dialog") => {
             let p = native_dialog(&get_s(&b, "kind"), &get_s(&b, "prompt"));
             jres(&mut s, json!({"ok": true, "path": p}));
@@ -673,7 +775,12 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
                     } else {
                         (from, new)
                     };
-                    jres(&mut s, json!({"ok": true, "status": *j.status.lock().unwrap(), "code": *j.code.lock().unwrap(), "from": from_eff, "total": lines.len(), "lines": new}));
+                    let mut v = job_json(id, &j);
+                    v["ok"] = json!(true);
+                    v["from"] = json!(from_eff);
+                    v["total"] = json!(lines.len());
+                    v["lines"] = json!(new);
+                    jres(&mut s, v);
                 }
                 None => err(&mut s, trs!("Auftrag unbekannt", "unknown job", "tâche inconnue", "tarea desconocida")),
             }
@@ -681,14 +788,39 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
         ("POST", p) if p.starts_with("/api/job/") && p.ends_with("/cancel") => {
             let id: u64 = p.trim_start_matches("/api/job/").trim_end_matches("/cancel").trim_end_matches('/').parse().unwrap_or(0);
             if let Some(j) = ui.jobs.lock().unwrap().get(&id).cloned() {
-                *j.status.lock().unwrap() = "cancelled".into();
-                if let Some(c) = j.child.lock().unwrap().as_mut() {
-                    let _ = c.kill();
-                }
+                cancel_job(&j, b["keep"].as_bool().unwrap_or(false));
             }
             jres(&mut s, json!({"ok": true}));
         }
         _ => respond(&mut s, "404 Not Found", "text/plain", b"not found"),
+    }
+}
+
+/// Cancels a job. `keep`: ask the command to stop at the next frame and finish its files (killed
+/// after 30 s if it does not); otherwise stop it at once and remove the files it was writing.
+fn cancel_job(j: &Arc<Job>, keep: bool) {
+    let mut status = j.status.lock().unwrap();
+    if *status != "running" && !(*status == "cancelling" && !keep) {
+        return;
+    }
+    if keep && std::fs::write(&j.stop_file, b"stop").is_ok() {
+        *status = "cancelling".into();
+        *j.kept.lock().unwrap() = Some(true);
+        let j = j.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(30));
+            if *j.status.lock().unwrap() == "cancelling" {
+                if let Some(c) = j.child.lock().unwrap().as_mut() {
+                    let _ = c.kill();
+                }
+            }
+        });
+        return;
+    }
+    *status = "cancelled".into();
+    *j.kept.lock().unwrap() = Some(false);
+    if let Some(c) = j.child.lock().unwrap().as_mut() {
+        let _ = c.kill();
     }
 }
 

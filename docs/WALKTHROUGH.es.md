@@ -241,7 +241,11 @@ El modo en vivo necesita el mismo panorama completo con el que calibraste, no el
 
 ## Paso 6 · Evaluación
 
-Elige un archivo `.jsonl` de `out/` y haz clic en *Evaluar*. El informe del registro responde a esto:
+Los pasos 6 y 7 trabajan con los archivos de datos (`.jsonl`) de `out/`, pero miran cosas distintas: **el paso 6 comprueba la detección**, es decir, con qué fiabilidad se siguió a jugadores, árbitros y balón. **El paso 7 muestra el partido**: intentos, posesión y dónde estuvieron los equipos. Mira primero el paso 6: si sus valores son malos, las cifras del paso 7 también son inseguras.
+
+### Informe de detección
+
+En *Evaluación* elige un archivo `.jsonl` y haz clic en *Evaluar*. El informe aparece en la ventana de progreso y en el registro y responde a esto:
 
 | Línea | Qué es buena señal |
 |---|---|
@@ -257,18 +261,54 @@ Elige un archivo `.jsonl` de `out/` y haz clic en *Evaluar*. El informe del regi
 ![Paso 6](img/es/step6.webp)
 *Paso 6: el informe del archivo de datos en el registro.*
 
+### Pizarra táctica
+
+En *Pizarra táctica* detienes un resultado en un *Momento* (p. ej. `12:30`) y abres ese momento como pizarra táctica: todos los jugadores y el balón están donde estaban en ese instante, *Recorrido (s)* dibuja los últimos segundos de sus trayectorias. En la pizarra puedes mover jugadores, dibujar y guardar; una pizarra guardada para el mismo momento se vuelve a abrir como la dejaste. Más en [Tactics board scenes](../README.md#tactics-board-scenes) (en inglés).
+
 
 ## Paso 7 · Estadísticas
 
-Elige un archivo `.jsonl` de `out/`. Las estadísticas siguen el deporte de la calibración. Se cuentan **intentos**: la detección no ve si un tiro entra.
+Elige arriba un archivo `.jsonl` de `out/`. Las estadísticas siguen el deporte de la calibración (`court.json`) y necesitan esa calibración. Se cuentan **intentos**: la detección no ve si un tiro entra. Cada punto, celda y barra muestra sus valores exactos cuando el ratón se detiene encima.
 
-* **Cifras clave:** intentos por equipo, posesión (proporción del tiempo en que un jugador del equipo tiene el balón), con qué frecuencia se encontró el balón, duración.
-* **Mapa de tiros** (baloncesto, fútbol, fútbol sala, balonmano, hockey, lacrosse): cada intento en su lugar, con forma según el tipo (círculo 2 puntos o tiro, rombo 3 puntos, triángulo tiro libre o 7 m). *Ambos / Local / Visitante* filtra, *Tabla* muestra los mismos datos como lista. En baloncesto los tiros vienen de la detección de situaciones de juego: tiene que haber estado activa al procesar. En los deportes de portería un intento es un vuelo rápido del balón que empieza a distancia de tiro y apunta a una portería.
-* **Intentos por zona:** dónde se concentraron los intentos y, al lado, la proporción de cada zona (baloncesto: zona restringida, pintura, media distancia, triple de esquina, triple frontal, tiro libre; fútbol: área chica, área grande, fuera del área; balonmano: 6 m, extremo, primera línea, 7 m; fútbol sala, hockey y lacrosse según la distancia).
-* **Intentos por tramo:** el vídeo dividido en tramos de igual duración (cuatro en baloncesto y hockey, si no dos), con la diferencia local – visitante. El programa no conoce el reloj del partido.
-* **Posesión** y, en deportes de campo, **balón en el campo** (proporción en los tres tercios).
-* **Posiciones:** dónde estuvieron los jugadores visibles de cada equipo o el balón.
-* **Momentos clave:** intentos, situaciones de juego y cambios confirmados con su hora. Marca momentos y haz clic en *Cortar clips*: cada uno da un clip breve del vídeo en `out/clips/` (6 s antes, 4 s después).
+### Cifras clave
+
+Las tarjetas de arriba muestran los intentos por equipo, la **posesión** (proporción del tiempo en que un jugador del equipo tiene el balón), *Balón visto* (en qué porcentaje de los fotogramas se encontró el balón) y la duración con la hora de inicio y fin en el vídeo. Si *Balón visto* es bajo, la posesión y los intentos tienen huecos.
+
+### Mapa de tiros
+
+Cada intento aparece en su lugar del campo, con el color del equipo; la forma indica el tipo (círculo 2 puntos o tiro, rombo 3 puntos, triángulo tiro libre o 7 m). *Ambos / Local / Visitante* filtra, *Tabla* muestra los mismos intentos como lista con hora, equipo, tipo, zona y distancia.
+
+* **Baloncesto:** los tiros vienen de la detección de situaciones de juego; tiene que haber estado activa al procesar (paso 4).
+* **Deportes de portería:** un intento es un vuelo rápido del balón que empieza a distancia de tiro y apunta a una portería.
+
+### Intentos por zona
+
+A la izquierda, un mapa de calor de los intentos: el campo se divide en celdas de unos 2 × 2 m; cuanto más oscura una celda, más intentos salieron de allí. A la derecha, la proporción de cada zona como barra con su número (baloncesto: zona restringida, pintura, media distancia, triple de esquina, triple frontal, tiro libre; fútbol: área chica, área grande, fuera del área; balonmano: 6 m, extremo, primera línea, 7 m; fútbol sala, hockey y lacrosse según la distancia). El filtro *Ambos / Local / Visitante* también se aplica aquí.
+
+### Intentos por tramo
+
+El vídeo se divide en tramos de igual duración (cuatro en baloncesto y hockey, si no dos); barras por equipo y debajo la diferencia local – visitante por tramo. El programa no conoce el reloj del partido: las interrupciones cuentan, y un tramo no es lo mismo que un cuarto o una parte salvo que el vídeo sea exactamente un periodo.
+
+### Posesión y balón en el campo
+
+Una barra reparte el tiempo de posesión entre local y visitante. En los deportes de campo, *Balón en el campo* muestra cuánto tiempo estuvo el balón en el tercio izquierdo, en el centro y en el tercio derecho («izquierda» y «derecha» como en la imagen de la cámara).
+
+### Mapa de calor de posiciones
+
+La tarjeta *Posiciones* es un mapa de calor: muestra dónde estuvo un equipo o el balón durante el vídeo.
+
+![Paso 7 – mapa de calor](img/es/step7-heat.webp)
+*Paso 7: mapa de calor de posiciones, arriba la elección Local / Visitante / Balón.*
+
+* **Cambiar:** *Local*, *Visitante* o *Balón* elige de quién se muestran las posiciones. Los equipos aparecen en el color de acento, el balón en naranja.
+* **Cómo se hace:** el campo se divide en 24 celdas a lo largo y en un número proporcional a lo ancho. En cada fotograma, cada celda cuenta cuántos jugadores del equipo estaban en ella (o si el balón estaba allí). Solo cuentan los jugadores **visibles** con equipo: las posiciones estimadas de jugadores ocultos, los árbitros y los jugadores sin color de equipo no cuentan. El balón solo cuenta en los fotogramas en que se encontró.
+* **Cómo leerlo:** cuanto más intensa una celda, más tiempo; la celda más intensa es la más visitada y las demás se miden respecto a ella. Las celdas vacías quedan en blanco. Deja el ratón sobre una celda para ver su proporción de todas las posiciones contadas, en porcentaje.
+* **Para qué:** ¿dónde defiende un equipo, a qué altura se coloca, por qué lado ataca, dónde pasa más tiempo el balón? Compara *Local* y *Visitante* en el mismo tramo, o dos tramos del mismo equipo (p. ej. primera y segunda parte como archivos separados).
+* **Límites:** los jugadores lejos de la cámara se detectan con menos frecuencia, así que el lado lejano suele verse más pálido. Los cambios de campo en el descanso se mezclan si ambas partes están en un solo archivo. Las posiciones fuera del campo no cuentan.
+
+### Momentos clave y clips
+
+La lista muestra intentos, situaciones de juego y cambios confirmados con hora, equipo y zona. Marca momentos (*Todos* los marca todos) y haz clic en *Cortar clips*: cada uno da un clip breve del vídeo en `out/clips/`, de 6 s antes a 4 s después del momento. *Mostrar clips* abre la carpeta. El vídeo del paso 2 tiene que seguir en el mismo sitio.
 
 ---
 

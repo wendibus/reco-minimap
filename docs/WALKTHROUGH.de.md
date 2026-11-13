@@ -241,7 +241,11 @@ Der Live-Modus braucht dasselbe ganze Panorama, auf dem du kalibriert hast, nich
 
 ## Schritt 6 · Auswertung
 
-Wähle eine `.jsonl`-Datei aus `out/` und klicke *Auswerten*. Der Bericht im Protokoll beantwortet:
+Schritt 6 und 7 arbeiten beide mit den Datendateien (`.jsonl`) aus `out/`, schauen aber auf Verschiedenes: **Schritt 6 prüft die Erkennung** – wie zuverlässig Spieler, Schiedsrichter und Ball verfolgt wurden. **Schritt 7 zeigt das Spiel** – Versuche, Ballbesitz und wo sich die Teams aufgehalten haben. Sieh dir Schritt 6 zuerst an: Sind die Werte dort schlecht, sind auch die Zahlen in Schritt 7 unsicher.
+
+### Bericht zur Erkennung
+
+Wähle unter *Auswertung* eine `.jsonl`-Datei und klicke *Auswerten*. Der Bericht erscheint im Fortschrittsfenster und im Protokoll und beantwortet:
 
 | Zeile | So sieht es gut aus |
 |---|---|
@@ -257,18 +261,54 @@ Wähle eine `.jsonl`-Datei aus `out/` und klicke *Auswerten*. Der Bericht im Pro
 ![Schritt 6](img/de/step6.webp)
 *Schritt 6: der Bericht zur Datendatei im Protokoll.*
 
+### Taktikboard
+
+Unter *Taktikboard* hältst du ein Ergebnis an einem *Zeitpunkt* an (z. B. `12:30`) und öffnest diesen Moment als Taktiktafel: Alle Spieler und der Ball stehen dort, wo sie zu diesem Zeitpunkt waren, *Laufweg (s)* zeichnet die letzten Sekunden ihrer Wege ein. Auf der Tafel kannst du Spieler verschieben, zeichnen und speichern; ein gespeichertes Board desselben Zeitpunkts öffnet sich wieder so, wie du es verlassen hast. Mehr dazu in [Taktiktafel-Szenen](../README.md#tactics-board-scenes).
+
 
 ## Schritt 7 · Statistik
 
-Wähle eine `.jsonl`-Datei aus `out/`. Die Statistik richtet sich nach der Sportart aus der Kalibrierung. Gezählt werden **Versuche** – ob ein Wurf oder Schuss traf, sieht die Erkennung nicht.
+Wähle oben eine `.jsonl`-Datei aus `out/`. Die Statistik richtet sich nach der Sportart aus der Kalibrierung (`court.json`) und braucht diese Kalibrierung. Gezählt werden **Versuche** – ob ein Wurf oder Schuss traf, sieht die Erkennung nicht. Jeder Punkt, jedes Feld und jeder Balken zeigt seine genauen Werte, wenn die Maus darauf ruht.
 
-* **Kennzahlen:** Versuche je Team, Ballbesitz (Anteil der Zeit, in der ein Spieler des Teams den Ball hält), wie oft der Ball gefunden wurde, Dauer.
-* **Wurfbild / Schussbild** (Basketball, Fußball, Futsal, Handball, Hockey, Lacrosse): jeder Versuch an seinem Ort, Form nach Art (Kreis 2 Punkte bzw. Schuss, Raute 3 Punkte, Dreieck Freiwurf bzw. 7 m). *Beide / Heim / Gast* filtert, *Tabelle* zeigt dieselben Daten als Liste. Im Basketball stammen die Würfe aus der Situationserkennung – sie muss beim Verarbeiten an gewesen sein. In den Torsportarten gilt als Versuch ein schneller Ballflug, der in Reichweite beginnt und auf ein Tor zielt.
-* **Versuche nach Zone:** wo die Versuche dicht lagen, daneben der Anteil jeder Zone (Basketball: Korbnähe, Zone, Mitteldistanz, Ecke 3er, 3er oben, Freiwurf; Fußball: Torraum, Strafraum, außerhalb; Handball: 6 m, Außen, Rückraum, 7 m; Futsal, Hockey und Lacrosse nach Entfernung).
-* **Versuche je Zeitabschnitt:** das Video in gleich lange Abschnitte geteilt (Basketball und Hockey vier, sonst zwei), mit der Differenz Heim – Gast. Eine Spieluhr kennt das Programm nicht.
-* **Ballbesitz** und bei Feldsportarten **Ball im Feld** (Anteil in den drei Dritteln).
-* **Positionen:** wo sich die sichtbaren Spieler jedes Teams oder der Ball aufgehalten haben.
-* **Schlüsselmomente:** Versuche, Spielsituationen und bestätigte Wechsel mit Zeit. Hake Momente an und klicke *Clips schneiden*: Für jeden entsteht in `out/clips/` ein kurzer Clip aus dem Video (6 s davor, 4 s danach).
+### Kennzahlen
+
+Die Kacheln oben zeigen Versuche je Team, **Ballbesitz** (Anteil der Zeit, in der ein Spieler des Teams den Ball hält), *Ball gesehen* (in wie viel Prozent der Bilder der Ball gefunden wurde) und die Dauer mit Start- und Endzeit im Video. Ist *Ball gesehen* niedrig, sind Ballbesitz und Versuche lückenhaft.
+
+### Wurfbild / Schussbild
+
+Im Basketball heißt die Karte *Wurfbild*, in Fußball, Futsal, Handball, Hockey und Lacrosse *Schussbild*. Jeder Versuch steht an seinem Ort auf dem Feld, in der Teamfarbe; die Form zeigt die Art (Kreis 2 Punkte bzw. Schuss, Raute 3 Punkte, Dreieck Freiwurf bzw. 7 m). *Beide / Heim / Gast* filtert, *Tabelle* zeigt dieselben Versuche als Liste mit Zeit, Team, Art, Zone und Entfernung.
+
+* **Basketball:** Die Würfe stammen aus der Situationserkennung – sie muss beim Verarbeiten (Schritt 4) an gewesen sein.
+* **Torsportarten:** Als Versuch gilt ein schneller Ballflug, der in Schussweite beginnt und auf ein Tor zielt.
+
+### Versuche nach Zone
+
+Links eine Heatmap der Versuche: Das Feld ist in Felder von etwa 2 × 2 m geteilt, je dunkler ein Feld, desto mehr Versuche kamen von dort. Rechts der Anteil jeder Zone als Balken mit Anzahl (Basketball: Korbnähe, Zone, Mitteldistanz, Ecke 3er, 3er oben, Freiwurf; Fußball: Torraum, Strafraum, außerhalb; Handball: 6 m, Außen, Rückraum, 7 m; Futsal, Hockey und Lacrosse nach Entfernung). Der Filter *Beide / Heim / Gast* gilt auch hier.
+
+### Versuche je Zeitabschnitt
+
+Das Video wird in gleich lange Abschnitte geteilt (Basketball und Hockey vier, sonst zwei); Balken je Team und darunter die Differenz Heim – Gast je Abschnitt. Das Programm kennt keine Spieluhr: Unterbrechungen zählen mit, und ein Abschnitt ist nicht dasselbe wie ein Viertel oder eine Halbzeit, wenn das Video nicht genau ein Spielabschnitt ist.
+
+### Ballbesitz und Ball im Feld
+
+Ein Balken teilt die Zeit mit Ballbesitz auf Heim und Gast auf. Bei Feldsportarten zeigt *Ball im Feld*, wie lange der Ball im linken Drittel, in der Mitte und im rechten Drittel war – „links“ und „rechts“ wie im Kamerabild.
+
+### Heatmap der Positionen
+
+Die Karte *Positionen* ist eine Heatmap: Sie zeigt, wo sich ein Team oder der Ball während des Videos aufgehalten hat.
+
+![Schritt 7 – Heatmap](img/de/step7-heat.webp)
+*Schritt 7: Heatmap der Positionen, oben die Wahl Heim / Gast / Ball.*
+
+* **Umschalten:** *Heim*, *Gast* oder *Ball* wählt, wessen Positionen gezeigt werden. Teams erscheinen in der Akzentfarbe, der Ball in Orange.
+* **So entsteht sie:** Das Feld ist der Länge nach in 24 Felder geteilt, quer passend zum Seitenverhältnis. Für jedes Bild zählt jedes Feld, wie viele Spieler des Teams darin standen (bzw. ob der Ball darin lag). Gezählt werden nur **sichtbare** Spieler mit Teamzuordnung – geschätzte Positionen verdeckter Spieler, Schiedsrichter und Spieler ohne Teamfarbe zählen nicht mit. Der Ball zählt nur in Bildern, in denen er gefunden wurde.
+* **So liest du sie:** Je kräftiger ein Feld, desto mehr Zeit; das kräftigste Feld ist das meistbesuchte, die übrigen sind daran gemessen. Leere Felder bleiben frei. Ruht die Maus auf einem Feld, siehst du dessen Anteil an allen gezählten Positionen in Prozent.
+* **Wofür:** Wo verteidigt ein Team, wie hoch steht es, über welche Seite greift es an, wo hält sich der Ball am längsten auf? Vergleiche *Heim* und *Gast* im selben Abschnitt, oder zwei Abschnitte desselben Teams (z. B. erste und zweite Halbzeit als eigene Dateien).
+* **Grenzen:** Spieler weit weg von der Kamera werden seltener erkannt, die ferne Seite erscheint deshalb oft blasser. Wechselnde Seiten zur Halbzeit vermischen sich, wenn beide Halbzeiten in einer Datei liegen. Positionen außerhalb des Felds zählen nicht.
+
+### Schlüsselmomente und Clips
+
+Die Liste zeigt Versuche, Spielsituationen und bestätigte Wechsel mit Zeit, Team und Zone. Hake Momente an (*Alle* wählt alle) und klicke *Clips schneiden*: Für jeden entsteht in `out/clips/` ein kurzer Clip aus dem Video, 6 s vor bis 4 s nach dem Moment. *Clips zeigen* öffnet den Ordner. Dafür muss das Video aus Schritt 2 noch am selben Ort liegen.
 
 ---
 

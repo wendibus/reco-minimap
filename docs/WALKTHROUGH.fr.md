@@ -241,7 +241,11 @@ Le mode direct nécessite le même panorama complet que celui du calibrage, pas 
 
 ## Étape 6 · Évaluation
 
-Choisissez un fichier `.jsonl` dans `out/` et cliquez *Évaluer*. Le rapport dans le journal répond à ceci :
+Les étapes 6 et 7 travaillent toutes deux avec les fichiers de données (`.jsonl`) de `out/`, mais regardent des choses différentes : **l'étape 6 vérifie la détection** – avec quelle fiabilité joueurs, arbitres et ballon ont été suivis. **L'étape 7 montre le match** – tentatives, possession et où se trouvaient les équipes. Regardez d'abord l'étape 6 : si ses valeurs sont mauvaises, les chiffres de l'étape 7 sont incertains eux aussi.
+
+### Rapport de détection
+
+Sous *Évaluation*, choisissez un fichier `.jsonl` et cliquez *Évaluer*. Le rapport apparaît dans la fenêtre de progression et dans le journal et répond à ceci :
 
 | Ligne | Ce qui est bon signe |
 |---|---|
@@ -257,18 +261,54 @@ Choisissez un fichier `.jsonl` dans `out/` et cliquez *Évaluer*. Le rapport dan
 ![Étape 6](img/fr/step6.webp)
 *Étape 6 : le rapport sur le fichier de données dans le journal.*
 
+### Tableau tactique
+
+Sous *Tableau tactique*, vous arrêtez un résultat à un *Instant* (p. ex. `12:30`) et ouvrez ce moment comme tableau tactique : tous les joueurs et le ballon se trouvent là où ils étaient à cet instant, *Trajet (s)* trace les dernières secondes de leurs déplacements. Sur le tableau, vous pouvez déplacer des joueurs, dessiner et enregistrer ; un tableau enregistré pour le même instant se rouvre tel que vous l'avez laissé. Plus de détails dans [Tactics board scenes](../README.md#tactics-board-scenes) (en anglais).
+
 
 ## Étape 7 · Statistiques
 
-Choisissez un fichier `.jsonl` dans `out/`. Les statistiques suivent le sport du calibrage. Ce sont des **tentatives** qui sont comptées – la détection ne voit pas si un tir est réussi.
+Choisissez en haut un fichier `.jsonl` dans `out/`. Les statistiques suivent le sport du calibrage (`court.json`) et ont besoin de ce calibrage. Ce sont des **tentatives** qui sont comptées – la détection ne voit pas si un tir est réussi. Chaque point, case et barre affiche ses valeurs exactes quand la souris reste dessus.
 
-* **Chiffres clés :** tentatives par équipe, possession (part du temps où un joueur de l'équipe tient le ballon), fréquence à laquelle le ballon a été trouvé, durée.
-* **Carte des tirs** (basket, football, futsal, handball, hockey, crosse) : chaque tentative à son endroit, forme selon le type (cercle 2 points ou tir, losange 3 points, triangle lancer franc ou 7 m). *Les deux / Domicile / Visiteurs* filtre, *Tableau* montre les mêmes données en liste. Au basket, les tirs viennent de la détection des situations de jeu – elle doit avoir été activée lors du traitement. Dans les sports de but, une tentative est un vol rapide du ballon qui part à portée et vise un but.
-* **Tentatives par zone :** où les tentatives étaient denses, et à côté la part de chaque zone (basket : sous le panier, raquette, mi-distance, 3 pts du coin, 3 pts axe, lancer franc ; football : surface de but, surface de réparation, hors surface ; handball : 6 m, aile, arrière, 7 m ; futsal, hockey et crosse selon la distance).
-* **Tentatives par section :** la vidéo divisée en sections de même durée (quatre au basket et au hockey, sinon deux), avec la différence domicile – visiteurs. Le programme ne connaît pas le chronomètre du match.
-* **Possession** et, pour les sports de terrain, **ballon sur le terrain** (part dans les trois tiers).
-* **Positions :** où se trouvaient les joueurs visibles de chaque équipe ou le ballon.
-* **Moments clés :** tentatives, situations de jeu et changements confirmés avec leur heure. Cochez des moments et cliquez *Couper les clips* : chacun donne un court clip de la vidéo dans `out/clips/` (6 s avant, 4 s après).
+### Chiffres clés
+
+Les tuiles en haut montrent les tentatives par équipe, la **possession** (part du temps où un joueur de l'équipe tient le ballon), *Ballon vu* (dans quel pourcentage des images le ballon a été trouvé) et la durée avec l'heure de début et de fin dans la vidéo. Si *Ballon vu* est faible, possession et tentatives ont des lacunes.
+
+### Carte des tirs
+
+Chaque tentative se trouve à son endroit sur le terrain, dans la couleur de l'équipe ; la forme indique le type (cercle 2 points ou tir, losange 3 points, triangle lancer franc ou 7 m). *Les deux / Domicile / Visiteurs* filtre, *Tableau* affiche les mêmes tentatives en liste avec heure, équipe, type, zone et distance.
+
+* **Basket :** les tirs viennent de la détection des situations de jeu – elle doit avoir été activée lors du traitement (étape 4).
+* **Sports de but :** une tentative est un vol rapide du ballon qui part à portée de tir et vise un but.
+
+### Tentatives par zone
+
+À gauche, une carte de chaleur des tentatives : le terrain est découpé en cases d'environ 2 × 2 m, plus une case est foncée, plus il y a eu de tentatives depuis là. À droite, la part de chaque zone en barre avec son nombre (basket : sous le panier, raquette, mi-distance, 3 pts du coin, 3 pts axe, lancer franc ; football : surface de but, surface de réparation, hors surface ; handball : 6 m, aile, arrière, 7 m ; futsal, hockey et crosse selon la distance). Le filtre *Les deux / Domicile / Visiteurs* s'applique ici aussi.
+
+### Tentatives par section
+
+La vidéo est divisée en sections de même durée (quatre au basket et au hockey, sinon deux) ; des barres par équipe et en dessous la différence domicile – visiteurs par section. Le programme ne connaît pas le chronomètre du match : les arrêts de jeu comptent, et une section n'est pas un quart-temps ou une mi-temps, sauf si la vidéo correspond exactement à une période.
+
+### Possession et ballon sur le terrain
+
+Une barre répartit le temps de possession entre domicile et visiteurs. Pour les sports de terrain, *Ballon sur le terrain* montre combien de temps le ballon était dans le tiers gauche, au milieu et dans le tiers droit – « gauche » et « droite » comme sur l'image de la caméra.
+
+### Carte de chaleur des positions
+
+La carte *Positions* est une carte de chaleur : elle montre où une équipe ou le ballon se trouvait pendant la vidéo.
+
+![Étape 7 – carte de chaleur](img/fr/step7-heat.webp)
+*Étape 7 : carte de chaleur des positions, avec en haut le choix Domicile / Visiteurs / Ballon.*
+
+* **Basculer :** *Domicile*, *Visiteurs* ou *Ballon* choisit de qui les positions sont affichées. Les équipes apparaissent dans la couleur d'accent, le ballon en orange.
+* **Comment elle est faite :** le terrain est divisé en 24 cases dans sa longueur et en un nombre adapté dans sa largeur. Pour chaque image, chaque case compte combien de joueurs de l'équipe s'y trouvaient (ou si le ballon y était). Seuls les joueurs **visibles** avec une équipe comptent – les positions estimées de joueurs cachés, les arbitres et les joueurs sans couleur d'équipe ne comptent pas. Le ballon ne compte que dans les images où il a été trouvé.
+* **Comment la lire :** plus une case est intense, plus de temps y a été passé ; la case la plus intense est la plus fréquentée et les autres sont mesurées par rapport à elle. Les cases vides restent blanches. Laissez la souris sur une case pour voir sa part de toutes les positions comptées, en pourcentage.
+* **À quoi elle sert :** où une équipe défend-elle, à quelle hauteur se place-t-elle, par quel côté attaque-t-elle, où le ballon passe-t-il le plus de temps ? Comparez *Domicile* et *Visiteurs* sur la même section, ou deux sections de la même équipe (p. ex. première et deuxième mi-temps en fichiers séparés).
+* **Limites :** les joueurs éloignés de la caméra sont moins souvent détectés, le côté lointain paraît donc souvent plus pâle. Les changements de côté à la mi-temps se mélangent si les deux mi-temps sont dans un seul fichier. Les positions hors du terrain ne comptent pas.
+
+### Moments clés et clips
+
+La liste montre les tentatives, les situations de jeu et les changements confirmés avec heure, équipe et zone. Cochez des moments (*Tous* sélectionne tout) et cliquez *Couper les clips* : chacun donne un court clip de la vidéo dans `out/clips/`, de 6 s avant à 4 s après le moment. *Montrer les clips* ouvre le dossier. La vidéo de l'étape 2 doit toujours se trouver au même endroit.
 
 ---
 

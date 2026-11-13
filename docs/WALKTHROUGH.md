@@ -1,6 +1,6 @@
 # Walkthrough: from two camera videos to a minimap
 
-This guide takes you from "I have a panorama video and a trained model" to "I have a minimap video". It follows the six steps of the interface. Allow about 30 minutes the first time; later games take a few minutes of clicking plus processing time.
+This guide takes you from "I have a panorama video and a trained model" to "I have a minimap video". It follows the seven steps of the interface. Allow about 30 minutes the first time; later games take a few minutes of clicking plus processing time.
 
 <p><img src="media/demo-pip.webp" alt="Result" width="58%"> <img src="media/demo-minimap.webp" alt="Result" width="40%"></p>
 
@@ -82,7 +82,11 @@ The result lives in the project folder (`court.json`, `scales.json`, `teams.json
 * You provide where the field is, which colours the teams wear and which time span to process. These three decide the quality; everything else has usable defaults.
 * The check video (*Panorama with boxes and minimap*) is your inspection tool. Watch it for the first segment before you let a whole game run.
 
-**At the bottom of the page** is the log. It shows every command the interface runs and its output. Everything the interface does also works on the command line; a few fine settings exist only there (`reco-minimap --help`).
+**Layout.** On the left are the project folder, the sport and the seven steps; on the right the chosen step. At the top, **💬 Hints** turns on or off the explanations that appear when the mouse rests on a button; next to it you choose the language.
+
+**Long operations** (processing, player sizes, shirt colours, model test, clips) show their own window with a progress bar, elapsed and estimated remaining time. *–* shrinks it to a chip at the bottom right; the work goes on. *Cancel* asks what should happen to the result: **Stop, keep the result** closes the files properly – they contain everything up to the stop and play normally –, **Cancel and delete** removes the files of this run.
+
+**At the bottom of the page** the log can be expanded. It shows every command the interface runs and its output. Everything the interface does also works on the command line; a few fine settings exist only there (`reco-minimap --help`).
 
 **New versions** are announced at the top with a blue notice, see [Updating](#updating).
 
@@ -166,7 +170,7 @@ Click *Measure*. The program looks at a dozen frames and learns how tall a playe
 3. **Detect on every Nth frame.** 5 is a good default: detection runs on every 5th frame and the minimap video is interpolated to the full frame rate, so it still looks smooth. Higher is faster, lower is more exact.
 4. **Opacity of undetected players.** 1 keeps a hidden player fully visible at his estimated position; lower values fade him.
 5. **Compute.** *automatic* picks CoreML on a Mac. Leave *CoreML* on `all`.
-6. Click **Start**. The log at the bottom shows progress and, at the end, a summary: frames processed, detections, time per stage. *Cancel* stops the run.
+6. Click **Start**. A window shows the progress (with several sections also which one is running) and, at the end, the files it wrote. *Cancel* asks whether to keep or delete what has been processed so far.
 
 **Where are my files?** In `<project folder>/out/`, named after the segment (`segment1.mp4`, `segment1.mov`, `segment1_pip.mp4`, `segment1.jsonl`). The list below the settings shows the newest files with *Show in folder*.
 
@@ -248,6 +252,19 @@ Choose a `.jsonl` file from `out/` and click *Evaluate*. The report in the log a
 
 ![Step 6](img/en/step6.webp)
 *Step 6: the report on the data file in the log.*
+
+
+## Step 7 · Statistics
+
+Choose a `.jsonl` file from `out/`. The statistics follow the sport of the calibration. **Attempts** are counted – whether a shot went in is not something the detection can see.
+
+* **Key figures:** attempts per team, possession (share of the time a player of the team holds the ball), how often the ball was found, duration.
+* **Shot chart / shot map** (basketball, football, futsal, handball, hockey, lacrosse): every attempt at its place, shaped by kind (circle 2 points or shot, diamond 3 points, triangle free throw or 7 m). *Both / Home / Away* filters, *Table* shows the same data as a list. In basketball the shots come from game-situation detection – it must have been on while processing. In the goal sports an attempt is a fast ball flight that starts within range and points at a goal.
+* **Attempts by zone:** where the attempts were dense, next to it the share of every zone (basketball: restricted area, paint, mid-range, corner 3, above-the-break 3, free throw; football: goal area, penalty area, outside; handball: 6 m, wing, back court, 7 m; futsal, hockey and lacrosse by distance).
+* **Attempts per time section:** the video split into sections of equal length (four in basketball and hockey, otherwise two), with the difference home – away. The program knows no game clock.
+* **Possession** and, for field sports, **ball on the field** (share in the three thirds).
+* **Positions:** where the visible players of each team or the ball were.
+* **Key moments:** attempts, game situations and confirmed substitutions with their time. Tick moments and click *Cut clips*: each gets a short clip from the video in `out/clips/` (6 s before, 4 s after).
 
 ---
 

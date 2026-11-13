@@ -1,6 +1,6 @@
 # Anleitung: von zwei Kameravideos zur Minimap
 
-Diese Anleitung führt dich von „Ich habe ein Panoramavideo und ein trainiertes Modell“ bis zu „Ich habe ein Minimap-Video“. Sie folgt den sechs Schritten der Oberfläche. Beim ersten Mal brauchst du etwa 30 Minuten; bei späteren Spielen sind es wenige Minuten Klicken plus Rechenzeit.
+Diese Anleitung führt dich von „Ich habe ein Panoramavideo und ein trainiertes Modell“ bis zu „Ich habe ein Minimap-Video“. Sie folgt den sieben Schritten der Oberfläche. Beim ersten Mal brauchst du etwa 30 Minuten; bei späteren Spielen sind es wenige Minuten Klicken plus Rechenzeit.
 
 <p><img src="media/demo-pip.webp" alt="Ergebnis" width="58%"> <img src="media/demo-minimap.webp" alt="Ergebnis" width="40%"></p>
 
@@ -82,7 +82,11 @@ Das Ergebnis liegt im Projektordner (`court.json`, `scales.json`, `teams.json`) 
 * Du gibst vor: wo das Feld liegt, welche Farben die Teams tragen und welchen Zeitraum es verarbeiten soll. Diese drei Angaben entscheiden über die Qualität; alles andere hat brauchbare Standardwerte.
 * Das Kontrollvideo (*Panorama mit Boxen und Minimap*) ist dein Prüfwerkzeug. Sieh es dir beim ersten Abschnitt an, bevor du ein ganzes Spiel rechnen lässt.
 
-**Unten auf der Seite** steht das Protokoll. Es zeigt jeden Befehl, den die Oberfläche ausführt, und dessen Ausgabe. Alles, was die Oberfläche kann, geht auch auf der Kommandozeile; einige Feineinstellungen gibt es nur dort (`reco-minimap --help`).
+**Aufbau der Seite.** Links stehen der Projektordner, die Sportart und die sieben Schritte, rechts der gewählte Schritt. Oben schaltet **💬 Hinweise** die Erklärungen an oder aus, die erscheinen, wenn die Maus kurz auf einer Taste ruht; daneben wählst du die Sprache.
+
+**Lange Vorgänge** (Verarbeiten, Spielergrößen, Trikotfarben, Modelltest, Clips) zeigen ein eigenes Fenster mit Fortschrittsbalken, verstrichener und geschätzter Restzeit. *–* verkleinert es zu einem Chip unten rechts; die Arbeit läuft weiter. *Abbrechen* fragt, was mit dem Ergebnis geschehen soll: **Anhalten, Ergebnis behalten** schließt die Dateien sauber ab – sie enthalten alles bis zum Abbruch und lassen sich abspielen –, **Abbrechen und löschen** entfernt die Dateien dieses Laufs.
+
+**Unten auf der Seite** lässt sich das Protokoll aufklappen. Es zeigt jeden Befehl, den die Oberfläche ausführt, und dessen Ausgabe. Alles, was die Oberfläche kann, geht auch auf der Kommandozeile; einige Feineinstellungen gibt es nur dort (`reco-minimap --help`).
 
 **Neue Versionen** meldet die Oberfläche oben mit einem blauen Hinweis, siehe [Aktualisieren](#aktualisieren).
 
@@ -166,7 +170,7 @@ Klicke *Messen*. Das Programm schaut sich etwa ein Dutzend Bilder an und lernt, 
 3. **Erkennung bei jedem N-ten Bild.** 5 ist ein guter Anfang: Die Erkennung läuft bei jedem 5. Bild, das Minimap-Video wird auf volle Bildrate interpoliert und wirkt trotzdem flüssig. Höher ist schneller, niedriger genauer.
 4. **Deckkraft nicht erkannter Spieler.** 1 lässt einen verdeckten Spieler voll sichtbar an seiner geschätzten Position; kleinere Werte lassen ihn verblassen.
 5. **Rechner.** *automatisch* wählt auf einem Mac CoreML. Lass *CoreML* auf `all`.
-6. Klicke **Starten**. Das Protokoll unten zeigt den Fortschritt und am Ende eine Zusammenfassung: verarbeitete Bilder, Erkennungen, Zeit je Stufe. *Abbrechen* stoppt den Lauf.
+6. Klicke **Starten**. Ein Fenster zeigt den Fortschritt (bei mehreren Abschnitten auch, welcher gerade läuft) und am Ende die erzeugten Dateien. *Abbrechen* fragt, ob du das bisher Verarbeitete behalten oder löschen willst.
 
 **Wo sind meine Dateien?** In `<Projektordner>/out/`, benannt nach dem Abschnitt (`abschnitt1.mp4`, `abschnitt1.mov`, `abschnitt1_pip.mp4`, `abschnitt1.jsonl`). Die Liste unter den Einstellungen zeigt die neuesten Dateien mit *Im Ordner zeigen*.
 
@@ -248,6 +252,19 @@ Wähle eine `.jsonl`-Datei aus `out/` und klicke *Auswerten*. Der Bericht im Pro
 
 ![Schritt 6](img/de/step6.webp)
 *Schritt 6: der Bericht zur Datendatei im Protokoll.*
+
+
+## Schritt 7 · Statistik
+
+Wähle eine `.jsonl`-Datei aus `out/`. Die Statistik richtet sich nach der Sportart aus der Kalibrierung. Gezählt werden **Versuche** – ob ein Wurf oder Schuss traf, sieht die Erkennung nicht.
+
+* **Kennzahlen:** Versuche je Team, Ballbesitz (Anteil der Zeit, in der ein Spieler des Teams den Ball hält), wie oft der Ball gefunden wurde, Dauer.
+* **Wurfbild / Schussbild** (Basketball, Fußball, Futsal, Handball, Hockey, Lacrosse): jeder Versuch an seinem Ort, Form nach Art (Kreis 2 Punkte bzw. Schuss, Raute 3 Punkte, Dreieck Freiwurf bzw. 7 m). *Beide / Heim / Gast* filtert, *Tabelle* zeigt dieselben Daten als Liste. Im Basketball stammen die Würfe aus der Situationserkennung – sie muss beim Verarbeiten an gewesen sein. In den Torsportarten gilt als Versuch ein schneller Ballflug, der in Reichweite beginnt und auf ein Tor zielt.
+* **Versuche nach Zone:** wo die Versuche dicht lagen, daneben der Anteil jeder Zone (Basketball: Korbnähe, Zone, Mitteldistanz, Ecke 3er, 3er oben, Freiwurf; Fußball: Torraum, Strafraum, außerhalb; Handball: 6 m, Außen, Rückraum, 7 m; Futsal, Hockey und Lacrosse nach Entfernung).
+* **Versuche je Zeitabschnitt:** das Video in gleich lange Abschnitte geteilt (Basketball und Hockey vier, sonst zwei), mit der Differenz Heim – Gast. Eine Spieluhr kennt das Programm nicht.
+* **Ballbesitz** und bei Feldsportarten **Ball im Feld** (Anteil in den drei Dritteln).
+* **Positionen:** wo sich die sichtbaren Spieler jedes Teams oder der Ball aufgehalten haben.
+* **Schlüsselmomente:** Versuche, Spielsituationen und bestätigte Wechsel mit Zeit. Hake Momente an und klicke *Clips schneiden*: Für jeden entsteht in `out/clips/` ein kurzer Clip aus dem Video (6 s davor, 4 s danach).
 
 ---
 

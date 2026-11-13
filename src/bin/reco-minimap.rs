@@ -17,6 +17,7 @@ use reco_minimap::sport::{SportProfile, BUILTIN_IDS};
 use reco_minimap::scenes::{SceneDetector, SceneEvent, SceneKind};
 use reco_minimap::tools::i18n;
 use reco_minimap::tools::models;
+use reco_minimap::tools::progress;
 use reco_minimap::tools::ocr::{self, NumberReader};
 use reco_minimap::jersey::{ctc_greedy, ctc_roster, parse_number, parse_roster};
 use reco_minimap::render::{Renderer, Theme};
@@ -332,6 +333,7 @@ fn main() {
         "selfcheck" => cmd_selfcheck(&o, &input),
         "scales" => cmd_scales(&o, &input),
         "stats" => cmd_stats(&o, &input),
+        "clip" => cmd_clip(&o, &input),
         "review-identities" => {
             let annotations = o.s("annotations").unwrap_or_else(|| fail(trs!("--annotations fehlt", "--annotations is missing", "--annotations manquant", "falta --annotations")));
             let output = o.s("out").unwrap_or_else(|| fail(trs!("--out fehlt", "--out is missing", "--out manquant", "falta --out")));
@@ -486,6 +488,10 @@ fn cmd_selfcheck(o: &Opts, input: &str) {
     let mut per_scale: std::collections::BTreeMap<u32, (usize, usize, usize, Vec<f32>)> = Default::default();
 
     for s in 0..samples {
+        if progress::stop_requested() {
+            break;
+        }
+        progress::report(Some(s as f64 / samples as f64), None, &tr!("Stichprobe {} von {}", "sample {} of {}", "échantillon {} sur {}", "muestra {} de {}", s + 1, samples));
         let t = start + span * (s as f64 + 0.5) / samples as f64;
         let frame = match video::grab(input, &info, t) {
             Ok(f) => f,
@@ -734,7 +740,47 @@ fn pct(v: &mut Vec<f64>, p: f64) -> f64 {
     v[((v.len() - 1) as f64 * p).round() as usize]
 }
 
+/// Cuts highlight clips around moments: `clip VIDEO --at 12.5,80 [--before 6] [--after 4] --out DIR`.
+/// Re-encodes (H.264) so every clip starts exactly at its moment; one file per moment.
+fn cmd_clip(o: &Opts, input: &str) {
+    let at: Vec<f64> = o.s("at").unwrap_or_else(|| fail(trs!("--at fehlt", "--at is missing", "--at manquant", "falta --at"))).split(',').filter_map(|x| parse_clock(x.trim())).collect();
+    let (before, after) = (o.f("before", 6.0).max(0.0), o.f("after", 4.0).max(0.5));
+    let dir = std::path::PathBuf::from(o.s("out").unwrap_or("clips"));
+    std::fs::create_dir_all(&dir).unwrap_or_else(|e| fail(format!("{}: {e}", dir.display())));
+    let stem = std::path::Path::new(input).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "clip".into());
+    for (i, t) in at.iter().enumerate() {
+        if progress::stop_requested() {
+            break;
+        }
+        progress::report(Some(i as f64 / at.len() as f64), None, &tr!("Clip {} von {}", "clip {} of {}", "clip {} sur {}", "clip {} de {}", i + 1, at.len()));
+        let start = (t - before).max(0.0);
+        let out = dir.join(format!("{stem}-{}.mp4", fmt_clock(*t).replace(':', "m")));
+        let st = std::process::Command::new("ffmpeg")
+            .args(["-hide_banner", "-loglevel", "error", "-y", "-ss", &format!("{start:.3}"), "-i", input, "-t", &format!("{:.3}", t - start + after), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-movflags", "+faststart"])
+            .arg(&out)
+            .status()
+            .unwrap_or_else(|e| fail(format!("ffmpeg: {e}")));
+        if !st.success() {
+            fail::<()>(tr!("ffmpeg konnte den Clip bei {} nicht schneiden", "ffmpeg could not cut the clip at {}", "ffmpeg n'a pas pu couper le clip à {}", "ffmpeg no pudo cortar el clip en {}", fmt_clock(*t)));
+        }
+        println!("{}", out.display());
+    }
+    progress::report(Some(1.0), None, "");
+}
+
 fn cmd_stats(o: &Opts, path: &str) {
+    if o.has("json") {
+        // machine-readable statistics per sport (the charts in the interface)
+        let profile = o.s("court").map(|p| load_court(p).1).unwrap_or_else(SportProfile::basketball);
+        let txt = std::fs::read_to_string(path).unwrap_or_else(|e| fail(format!("{path}: {e}")));
+        let frames: Vec<serde_json::Value> = txt.lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
+        let r = reco_minimap::tools::stats::report(&profile, &frames);
+        match o.s("json").filter(|v| !v.is_empty() && *v != "true") {
+            Some(out) => std::fs::write(out, serde_json::to_string_pretty(&r).unwrap()).unwrap_or_else(|e| fail(format!("{out}: {e}"))),
+            None => println!("{}", serde_json::to_string_pretty(&r).unwrap()),
+        }
+        return;
+    }
     let field = o.s("court").map(|p| load_court(p).1.field).unwrap_or(Field::basketball());
     use std::collections::{HashMap, HashSet};
     let txt = std::fs::read_to_string(path).unwrap_or_else(|e| fail(format!("{path}: {e}")));
@@ -858,7 +904,13 @@ fn cmd_scales(o: &Opts, input: &str) {
     let projector = court.as_ref().and_then(|c| c.projector());
     eprintln!("{}", tr!("Messe Spielerhöhe über {} Kacheln (4 Maßstäbe) …", "Measuring player height over {} tiles (4 scales) …", "Mesure de la hauteur des joueurs sur {} tuiles (4 échelles) …", "Midiendo la altura de los jugadores en {} teselas (4 escalas) …", tiles.len()));
     let mut pts: Vec<(f32, f32)> = Vec::new();
-    for (i, frame) in sample_frames(o, input, &info).iter().enumerate() {
+    let samples_v = sample_frames(o, input, &info);
+    let n_samples = samples_v.len();
+    for (i, frame) in samples_v.iter().enumerate() {
+        if progress::stop_requested() {
+            break;
+        }
+        progress::report(Some(i as f64 / n_samples.max(1) as f64), None, &tr!("Stichprobe {} von {}", "sample {} of {}", "échantillon {} sur {}", "muestra {} de {}", i + 1, n_samples));
         let dets = model.detect(frame, &tiles).unwrap_or_else(|e| fail(e));
         for d in dets.iter().filter(|d| d.class == Class::Player && d.conf >= 0.6) {
             let (u, v) = d.foot();
@@ -922,7 +974,13 @@ fn cmd_colors(o: &Opts, input: &str) {
     }
     let mut samples: Vec<[u8; 3]> = Vec::new();
     let mut located: Vec<reco_minimap::tools::colors::PlayerSample> = Vec::new();
-    for (i, frame) in sample_frames(o, input, &info).iter().enumerate() {
+    let samples_v = sample_frames(o, input, &info);
+    let n_samples = samples_v.len();
+    for (i, frame) in samples_v.iter().enumerate() {
+        if progress::stop_requested() {
+            break;
+        }
+        progress::report(Some(i as f64 / n_samples.max(1) as f64), None, &tr!("Stichprobe {} von {}", "sample {} of {}", "échantillon {} sur {}", "muestra {} de {}", i + 1, n_samples));
         let dets = model.detect(frame, &tiles).unwrap_or_else(|e| fail(e));
         for d in dets.iter().filter(|d| d.class == Class::Player) {
             let mut at = None;
@@ -1261,6 +1319,10 @@ fn cmd_live(o: &Opts, input: &str) {
     if !ocr_interval.is_finite() || ocr_interval < 0.0 { fail::<()>(trs!("--ocr-secs muss endlich und >= 0 sein", "--ocr-secs must be finite and >= 0", "--ocr-secs doit être fini et >= 0", "--ocr-secs debe ser finito y >= 0")); }
     let (mut n, mut last_report, mut sum_age) = (0u64, Instant::now(), 0f32);
     loop {
+        if progress::stop_requested() {
+            eprintln!("{}", trs!("\nLive-Modus beendet.", "\nLive mode stopped.", "\nMode direct arrêté.", "\nModo en directo detenido."));
+            return;
+        }
         let (arrival, mut frame) = {
             let mut g = latest.slot.lock().unwrap();
             loop {
@@ -1437,6 +1499,7 @@ fn state_json_with(s: &FrameState, scenes: &[SceneEvent]) -> serde_json::Value {
 
 fn cmd_run(o: &Opts, input: &str) {
     let info = open_info(o, input);
+    progress::report(None, None, trs!("Modell wird geladen …", "Loading the model …", "Chargement du modèle …", "Cargando el modelo …"));
     let mut model = load_model(o);
     model.cfg.thr_player = thr_players(o).0;
     let tiles = plan(o, &info);
@@ -1531,7 +1594,14 @@ fn cmd_run(o: &Opts, input: &str) {
     eprintln!("{}", tr!("Verarbeite {}x{}, {} Kacheln/Bild, jedes {}. Bild …  (Strg+C beendet; Datei wird dann evtl. unvollständig)", "Processing {}x{}, {} tiles/frame, every {}. frame …  (Ctrl+C stops; the file may then be incomplete)", "Traitement de {}x{}, {} tuiles/image, une image sur {} …  (Ctrl+C arrête ; le fichier peut alors être incomplet)", "Procesando {}x{}, {} teselas/imagen, una de cada {} imágenes …  (Ctrl+C detiene; el archivo puede quedar incompleto)", info.w, info.h, tiles.len(), every));
     let mut prev_state: Option<FrameState> = None;
     let (mut d_decode, mut d_track, mut d_out) = (std::time::Duration::ZERO, std::time::Duration::ZERO, std::time::Duration::ZERO);
+    let end_t = t_duration(o).map(|d| t_start + d).or(info.duration);
+    let mut prog = progress::Throttle::new(std::time::Duration::from_millis(500));
+    let mut stopped = false;
     loop {
+        if progress::stop_requested() {
+            stopped = true;
+            break;
+        }
         let td = Instant::now();
         let mut frame = match reader.next() {
             Some(f) => f,
@@ -1602,6 +1672,11 @@ fn cmd_run(o: &Opts, input: &str) {
         prev_state = Some(state.clone());
         d_out += to.elapsed();
         done += 1;
+        if let Some(e) = end_t.filter(|e| *e > t_start) {
+            prog.report(Some((t - t_start) / (e - t_start)), None, &tr!("Video bei {}", "video at {}", "vidéo à {}", "vídeo en {}", fmt_clock(t)));
+        } else {
+            prog.report(None, None, &tr!("Video bei {}", "video at {}", "vidéo à {}", "vídeo en {}", fmt_clock(t)));
+        }
         if last_report.elapsed().as_secs_f32() > 2.0 {
             last_report = Instant::now();
             let el = t0.elapsed().as_secs_f32();
@@ -1611,6 +1686,9 @@ fn cmd_run(o: &Opts, input: &str) {
             let eta = end.map(|d| tr!("  Rest ~{}", "  ~{} left", "  reste ~{}", "  quedan ~{}", duration_hms((d - t).max(0.0) / speed.max(0.001) as f64))).unwrap_or_else(|| trs!("  Rest unbekannt", "  time left unknown", "  reste inconnu", "  resto desconocido").into());
             eprint!("{}", tr!("\r  t={t:7.1}s  {fps:4.1} Bilder/s (Quelle {:.1}/s){eta}   ", "\r  t={t:7.1}s  {fps:4.1} frames/s (source {:.1}/s){eta}   ", "\r  t={t:7.1}s  {fps:4.1} images/s (source {:.1}/s){eta}   ", "\r  t={t:7.1}s  {fps:4.1} imágenes/s (fuente {:.1}/s){eta}   ", info.fps / every as f64));
         }
+    }
+    if stopped {
+        eprintln!("{}", tr!("\nAbgebrochen bei {} – die Dateien enthalten alles bis hierhin.", "\nStopped at {} – the files contain everything up to here.", "\nArrêté à {} – les fichiers contiennent tout jusqu'ici.", "\nDetenido en {} – los archivos contienen todo hasta aquí.", fmt_clock(t_start + idx.saturating_sub(1) as f64 * every as f64 / info.fps)));
     }
     eprintln!("{}", tr!("\n{done} Bilder in {} ({:.2} Bilder/s).", "\n{done} frames in {} ({:.2} frames/s).", "\n{done} images en {} ({:.2} images/s).", "\n{done} imágenes en {} ({:.2} imágenes/s).", duration_hms(t0.elapsed().as_secs_f64()), done as f32 / t0.elapsed().as_secs_f32().max(0.001)));
     let per = |d: std::time::Duration| d.as_secs_f32() * 1000.0 / done.max(1) as f32;

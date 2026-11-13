@@ -1,6 +1,6 @@
 # Guía paso a paso: de dos vídeos de cámara al minimapa
 
-Esta guía te lleva de «tengo un vídeo panorámico y un modelo entrenado» a «tengo un vídeo del minimapa». Sigue los seis pasos de la interfaz. La primera vez necesitarás unos 30 minutos; en los partidos siguientes, unos minutos de clics más el tiempo de cálculo.
+Esta guía te lleva de «tengo un vídeo panorámico y un modelo entrenado» a «tengo un vídeo del minimapa». Sigue los siete pasos de la interfaz. La primera vez necesitarás unos 30 minutos; en los partidos siguientes, unos minutos de clics más el tiempo de cálculo.
 
 <p><img src="media/demo-pip.webp" alt="Resultado" width="58%"> <img src="media/demo-minimap.webp" alt="Resultado" width="40%"></p>
 
@@ -82,7 +82,11 @@ El resultado queda en la carpeta del proyecto (`court.json`, `scales.json`, `tea
 * Tú indicas dónde está el campo, qué colores llevan los equipos y qué tramo de tiempo procesar. Esas tres cosas deciden la calidad; todo lo demás tiene valores por defecto útiles.
 * El vídeo de comprobación (*Panorama con recuadros y minimapa*) es tu herramienta de control. Míralo en el primer segmento antes de dejar que se procese un partido entero.
 
-**Al pie de la página** está el registro. Muestra cada comando que ejecuta la interfaz y su salida. Todo lo que hace la interfaz funciona también en la línea de comandos; algunos ajustes finos solo existen allí (`reco-minimap --help`).
+**Disposición.** A la izquierda están la carpeta del proyecto, el deporte y los siete pasos; a la derecha, el paso elegido. Arriba, **💬 Pistas** activa o desactiva las explicaciones que aparecen cuando el ratón se detiene sobre un botón; al lado eliges el idioma.
+
+**Las operaciones largas** (procesar, tamaño de los jugadores, colores de camiseta, prueba del modelo, clips) tienen su propia ventana con barra de progreso, tiempo transcurrido y tiempo restante estimado. *–* la reduce a una pastilla abajo a la derecha; el trabajo sigue. *Cancelar* pregunta qué hacer con el resultado: **Detener y conservar** cierra bien los archivos – contienen todo hasta la parada y se reproducen con normalidad –, **Cancelar y borrar** elimina los archivos de este proceso.
+
+**Al pie de la página** se puede desplegar el registro. Muestra cada comando que ejecuta la interfaz y su salida. Todo lo que hace la interfaz funciona también en la línea de comandos; algunos ajustes finos solo existen allí (`reco-minimap --help`).
 
 **Las versiones nuevas** se anuncian arriba con un aviso azul, ver [Actualizar](#actualizar).
 
@@ -166,7 +170,7 @@ Haz clic en *Medir*. El programa mira una docena de imágenes y aprende qué tam
 3. **Detectar cada N fotogramas.** 5 es un buen comienzo: la detección se ejecuta en uno de cada 5, el vídeo del minimapa se interpola a la cadencia completa y sigue viéndose fluido. Más alto es más rápido; más bajo, más preciso.
 4. **Opacidad de jugadores no detectados.** 1 deja a un jugador oculto totalmente visible en su posición estimada; valores menores lo atenúan.
 5. **Cálculo.** *automático* elige CoreML en un Mac. Deja *CoreML* en `all`.
-6. Haz clic en **Iniciar**. El registro muestra el progreso y al final un resumen: imágenes procesadas, detecciones, tiempo por etapa. *Cancelar* detiene el proceso.
+6. Haz clic en **Iniciar**. Una ventana muestra el progreso (con varios tramos, también cuál está en curso) y, al final, los archivos escritos. *Cancelar* pregunta si quieres conservar o borrar lo procesado hasta ahora.
 
 **¿Dónde están mis archivos?** En `<carpeta del proyecto>/out/`, con el nombre del segmento (`segmento1.mp4`, `segmento1.mov`, `segmento1_pip.mp4`, `segmento1.jsonl`). La lista bajo los ajustes muestra los archivos más recientes con *Mostrar en la carpeta*.
 
@@ -248,6 +252,19 @@ Elige un archivo `.jsonl` de `out/` y haz clic en *Evaluar*. El informe del regi
 
 ![Paso 6](img/es/step6.webp)
 *Paso 6: el informe del archivo de datos en el registro.*
+
+
+## Paso 7 · Estadísticas
+
+Elige un archivo `.jsonl` de `out/`. Las estadísticas siguen el deporte de la calibración. Se cuentan **intentos**: la detección no ve si un tiro entra.
+
+* **Cifras clave:** intentos por equipo, posesión (proporción del tiempo en que un jugador del equipo tiene el balón), con qué frecuencia se encontró el balón, duración.
+* **Mapa de tiros** (baloncesto, fútbol, fútbol sala, balonmano, hockey, lacrosse): cada intento en su lugar, con forma según el tipo (círculo 2 puntos o tiro, rombo 3 puntos, triángulo tiro libre o 7 m). *Ambos / Local / Visitante* filtra, *Tabla* muestra los mismos datos como lista. En baloncesto los tiros vienen de la detección de situaciones de juego: tiene que haber estado activa al procesar. En los deportes de portería un intento es un vuelo rápido del balón que empieza a distancia de tiro y apunta a una portería.
+* **Intentos por zona:** dónde se concentraron los intentos y, al lado, la proporción de cada zona (baloncesto: zona restringida, pintura, media distancia, triple de esquina, triple frontal, tiro libre; fútbol: área chica, área grande, fuera del área; balonmano: 6 m, extremo, primera línea, 7 m; fútbol sala, hockey y lacrosse según la distancia).
+* **Intentos por tramo:** el vídeo dividido en tramos de igual duración (cuatro en baloncesto y hockey, si no dos), con la diferencia local – visitante. El programa no conoce el reloj del partido.
+* **Posesión** y, en deportes de campo, **balón en el campo** (proporción en los tres tercios).
+* **Posiciones:** dónde estuvieron los jugadores visibles de cada equipo o el balón.
+* **Momentos clave:** intentos, situaciones de juego y cambios confirmados con su hora. Marca momentos y haz clic en *Cortar clips*: cada uno da un clip breve del vídeo en `out/clips/` (6 s antes, 4 s después).
 
 ---
 

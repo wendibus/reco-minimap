@@ -19,7 +19,8 @@ Everything runs locally. No video, frame or model leaves your computer. The only
 | **Live** | Browser overlay for OBS plus a JSON event stream |
 | **Jersey numbers** | Optional OCR on the player's back, constrained to your squad list, with substitution detection |
 | **Game situations** | Optional recognition of tip-off, free throw, throw-in, kick-off, corner, penalty, 7 m throw and basketball 2/3-point attempts, from formations on the field ([per sport](docs/SCENARIOS.md)) |
-| **Interface** | `reco-minimap ui` – six steps from model import to evaluation, with a notice when a newer version is available; the header shows the installed version and opens the built-in guide in your language (`reco-minimap --version` on the command line) |
+| **Statistics** | Per-sport shot charts, attempts by zone, attempts per time section, possession, ball position, heat maps and key moments with one-click clips ([Statistics](#statistics)) |
+| **Interface** | `reco-minimap ui` – seven steps from model import to statistics, with hover hints that can be switched off, a progress window that can stop a job (keeping or deleting what it wrote), with a notice when a newer version is available; the header shows the installed version and opens the built-in guide in your language (`reco-minimap --version` on the command line) |
 
 > **Status:** the pipeline, interface, calibration, tracking and live mode are tested end to end. Detection quality with a real Reco Trainer model was checked on basketball footage only; the other sports are supported by their field geometry. Jersey-number reading has only been measured on synthetic digits (see [Jersey numbers](#jersey-numbers-and-substitutions)). Details in [Known limitations](#known-limitations).
 
@@ -36,15 +37,16 @@ Everything runs locally. No video, frame or model leaves your computer. The only
 7. [Models from Reco Trainer](#models-from-reco-trainer)
 8. [Jersey numbers and substitutions](#jersey-numbers-and-substitutions)
 9. [Game situations (scenes)](#game-situations-scenes)
-10. [Live mode and OBS](#live-mode-and-obs) (with the [live ticker](#live-ticker))
-11. [Command-line reference](#command-line-reference)
-12. [Output formats](#output-formats)
-13. [Project folder](#project-folder)
-14. [Performance](#performance)
-15. [Known limitations](#known-limitations)
-16. [Use as a Rust library](#use-as-a-rust-library)
-17. [Development](#development)
-18. [License and credits](#license-and-credits)
+10. [Statistics](#statistics)
+11. [Live mode and OBS](#live-mode-and-obs) (with the [live ticker](#live-ticker))
+12. [Command-line reference](#command-line-reference)
+13. [Output formats](#output-formats)
+14. [Project folder](#project-folder)
+15. [Performance](#performance)
+16. [Known limitations](#known-limitations)
+17. [Use as a Rust library](#use-as-a-rust-library)
+18. [Development](#development)
+19. [License and credits](#license-and-credits)
 
 Step-by-step guides: [Walkthrough (English)](docs/WALKTHROUGH.md) · [Anleitung (Deutsch)](docs/WALKTHROUGH.de.md) · [Guide (Français)](docs/WALKTHROUGH.fr.md) · [Guía (Español)](docs/WALKTHROUGH.es.md) · Game situations per sport: [Scenarios (English)](docs/SCENARIOS.md) · [Szenarien (Deutsch)](docs/SZENARIEN.de.md) · [Scénarios (Français)](docs/SCENARIOS.fr.md) · [Escenarios (Español)](docs/SCENARIOS.es.md)
 
@@ -109,16 +111,28 @@ If you cannot use CoreML, build with `--features tools` and pass `--ep cpu` (abo
 
 ### macOS app
 
-`scripts/package-mac.sh` builds **Reco Minimap.app**: the same Rust program in an app bundle, with ONNX Runtime inside. Double-click it and it serves the interface, opens it in your browser and stays in the Dock; a click on the Dock icon brings the interface back, *Quit* stops running jobs. On the command line the program inside (`Reco Minimap.app/Contents/MacOS/reco-minimap`) works as before.
+**Reco Minimap.app** is a small signed launcher (Swift, in `mac/`), built the same way as Reco Trainer's. It shows the interface in its own window and runs the Rust program (the *payload*: `reco-minimap` plus ONNX Runtime with CoreML) in the background. Payloads live in `~/Library/Application Support/Reco Minimap/payloads/<version>/`, the log in `~/Library/Logs/Reco Minimap/reco-minimap.log`. Quitting the app stops every job.
+
+Updates come as signed payloads from the GitHub releases (`Reco.Minimap.Payload.<version>.zip` plus `.sig`, Ed25519). The launcher checks the signature before it switches over; a payload with a missing or wrong signature is never used.
 
 ```bash
+swift mac/tools/payload-signing.swift keygen   # once: key in ~/.reco-minimap/payload-signing.key,
+                                               # paste the printed public key into mac/Sources/LauncherCore/PayloadKey.swift
 export RECO_ORT_DYLIB="$HOME/ortvenv/lib/python3.14/site-packages/onnxruntime/capi/libonnxruntime.1.30.0.dylib"
 export RECO_SIGN_IDENTITY="Developer ID Application: …"   # leave out for an ad-hoc signature (this Mac only)
-export RECO_NOTARY_PROFILE="…"                             # optional: notarize with Apple and staple
-scripts/package-mac.sh                                     # dist/Reco Minimap.app and a zip
+mac/scripts/build-payload.sh                   # signed payload from the Rust build
+mac/scripts/package-app.sh                     # mac/dist/Reco Minimap.app with the payload seeded inside
+mac/scripts/package-dmg.sh                     # disk image
+RECO_NOTARY_PROFILE="…" mac/scripts/notarize.sh   # notarize with Apple and staple
+mac/scripts/release-payload.sh                 # payload zip + .sig for a GitHub release
+mac/scripts/run-mac.sh                         # build and start the launcher for development
 ```
 
-ffmpeg and ffprobe are not inside the app; install them with `brew install ffmpeg`. The app does not update itself: download the new version and replace it.
+ffmpeg and ffprobe are not inside the app; install them with `brew install ffmpeg`. On the command line the payload's `bin/reco-minimap` works as before.
+
+### Windows and Linux zips
+
+`scripts/package-platform.sh` (and the workflow `.github/workflows/platform-zips.yml`, run by hand or on a `v*` tag) builds a zip per platform with the program, ONNX Runtime and a start script: **Start Reco Minimap.bat** on Windows, `start-reco-minimap.sh` on Linux. Unpack, install ffmpeg, double-click the start script; the interface opens in the browser. The included ONNX Runtime runs on the CPU; for CUDA or DirectML put a GPU build next to the program as described below.
 
 ### Linux
 
@@ -185,6 +199,9 @@ reco-minimap ui               # opens http://127.0.0.1:8788/
 4. **Process** – choose segments and outputs, press *Start*.
 5. **Live** (optional) – start the browser overlay for OBS.
 6. **Evaluation** – numbers about a finished run.
+7. **Statistics** – shot chart, zones, time sections, possession and key moments; cut clips of chosen moments.
+
+Every button explains itself when the mouse rests on it (*💬 Hints* in the header turns that off). Long jobs show a progress window with remaining time; *Cancel* either stops and keeps what was written so far – the files are closed properly and play – or deletes the files of that run.
 
 Results land in `<project folder>/out/` (default project folder: `~/reco-minimap-projekte/standard`).
 
@@ -321,6 +338,27 @@ Each scene must hold for 1–2 s before it fires, and fires once per formation. 
 * **2/3-point attempts** fire when the ball leaves the shooter's hands towards a basket and are classified by the release position; they are flagged `borderline` within the position error of the arc. Whether the shot went in is **not** detected.
 * The full catalogue, including what is feasible but not implemented (timeouts, free-kick walls, scrums, snap formations …) and what is not possible from positions, is in **[docs/SCENARIOS.md](docs/SCENARIOS.md)**.
 * **Verified on constructed formations only** – positive cases and the look-alikes that must not fire. Expect to tune thresholds on real games.
+
+## Statistics
+
+Step 7 of the interface, or on the command line:
+
+```bash
+reco-minimap stats out/game.jsonl --court court.json --json out/game.stats.json
+reco-minimap clip game.mp4 --at 312.4,1290 --before 6 --after 4 --out out/clips
+```
+
+The statistics count **attempts**; whether a shot went in is not visible to the detection.
+
+| Part | What it shows |
+|---|---|
+| Key figures | attempts per team, possession, how often the ball was found, duration |
+| Shot chart | every attempt at its place (basketball: from game situations, so they must be on while processing; goal sports: a fast ball flight that starts within range and points at a goal), shaped by kind, as chart or table |
+| Attempts by zone | density on the field and the share of each zone (per sport: e.g. restricted area / paint / mid-range / corner 3 / above-the-break 3 in basketball, goal area / penalty area / outside in football, 6 m / wing / back court / 7 m in handball) |
+| Time sections | attempts in equal parts of the video (4 in basketball and hockey, otherwise 2) with the home – away difference; there is no game clock |
+| Possession, thirds | share of time each team holds the ball; for field sports the share of the ball in each third |
+| Positions | heat maps of home, away and the ball |
+| Key moments | attempts, game situations, confirmed substitutions; tick them and cut short clips into `out/clips/` |
 
 ## Live mode and OBS
 
@@ -523,16 +561,19 @@ Implement `geom::Projector` on top of your own panorama projection if a plain ho
 ## Development
 
 ```bash
-cargo test --features tools              # 50 tests (core, tools, number decoding, substitutions, game situations, tiling, update check, languages)
+cargo test --features tools              # core, tools, number decoding, substitutions, game situations, statistics, progress
 python3 scripts/gen_i18n.py              # regenerate src/tools/i18n.js (all keys in all 4 languages)
                                          # program messages: tr!/trs! carry de, en, fr, es at the call site (src/tools/i18n.rs)
 python3 scripts/make_test_assets.py      # synthetic panorama + stand-in ONNX for smoke tests
 python3 scripts/coreml_probe.py <model>  # CoreML partitions and per-unit timing
-node scripts/ui_test.js                  # drives the interface in jsdom (see the header of the file)
+cd web && npm ci && npm run build        # React interface -> src/tools/webui/ (committed, embedded in the binary)
+cd web && npm run dev                    # live reload against a running `reco-minimap ui` on port 8788
+node scripts/ui_test.mjs <url> <project> # headless Chrome: 7 steps x 4 languages, hints, no untranslated keys
+cd mac && swift test                     # launcher tests (payload store, signatures, update planning)
 cargo run --example sports_sheet /tmp    # draw all field layouts
 ```
 
-Layout: `src/` core library (geometry, sport profiles, detection decoding, tracker, ball, numbers, game situations, renderer); `src/tools/` video I/O, inference, calibration page, interface, live hub, number reader; `src/bin/reco-minimap.rs` commands.
+Layout: `src/` core library (geometry, sport profiles, detection decoding, tracker, ball, numbers, game situations, renderer); `src/tools/` video I/O, inference, calibration page, interface server, progress protocol, statistics, live hub, number reader; `web/` the React interface; `mac/` the macOS launcher; `src/bin/reco-minimap.rs` commands.
 
 ## License and credits
 

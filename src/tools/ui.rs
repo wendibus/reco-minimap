@@ -307,7 +307,7 @@ fn load_project(dir: &Path) -> Result<Value, String> {
     std::fs::create_dir_all(dir.join("models")).map_err(|e| format!("{}: {e}", dir.display()))?;
     std::fs::create_dir_all(dir.join("out")).map_err(|e| e.to_string())?;
     let proj = std::fs::read_to_string(dir.join("project.json")).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).unwrap_or_else(|| json!({}));
-    let models: Vec<Value> = models::list(&dir.join("models")).iter().map(|m| m.to_json()).collect();
+    let models: Vec<Value> = models::list_with_camera(&dir.join("models")).iter().map(|m| m.to_json()).collect();
     Ok(json!({"ok": true, "dir": dir.to_string_lossy(), "project": proj, "models": models, "files": project_files(dir)}))
 }
 
@@ -558,6 +558,7 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
             }
         }
         "fetch_ocr" => pushs(&mut a, &["fetch-ocr"]),
+        "fetch_model" => pushs(&mut a, &["fetch-model"]),
         "update" if is_mac_app() => {
             return Err(trs!(
                 "Die Mac-App aktualisiert sich nicht selbst. Lade die neue Version von der Release-Seite und ersetze die App.",
@@ -704,7 +705,7 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
             let sports: Vec<Value> = BUILTIN_IDS.iter().filter_map(|id| SportProfile::builtin(id)).map(|p| json!({"id": p.id, "field": [p.field.length, p.field.width], "team_size": p.team_size, "referees": p.referees, "keepers": crate::sport::has_keepers(&p.id)})).collect();
             let ort = super::infer::ensure_ort_runtime().err();
             jres(&mut s, json!({"ok": true, "home": home_dir().to_string_lossy(), "default_dir": default_project_dir().to_string_lossy(), "sports": sports,
-                                "coreml": cfg!(feature = "coreml"), "ocr": {"path": super::ocr::default_model_path().to_string_lossy(), "exists": super::ocr::default_model_path().exists()}, "ort_error": ort, "version": env!("CARGO_PKG_VERSION"), "lan_ip": super::board_srv::lan_address(), "dialogs": cfg!(target_os = "macos") || cfg!(target_os = "windows") || Command::new("zenity").arg("--version").output().is_ok()}));
+                                "coreml": cfg!(feature = "coreml"), "camera": {"id": models::CAMERA_ID, "mb": (models::CAMERA_MB as f64 * 10.0).round() / 10.0, "exists": models::camera_model().is_some()}, "ocr": {"path": super::ocr::default_model_path().to_string_lossy(), "exists": super::ocr::default_model_path().exists()}, "ort_error": ort, "version": env!("CARGO_PKG_VERSION"), "lan_ip": super::board_srv::lan_address(), "dialogs": cfg!(target_os = "macos") || cfg!(target_os = "windows") || Command::new("zenity").arg("--version").output().is_ok()}));
         }
         ("GET", "/api/update") => {
             let u = ui.update.lock().unwrap().clone();
@@ -761,6 +762,7 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
             Ok(i) => jres(&mut s, json!({"ok": true, "w": i.w, "h": i.h, "fps": (i.fps * 100.0).round() / 100.0, "duration": i.duration})),
             Err(e) => err(&mut s, e),
         },
+        ("POST", "/api/hub") => jres(&mut s, hub_models(&get_s(&b, "sport"))),
         ("POST", "/api/model/import") => {
             let dir = PathBuf::from(get_s(&b, "dir"));
             match models::import(Path::new(&get_s(&b, "path")), &dir.join("models")) {
@@ -959,10 +961,10 @@ mod tests {
     #[test]
     fn the_live_job_passes_the_ticker_settings() {
         let p = json!({"model_dir": "/m", "source": "/v.mp4", "ep": "cpu", "size": "1920x1080", "fps": 25, "port": 8765,
-            "ticker_names": "both", "home_name": " Sharks ", "away_name": "", "network": true, "ticker_approve": true, "ticker_export": true, "ticker_push": " https://dav.example.org/t.json ", "ticker_key": ""});
+            "ticker_names": "both", "home_name": " Blue ", "away_name": "", "network": true, "ticker_approve": true, "ticker_export": true, "ticker_push": " https://dav.example.org/t.json ", "ticker_key": ""});
         let a = build_args("live", Path::new("/nonexistent-project"), &p).unwrap();
         assert_eq!(pair(&a, "--ticker-names").as_deref(), Some("both"));
-        assert_eq!(pair(&a, "--home-name").as_deref(), Some("Sharks"));
+        assert_eq!(pair(&a, "--home-name").as_deref(), Some("Blue"));
         assert!(pair(&a, "--away-name").is_none(), "an empty name is not passed");
         assert_eq!(pair(&a, "--host").as_deref(), Some("0.0.0.0"));
         assert!(a.contains(&"--ticker-approve".to_string()));
@@ -999,4 +1001,31 @@ mod tests {
             assert!(pair(&a, "--torso").is_none() && !a.contains(&"--shirt-match".to_string()), "{a:?}");
         }
     }
+}
+
+/// Models that Reco Trainer's public model hub (github.com/wendibus/reco-models) lists for a sport.
+/// Only shown, not downloaded (loading from the hub comes later). The index is cached for 30 minutes.
+fn hub_models(sport: &str) -> Value {
+    static CACHE: std::sync::Mutex<Option<(std::time::Instant, Value)>> = std::sync::Mutex::new(None);
+    let index = {
+        let mut c = CACHE.lock().unwrap();
+        match &*c {
+            Some((t, v)) if t.elapsed().as_secs() < 1800 => Some(v.clone()),
+            _ => {
+                let url = std::env::var("RECO_HUB_INDEX_URL").unwrap_or_else(|_| "https://github.com/wendibus/reco-models/releases/download/index/index.json".into());
+                let out = Command::new("curl").args(["-fsSL", "--max-time", "8", &url]).output().ok().filter(|o| o.status.success());
+                let v = out.and_then(|o| serde_json::from_slice::<Value>(&o.stdout).ok());
+                if let Some(v) = &v {
+                    *c = Some((std::time::Instant::now(), v.clone()));
+                }
+                v
+            }
+        }
+    };
+    let Some(index) = index else { return json!({"ok": false}) };
+    let found: Vec<Value> = index["models"].as_array().into_iter().flatten()
+        .filter(|m| m["sport"].as_str() == Some(sport) && !m["deprecated"].as_bool().unwrap_or(false))
+        .map(|m| json!({"id": m["id"], "name": m["name"], "size": m["size"], "version": m["version"], "classes": m["classes"]}))
+        .collect();
+    json!({"ok": true, "models": found, "url": "https://github.com/wendibus/reco-models"})
 }

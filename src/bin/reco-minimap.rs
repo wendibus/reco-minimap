@@ -193,24 +193,37 @@ fn plan(o: &Opts, info: &VideoInfo) -> Vec<Tile> {
 
 fn load_model(o: &Opts) -> RfDetr {
     let path = o.s("model").unwrap_or_else(|| fail(trs!("--model <ordner|.onnx> fehlt", "--model <folder|.onnx> is missing", "--model <dossier|.onnx> manquant", "falta --model <carpeta|.onnx>")));
+    // `--model camera` = the general model of `reco camera` (download it with `reco-minimap fetch-model`)
+    let camera = reco_minimap::tools::models::camera_dir().to_string_lossy().into_owned();
+    let path: &str = if path == "camera" { &camera } else { path };
     let ep = Ep::parse(o.s("ep").unwrap_or("cpu")).unwrap_or_else(|| fail("--ep: cpu | auto | cuda | tensorrt | directml | coreml"));
     if let Some(d) = o.s("device") {
         d.parse::<i32>().unwrap_or_else(|_| fail("--device: 0, 1, ..."));
         std::env::set_var("RECO_MINIMAP_DEVICE", d);
     }
     let mut m = RfDetr::load(path, ep, o.s("units").map(|u| Units::parse(u).unwrap_or_else(|| fail(trs!("--units: all | ane | gpu | cpu", "--units: all | ane | gpu | cpu", "--units : all | ane | gpu | cpu", "--units: all | ane | gpu | cpu")))).unwrap_or(Units::All), o.u("workers", 1)).unwrap_or_else(|e| fail(e));
-    m.cfg.thr_ball = o.f("thr-ball", 0.30) as f32;
+    // a general COCO model (Reco camera) is less sure of players and balls: lower default thresholds
+    GENERAL_MODEL.store(m.arch == reco_minimap::tools::infer::Arch::YoloE2e, std::sync::atomic::Ordering::Relaxed);
+    m.cfg.thr_ball = o.f("thr-ball", thr_ball_default() as f64) as f32;
     m.cfg.thr_player = thr_players(o).1;
     m.cfg.thr_referee = o.f("thr-ref", 0.50) as f32;
-    eprintln!("{}", tr!("Modell: {} ({}x{}, Klassen {:?}), {} Worker", "Model: {} ({}x{}, classes {:?}), {} worker(s)", "Modèle : {} ({}x{}, classes {:?}), {} worker(s)", "Modelo: {} ({}x{}, clases {:?}), {} worker(s)", m.info.id, m.size, m.size, m.info.classes, m.workers()));
+    eprintln!("{}", tr!("Modell: {} ({}x{}, Klassen {:?}), {} Worker", "Model: {} ({}x{}, classes {:?}), {} worker(s)", "Modèle : {} ({}x{}, classes {:?}), {} worker(s)", "Modelo: {} ({}x{}, clases {:?}), {} worker(s)", m.info.id, m.size, m.size, m.info.classes.iter().zip(&m.cfg.class_map).filter(|(_, c)| c.is_some()).map(|(n, _)| n.as_str()).collect::<Vec<_>>(), m.workers()));
     m
 }
 
 /// Player thresholds (low, high): detections from `--thr-player-low` on keep an existing track going,
 /// only those from `--thr-player` on may start one. Set both to the same value to turn this off.
 fn thr_players(o: &Opts) -> (f32, f32) {
-    let high = o.f("thr-player", 0.60) as f32;
-    (o.s("thr-player-low").and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.30).min(high), high)
+    let general = GENERAL_MODEL.load(std::sync::atomic::Ordering::Relaxed);
+    let high = o.f("thr-player", if general { 0.35 } else { 0.60 }) as f32;
+    (o.s("thr-player-low").and_then(|v| v.parse::<f32>().ok()).unwrap_or(if general { 0.20 } else { 0.30 }).min(high), high)
+}
+
+/// Set once the model is loaded: true for the general model of Reco camera (end-to-end YOLO).
+static GENERAL_MODEL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn thr_ball_default() -> f32 {
+    if GENERAL_MODEL.load(std::sync::atomic::Ordering::Relaxed) { 0.20 } else { 0.30 }
 }
 
 /// Tracking configuration for a game. `--referees N` overrides the number of referee slots from the
@@ -308,6 +321,14 @@ fn main() {
         let dest = o.s("to").map(std::path::PathBuf::from).unwrap_or_else(ocr::default_model_path);
         match ocr::fetch_model(&dest) {
             Ok(p) => println!("{}", tr!("OCR-Modell gespeichert: {}", "Number model saved: {}", "Modèle de numéros enregistré : {}", "Modelo de dorsales guardado: {}", p.display())),
+            Err(e) => fail::<()>(e),
+        }
+        return;
+    }
+    if args[0] == "fetch-model" {
+        // the general model of `reco camera` (YOLO26n, all sports); --from <yolo26n.onnx> uses a copy already on this computer
+        match reco_minimap::tools::models::fetch_camera(o.s("from").map(std::path::Path::new)) {
+            Ok(m) => println!("{}", tr!("Modell von Reco camera bereit: {}", "Model of Reco camera ready: {}", "Modèle de Reco camera prêt : {}", "Modelo de Reco camera listo: {}", m.dir.display())),
             Err(e) => fail::<()>(e),
         }
         return;
@@ -502,7 +523,7 @@ fn cmd_selfcheck(o: &Opts, input: &str) {
         };
         let mut dets = Vec::new();
         for tile in &tiles {
-            let chw = frame.tile_tensor(tile, model.size);
+            let chw = frame.tile_tensor(tile, model.size, model.norm());
             let t0 = Instant::now();
             let (boxes, logits, nq, ncl) = model.run_raw(&chw).unwrap_or_else(|e| fail(e));
             tile_ms.push(t0.elapsed().as_secs_f32() * 1000.0);
@@ -595,6 +616,10 @@ fn cmd_selfcheck(o: &Opts, input: &str) {
     println!("{}", tr!("Logits: {lmin:.1} … {lmax:.1}   Boxen-Werte: {bmin:.3} … {bmax:.3}", "Logits: {lmin:.1} … {lmax:.1}   box values: {bmin:.3} … {bmax:.3}", "Logits : {lmin:.1} … {lmax:.1}   valeurs des boîtes : {bmin:.3} … {bmax:.3}", "Logits: {lmin:.1} … {lmax:.1}   valores de los recuadros: {bmin:.3} … {bmax:.3}"));
     println!("{}", trs!("\nKlassen-Index  (laut runtime.json)   Treffer >=0.5   bester Score", "\nClass index  (from runtime.json)   hits >=0.5   best score", "\nIndice de classe  (selon runtime.json)   détections >=0.5   meilleur score", "\nÍndice de clase  (según runtime.json)   detecciones >=0.5   mejor puntuación"));
     for i in 0..nc {
+        // a COCO model has 80 classes: list only those that count here or were seen
+        if nc > 8 && model.cfg.class_map.get(i).copied().flatten().is_none() && argmax_hits[i] == 0 {
+            continue;
+        }
         println!("  [{i}] {:<10}  {:>12}   {:>7.2}", model.info.classes.get(i).map(|s| s.as_str()).unwrap_or("?"), argmax_hits[i], best_score[i]);
     }
     println!("{}", trs!("\nPro Maßstab (Kachelgröße -> Verkleinerung im Modelleingang):", "\nPer scale (tile size -> reduction in the model input):", "\nPar échelle (taille de tuile -> réduction à l'entrée du modèle) :", "\nPor escala (tamaño de tesela -> reducción en la entrada del modelo):"));
@@ -635,7 +660,7 @@ fn cmd_selfcheck(o: &Opts, input: &str) {
         println!("{}", trs!("  ! Keine einzige Erkennung >= 0.5: Vorverarbeitung (RGB/ImageNet-Normalisierung), --roi oder Kachelgröße prüfen.", "  ! Not a single detection >= 0.5: check the preprocessing (RGB/ImageNet normalisation), --roi or the tile size.", "  ! Aucune détection >= 0.5 : vérifier le prétraitement (RGB/normalisation ImageNet), --roi ou la taille des tuiles.", "  ! Ninguna detección >= 0.5: revisa el preprocesado (RGB/normalización ImageNet), --roi o el tamaño de tesela."));
         warn = true;
     } else {
-        let p_idx = model.info.classes.iter().position(|c| c == "player");
+        let p_idx = (0..nc).find(|&i| model.cfg.class_map.get(i).copied().flatten() == Some(Class::Player));
         if let Some(pi) = p_idx {
             let max_i = (0..nc).max_by_key(|&i| argmax_hits[i]).unwrap();
             if max_i != pi {
@@ -1771,7 +1796,7 @@ fn cmd_replay(o: &Opts, path: &str) {
     let head: serde_json::Value = lines.next().and_then(|l| serde_json::from_str(l).ok()).filter(|v: &serde_json::Value| v["reco_minimap_dets"].as_u64() == Some(1)).unwrap_or_else(|| fail(tr!("{path}: keine Erkennungs-Datei (erzeugen mit `run … --dets <datei>`)", "{path}: not a detections file (create one with `run … --dets <file>`)", "{path} : ce n'est pas un fichier de détections (en créer un avec `run … --dets <fichier>`)", "{path}: no es un archivo de detecciones (créalo con `run … --dets <archivo>`)")));
     let rate = head["fps"].as_f64().unwrap_or(25.0) / head["every"].as_f64().unwrap_or(1.0).max(1.0);
     let rec = |k: &str| head["thr"][k].as_f64().unwrap_or(0.0) as f32;
-    let (thr_ball, thr_player, thr_ref) = (o.f("thr-ball", 0.30) as f32, thr_players(o).0, o.f("thr-ref", 0.50) as f32);
+    let (thr_ball, thr_player, thr_ref) = (o.f("thr-ball", thr_ball_default() as f64) as f32, thr_players(o).0, o.f("thr-ref", 0.50) as f32);
     for (name, want, have) in [("--thr-ball", thr_ball, rec("ball")), ("--thr-player(-low)", thr_player, rec("player")), ("--thr-ref", thr_ref, rec("referee"))] {
         if want < have - 1e-6 {
             eprintln!("{}", tr!("Hinweis: {name} {want} liegt unter der Aufnahme-Schwelle {have}; es gilt {have}.", "Note: {name} {want} is below the recording threshold {have}; {have} applies.", "Remarque : {name} {want} est sous le seuil d'enregistrement {have} ; {have} s'applique.", "Nota: {name} {want} está por debajo del umbral de grabación {have}; se aplica {have}."));

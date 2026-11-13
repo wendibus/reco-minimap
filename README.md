@@ -6,7 +6,7 @@
 
 *Eight seconds of an animated test video, processed with the interface; the [walkthrough](docs/WALKTHROUGH.md) shows every step with screenshots (also in [German](docs/WALKTHROUGH.de.md), [French](docs/WALKTHROUGH.fr.md) and [Spanish](docs/WALKTHROUGH.es.md)).*
 
-It is built to work with panoramas from [Reco](https://github.com/reco-project/video-stitcher) (two cameras stitched into one wide picture) and with detection models trained in **Reco Trainer**, but it works on any full-field panorama video plus an RF-DETR ONNX model with the same output layout.
+It is built to work with panoramas from [Reco](https://github.com/reco-project/video-stitcher) (two cameras stitched into one wide picture) and with detection models trained in **Reco Trainer**, but it works on any full-field panorama video plus an RF-DETR ONNX model with the same output layout. Without a trained model it uses the general model of `reco camera` (YOLO26n).
 
 Everything runs locally. No video, frame or model leaves your computer. The only network use is the optional number-model download and the update check, which asks GitHub for the latest version number (switch it off with `--no-update-check`).
 
@@ -268,6 +268,15 @@ Ice hockey is not included yet. A new sport needs one function in [`src/sport.rs
 
 ## Models from Reco Trainer
 
+**Default: the model of Reco camera.** Without a choice, reco-minimap uses the general detection model that `reco camera` uses for its AI camera (Ultralytics YOLO26n, COCO classes *person* and *sports ball*, AGPL-3.0, from the [video-stitcher release](https://github.com/reco-project/video-stitcher/releases)). It works for every sport without training, but knows no referees (they are found by shirt colour) and finds the ball less reliably than a model trained for the sport. Step 1 downloads it once for all projects (10.4 MB, checksum checked); on the command line:
+
+```bash
+reco-minimap fetch-model                       # or: --from /path/to/yolo26n.onnx (a copy already on this computer)
+reco-minimap run game.mp4 --model camera …
+```
+
+For the chosen sport, step 1 also shows which Reco Trainer models are imported and which ones the public model hub of Reco Trainer lists (loading from the hub comes later). A model trained for the sport is usually better and is one click away.
+
 A Reco Trainer export is a folder with `runtime.json`, `model-card.json` and an `.onnx` file. In the interface choose *Choose folder and import …*; on the command line:
 
 ```bash
@@ -434,6 +443,7 @@ Important: the minimap needs the **same full panorama you calibrated on**. The A
 | `stats <states.jsonl>` | Numbers about a run: slots, jumps, ball states, substitutions |
 | `import-model <path> --to <dir>` | Verify and copy a Reco Trainer model |
 | `fetch-ocr` | Download the number-reading model |
+| `fetch-model` | Download the model of Reco camera (default model, all sports) |
 | `update` | Look for a newer version on GitHub (`--check` only reports, `--yes` builds and installs it) |
 | `ocr-bench <manifest.tsv>` | Measure the number reader on your own crops |
 

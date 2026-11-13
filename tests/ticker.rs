@@ -23,7 +23,7 @@ fn names_follow_the_number_and_do_not_disturb_the_number_lists() {
 fn cfg(names: &str) -> TickerCfg {
     TickerCfg {
         names: names.into(),
-        home_name: "Sharks".into(),
+        home_name: "Blue".into(),
         away_name: "".into(),
         home_players: parse_roster_names("7:Anna Müller"),
         away_players: parse_roster_names("9:Dana"),
@@ -66,7 +66,7 @@ fn the_feed_grows_and_late_viewers_can_catch_up() {
     assert_eq!(late["events"].as_array().unwrap().len(), 1);
     assert_eq!(late["events"][0]["out"], 9);
     assert_eq!(all["config"]["sport"], "football");
-    assert_eq!(all["config"]["teams"]["home"], "Sharks");
+    assert_eq!(all["config"]["teams"]["home"], "Blue");
 }
 
 #[test]

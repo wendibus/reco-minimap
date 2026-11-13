@@ -29,6 +29,8 @@ pub struct ModelMeta {
     pub contract: Option<String>,
     pub sha: Sha,
     pub size_mb: f32,
+    /// The general model of `reco camera` (all sports), kept outside the project folder.
+    pub builtin: bool,
 }
 
 impl ModelMeta {
@@ -36,7 +38,7 @@ impl ModelMeta {
         json!({
             "id": self.id, "dir": self.dir.to_string_lossy(), "onnx": self.onnx.to_string_lossy(), "sport": self.sport,
             "classes": self.classes, "input_size": self.input_size, "confidence": self.confidence, "contract": self.contract,
-            "sha": match self.sha { Sha::Ok => "ok", Sha::Bad => "bad", Sha::None => "none" }, "size_mb": (self.size_mb as f64 * 10.0).round() / 10.0,
+            "sha": match self.sha { Sha::Ok => "ok", Sha::Bad => "bad", Sha::None => "none" }, "size_mb": (self.size_mb as f64 * 10.0).round() / 10.0, "builtin": self.builtin,
         })
     }
 }
@@ -74,7 +76,7 @@ pub fn inspect(path: &Path) -> Result<ModelMeta, String> {
             return Err(trs!("Keine .onnx-Datei", "Not an .onnx file", "Ce n'est pas un fichier .onnx", "No es un archivo .onnx").into());
         }
         let size = fs::metadata(path).map(|m| m.len()).unwrap_or(0) as f32 / 1e6;
-        return Ok(ModelMeta { id: path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(), dir: path.parent().unwrap_or(Path::new(".")).to_path_buf(), onnx: path.to_path_buf(), sport: None, classes: default_classes(), input_size: 512, confidence: None, contract: None, sha: Sha::None, size_mb: size });
+        return Ok(ModelMeta { id: path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(), dir: path.parent().unwrap_or(Path::new(".")).to_path_buf(), onnx: path.to_path_buf(), sport: None, classes: default_classes(), input_size: 512, confidence: None, contract: None, sha: Sha::None, size_mb: size, builtin: false });
     }
     if !path.is_dir() {
         return Err(tr!("{}: nicht gefunden", "{}: not found", "{} : introuvable", "{}: no encontrado", path.display()));
@@ -117,6 +119,7 @@ pub fn inspect(path: &Path) -> Result<ModelMeta, String> {
         sha,
         size_mb: fs::metadata(&onnx).map(|m| m.len()).unwrap_or(0) as f32 / 1e6,
         onnx,
+        builtin: rt.as_ref().and_then(|v| v["builtin"].as_bool()).unwrap_or(false),
     })
 }
 
@@ -160,4 +163,88 @@ pub fn list(models_dir: &Path) -> Vec<ModelMeta> {
     let mut v: Vec<ModelMeta> = fs::read_dir(models_dir).into_iter().flatten().flatten().filter(|e| e.path().is_dir()).filter_map(|e| inspect(&e.path()).ok()).collect();
     v.sort_by(|a, b| a.id.cmp(&b.id));
     v
+}
+
+// ------------------------------------------------------------------ the model of `reco camera`
+
+/// Id of the general detection model that `reco camera` uses for its AI tracking: Ultralytics
+/// YOLO26n trained on COCO (person + sports ball), from the release of reco-project/video-stitcher.
+/// It knows no sport and no referees, so a model trained in Reco Trainer for the sport is usually
+/// better - but it works for every sport without training.
+pub const CAMERA_ID: &str = "reco-camera-yolo26n";
+const CAMERA_FILE: &str = "yolo26n.onnx";
+const CAMERA_URL: &str = "https://github.com/reco-project/video-stitcher/releases/download/v0.5.4/yolo26n.onnx";
+const CAMERA_SHA256: &str = "3f6e5b6c9adaaf7f033810526f12826557e92fafaffa6df2d0ed06512f5e3821";
+/// Download size, shown before the download.
+pub const CAMERA_MB: f32 = 10.4;
+
+/// `<cache>/reco-minimap/models/reco-camera-yolo26n/` (shared by all projects).
+pub fn camera_dir() -> PathBuf {
+    super::infer::cache_dir("models").join(CAMERA_ID)
+}
+
+/// The camera model if it has been downloaded (and is intact).
+pub fn camera_model() -> Option<ModelMeta> {
+    inspect(&camera_dir()).ok().filter(|m| m.sha != Sha::Bad)
+}
+
+fn camera_runtime() -> Value {
+    json!({
+        "schemaVersion": 1, "modelId": CAMERA_ID, "displayName": "Reco camera (YOLO26n)", "builtin": true,
+        "artifact": {"file": CAMERA_FILE, "sha256": CAMERA_SHA256}, "contract": "yolo-e2e-v1", "inputSize": 1280,
+        "classes": super::infer::COCO_CLASSES.to_vec(), "sport": null, "source": CAMERA_URL,
+        "license": "AGPL-3.0 (Ultralytics YOLO26)",
+    })
+}
+
+/// Fetch the camera model: from a copy that is already on this computer (`local`), else from GitHub.
+/// The SHA-256 is checked either way.
+pub fn fetch_camera(local: Option<&Path>) -> Result<ModelMeta, String> {
+    if let Some(m) = camera_model() {
+        return Ok(m);
+    }
+    let dir = camera_dir();
+    fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let part = dir.join(format!("{CAMERA_FILE}.part"));
+    match local {
+        Some(p) => {
+            fs::copy(p, &part).map_err(|e| tr!("Kopieren: {e}", "Copying: {e}", "Copie : {e}", "Copia: {e}"))?;
+        }
+        None => {
+            eprintln!("{}", tr!("Lade das Modell von Reco camera ({CAMERA_MB} MB) …", "Downloading the model of Reco camera ({CAMERA_MB} MB) …", "Téléchargement du modèle de Reco camera ({CAMERA_MB} Mo) …", "Descargando el modelo de Reco camera ({CAMERA_MB} MB) …"));
+            let st = std::process::Command::new("curl").args(["-fsSL", "--retry", "2", "-o"]).arg(&part).arg(CAMERA_URL).status().map_err(|e| tr!("curl nicht gefunden: {e}", "curl not found: {e}", "curl introuvable : {e}", "no se encuentra curl: {e}"))?;
+            if !st.success() {
+                let _ = fs::remove_file(&part);
+                return Err(trs!("Download fehlgeschlagen (keine Verbindung zu GitHub?)", "The download failed (no connection to GitHub?)", "Le téléchargement a échoué (pas de connexion à GitHub ?)", "La descarga ha fallado (¿sin conexión con GitHub?)").into());
+            }
+        }
+    }
+    if sha256_hex(&part)? != CAMERA_SHA256 {
+        let _ = fs::remove_file(&part);
+        return Err(trs!("Prüfsumme des Modells stimmt nicht – Datei nicht verwendet.", "The checksum of the model does not match – file not used.", "La somme de contrôle du modèle ne correspond pas – fichier non utilisé.", "La suma de comprobación del modelo no coincide: archivo no utilizado.").into());
+    }
+    fs::rename(&part, dir.join(CAMERA_FILE)).map_err(|e| e.to_string())?;
+    fs::write(dir.join("runtime.json"), serde_json::to_string_pretty(&camera_runtime()).unwrap()).map_err(|e| e.to_string())?;
+    inspect(&dir)
+}
+
+/// Models of a project: the camera model first (if downloaded), then the imported ones.
+pub fn list_with_camera(models_dir: &Path) -> Vec<ModelMeta> {
+    let mut v: Vec<ModelMeta> = camera_model().into_iter().collect();
+    v.extend(list(models_dir).into_iter().filter(|m| !m.builtin));
+    v
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn camera_runtime_names_yolo_contract_and_coco() {
+        let rt = camera_runtime();
+        assert_eq!(rt["contract"], "yolo-e2e-v1");
+        assert_eq!(rt["classes"][0], "person");
+        assert_eq!(rt["classes"][32], "sports ball");
+        assert_eq!(rt["artifact"]["sha256"].as_str().unwrap().len(), 64);
+    }
 }

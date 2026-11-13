@@ -24,6 +24,9 @@ ARCH="$(uname -m)"; [[ "$ARCH" == "AMD64" ]] && ARCH=x86_64
 if [[ -z "${RECO_SKIP_NPM:-}" ]]; then
   (cd web && npm ci --no-audit --no-fund && npm run build)
 fi
+# keep paths of the build machine out of the program (see mac/scripts/build-payload.sh)
+CARGO_HOME_DIR="${CARGO_HOME:-$HOME/.cargo}"
+export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$CARGO_HOME_DIR/registry/src=/cargo --remap-path-prefix=$CARGO_HOME_DIR/git/checkouts=/cargo-git --remap-path-prefix=$PWD=/reco-minimap"
 cargo build --release --features "${RECO_FEATURES:-tools}"
 TARGET_DIR="$(cargo metadata --format-version 1 --no-deps | sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p')"
 

@@ -107,3 +107,4 @@
   .app-body { grid-template-columns: 220px minmax(0, 1fr) !important; }
   .mm-split { grid-template-columns: 1fr; }
 }
+.mm-trainer { margin-top: 12px; padding-top: 10px; border-top: .5px solid var(--sep); }

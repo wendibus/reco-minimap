@@ -13,6 +13,7 @@ reco-minimap – minimap (court, players, referees, ball) from a Reco panorama
   reco-minimap --version                                              show the installed version
   reco-minimap update [--check] [--yes]                              look for a newer version on GitHub; --yes builds and installs it
   reco-minimap fetch-ocr                                            download the number model for jersey numbers (about 11 MB, Apache-2.0)
+  reco-minimap fetch-model [--from yolo26n.onnx]                    download the model of Reco camera (YOLO26n, all sports, 10.4 MB); then --model camera
   reco-minimap ocr-bench <manifest.tsv> [--roster 4,5,7]            measure the number reader on crop images (line: path<TAB>number<TAB>group)
   reco-minimap replay    <detections.jsonl> --court court.json --teams teams.json [--json out.jsonl] [--minimap out.mp4]
                          send recorded detections (run … --dets <file>) through tracking, ball and situations again

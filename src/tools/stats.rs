@@ -262,6 +262,161 @@ fn r2(x: f64) -> f64 {
     (x * 100.0).round() / 100.0
 }
 
+/// Spread of one team in one frame: (width across the field, depth along it, centre x, centre y).
+/// Needs at least three visible players on the field. With seven or more, the player farthest
+/// from the team along the length (usually the goalkeeper) is left out of the depth.
+fn team_spread(pts: &[(f32, f32)]) -> Option<(f32, f32, f32, f32)> {
+    if pts.len() < 3 {
+        return None;
+    }
+    let n = pts.len() as f32;
+    let (cx, cy) = (pts.iter().map(|p| p.0).sum::<f32>() / n, pts.iter().map(|p| p.1).sum::<f32>() / n);
+    let mut xs: Vec<f32> = pts.iter().map(|p| p.0).collect();
+    xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    if xs.len() >= 7 {
+        if (xs[xs.len() - 1] - cx).abs() > (xs[0] - cx).abs() {
+            xs.pop();
+        } else {
+            xs.remove(0);
+        }
+    }
+    let (ylo, yhi) = pts.iter().fold((f32::MAX, f32::MIN), |(lo, hi), p| (lo.min(p.1), hi.max(p.1)));
+    Some((yhi - ylo, xs[xs.len() - 1] - xs[0], cx, cy))
+}
+
+/// Team shape over the run, split into "all frames", "with the ball" and "without the ball"
+/// (possession = the team of the last player who held the ball):
+/// width and depth over time (`series`, all frames), and per time section and phase the mean
+/// width / depth, the team centre and the average position of every player slot (`sections`).
+pub fn shape(profile: &SportProfile, frames: &[Value]) -> Value {
+    const PHASES: [&str; 3] = ["all", "att", "def"];
+    let (l, w) = (profile.field.length, profile.field.width);
+    let t0 = frames.first().and_then(|f| f["t"].as_f64()).unwrap_or(0.0);
+    let t1 = frames.last().and_then(|f| f["t"].as_f64()).unwrap_or(0.0);
+    let span = (t1 - t0).max(1e-6);
+    let np = periods(profile.id.as_str());
+    let nb = 48usize;
+    #[derive(Default, Clone)]
+    struct Acc {
+        n: usize,
+        w: f64,
+        d: f64,
+        cx: f64,
+        cy: f64,
+        slots: std::collections::BTreeMap<u64, (f64, f64, usize)>, // id -> (sum x, sum y, frames)
+    }
+    // bins[bin][team] -> (sum width, sum depth, frames); secs[section][team][phase]; frames per section and phase
+    let mut bins = vec![[(0f64, 0f64, 0usize); 2]; nb];
+    let mut secs = vec![[[Acc::default(), Acc::default(), Acc::default()], [Acc::default(), Acc::default(), Acc::default()]]; np];
+    let mut sec_frames = vec![[[0usize; 3]; 2]; np];
+    let mut poss: Option<usize> = None;
+    for fr in frames {
+        let t = fr["t"].as_f64().unwrap_or(t0);
+        let u = ((t - t0) / span).clamp(0.0, 1.0);
+        let (b, si) = (((u * nb as f64) as usize).min(nb - 1), ((u * np as f64) as usize).min(np - 1));
+        if fr["ball"]["state"] == "held" {
+            match fr["ball"]["holder"].as_u64().and_then(|h| team_of(fr, h)).as_deref() {
+                Some("home") => poss = Some(0),
+                Some("away") => poss = Some(1),
+                _ => {}
+            }
+        }
+        let mut pts: [Vec<(u64, f32, f32)>; 2] = [Vec::new(), Vec::new()];
+        for p in fr["players"].as_array().into_iter().flatten() {
+            if p["state"].as_str() != Some("visible") {
+                continue;
+            }
+            let k = match p["team"].as_str() {
+                Some("home") => 0,
+                Some("away") => 1,
+                _ => continue,
+            };
+            let (Some(x), Some(y)) = (f(p, "x"), f(p, "y")) else { continue };
+            if x < -1.0 || y < -1.0 || x > l + 1.0 || y > w + 1.0 {
+                continue;
+            }
+            pts[k].push((p["id"].as_u64().unwrap_or(u64::MAX), x, y));
+        }
+        for k in 0..2 {
+            let phases: &[usize] = match poss {
+                Some(q) if q == k => &[0, 1],
+                Some(_) => &[0, 2],
+                None => &[0],
+            };
+            for &ph in phases {
+                sec_frames[si][k][ph] += 1;
+            }
+            let xy: Vec<(f32, f32)> = pts[k].iter().map(|p| (p.1, p.2)).collect();
+            let spread = team_spread(&xy);
+            if let Some((sw, sd, _, _)) = spread {
+                let e = &mut bins[b][k];
+                e.0 += sw as f64;
+                e.1 += sd as f64;
+                e.2 += 1;
+            }
+            for &ph in phases {
+                let acc = &mut secs[si][k][ph];
+                for &(id, x, y) in &pts[k] {
+                    if id != u64::MAX {
+                        let e = acc.slots.entry(id).or_insert((0.0, 0.0, 0));
+                        e.0 += x as f64;
+                        e.1 += y as f64;
+                        e.2 += 1;
+                    }
+                }
+                if let Some((sw, sd, cx, cy)) = spread {
+                    acc.n += 1;
+                    acc.w += sw as f64;
+                    acc.d += sd as f64;
+                    acc.cx += cx as f64;
+                    acc.cy += cy as f64;
+                }
+            }
+        }
+    }
+    let team = |e: (f64, f64, usize)| if e.2 == 0 { Value::Null } else { json!({"w": r2(e.0 / e.2 as f64), "d": r2(e.1 / e.2 as f64)}) };
+    let series: Vec<Value> = bins
+        .iter()
+        .enumerate()
+        .map(|(i, e)| json!({"t": r2(t0 + span * (i as f64 + 0.5) / nb as f64), "home": team(e[0]), "away": team(e[1])}))
+        .collect();
+    let side = |a: &Acc, frames: usize| {
+        if a.n == 0 {
+            return Value::Null;
+        }
+        let n = a.n as f64;
+        let slots: Vec<Value> = a
+            .slots
+            .iter()
+            .map(|(id, e)| json!({"id": id, "x": r2(e.0 / e.2 as f64), "y": r2(e.1 / e.2 as f64), "share": r2(e.2 as f64 / frames.max(1) as f64)}))
+            .collect();
+        json!({"w": r2(a.w / n), "d": r2(a.d / n), "cx": r2(a.cx / n), "cy": r2(a.cy / n), "frames": a.n, "slots": slots})
+    };
+    let sections: Vec<Value> = secs
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            let mut v = json!({"index": i + 1, "from": r2(t0 + span * i as f64 / np as f64), "to": r2(t0 + span * (i + 1) as f64 / np as f64)});
+            for (k, name) in ["home", "away"].iter().enumerate() {
+                v[*name] = json!(PHASES.iter().enumerate().map(|(ph, p)| (p.to_string(), side(&s[k][ph], sec_frames[i][k][ph]))).collect::<serde_json::Map<_, _>>());
+            }
+            v
+        })
+        .collect();
+    let total = |k: usize| {
+        PHASES
+            .iter()
+            .enumerate()
+            .map(|(ph, p)| {
+                let n: usize = secs.iter().map(|s| s[k][ph].n).sum();
+                let v = if n == 0 { Value::Null } else { json!({"w": r2(secs.iter().map(|s| s[k][ph].w).sum::<f64>() / n as f64), "d": r2(secs.iter().map(|s| s[k][ph].d).sum::<f64>() / n as f64), "frames": n}) };
+                (p.to_string(), v)
+            })
+            .collect::<serde_json::Map<_, _>>()
+    };
+    json!({"series": series, "sections": sections, "home": total(0), "away": total(1)})
+}
+
 /// The full statistics of a run as JSON (see the module documentation).
 pub fn report(profile: &SportProfile, frames: &[Value]) -> Value {
     let sport = profile.id.as_str();
@@ -386,6 +541,7 @@ pub fn report(profile: &SportProfile, frames: &[Value]) -> Value {
         "possession": {"home": r2(held_home as f64 / held), "away": r2(held_away as f64 / held), "frames_held": held_home + held_away, "ball_seen": if n == 0 { 0.0 } else { r2(ball_seen as f64 / n as f64) }},
         "thirds": thirds.iter().map(|c| r2(*c as f64 / ball_seen.max(1) as f64)).collect::<Vec<_>>(),
         "heat": {"nx": nx, "ny": ny, "home": heat["home"], "away": heat["away"], "ball": heat["ball"]},
+        "shape": shape(profile, frames),
         "moments": moments,
     })
 }
@@ -447,5 +603,38 @@ mod tests {
         let r = report(&p, &frames);
         assert_eq!(r["has_attempts"], false);
         assert_eq!(r["heat"]["home"].as_array().unwrap().iter().map(|v| v.as_u64().unwrap()).sum::<u64>(), 1);
+    }
+
+    #[test]
+    fn team_shape_measures_width_depth_and_average_slots() {
+        let p = SportProfile::basketball();
+        let pl = |dx: f64| json!([
+            {"id": 0, "team": "home", "x": 5.0 + dx, "y": 3.0, "state": "visible"},
+            {"id": 1, "team": "home", "x": 9.0 + dx, "y": 7.5, "state": "visible"},
+            {"id": 2, "team": "home", "x": 5.0 + dx, "y": 12.0, "state": "visible"},
+            {"id": 5, "team": "away", "x": 20.0, "y": 7.0, "state": "visible"},
+            {"id": 6, "team": "away", "x": 22.0, "y": 8.0, "state": "hidden"}
+        ]);
+        // home holds the ball for the first 30 frames, then the away team (slot 5)
+        let ball = |i: i32| if i < 30 { json!({"state": "held", "holder": 1}) } else { json!({"state": "held", "holder": 5}) };
+        let frames: Vec<Value> = (0..40).map(|i| frame(i as f64, ball(i), pl(if i < 20 { 0.0 } else { 10.0 }), json!([]))).collect();
+        let s = shape(&p, &frames);
+        assert_eq!(s["home"]["all"]["w"], 9.0);
+        assert_eq!(s["home"]["all"]["d"], 4.0);
+        assert_eq!(s["home"]["att"]["frames"], 30);
+        assert_eq!(s["home"]["def"]["frames"], 10);
+        assert!(s["away"]["all"].is_null(), "one visible player is not a shape");
+        let secs = s["sections"].as_array().unwrap();
+        assert_eq!(secs.len(), 4);
+        assert_eq!(secs[0]["home"]["all"]["slots"][1]["x"], 9.0);
+        assert_eq!(secs[3]["home"]["all"]["slots"][1]["x"], 19.0);
+        assert_eq!(secs[3]["home"]["all"]["cx"], 16.33);
+        assert!(secs[3]["home"]["att"].is_null(), "home has no ball in the last section");
+        assert_eq!(secs[3]["home"]["def"]["slots"][0]["share"], 1.0);
+        assert_eq!(s["series"].as_array().unwrap().len(), 48);
+        // with eleven players the goalkeeper does not stretch the depth
+        let mut pts: Vec<(f32, f32)> = (0..10).map(|i| (40.0 + (i % 4) as f32 * 5.0, 5.0 + i as f32 * 6.0)).collect();
+        pts.push((2.0, 34.0));
+        assert_eq!(team_spread(&pts).unwrap().1, 15.0);
     }
 }

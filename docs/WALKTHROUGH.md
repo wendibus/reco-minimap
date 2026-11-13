@@ -241,7 +241,11 @@ The live mode needs the same full panorama you calibrated on, not the AI-cropped
 
 ## Step 6 · Evaluation
 
-Choose a `.jsonl` file from `out/` and click *Evaluate*. The report in the log answers:
+Steps 6 and 7 both work with the data files (`.jsonl`) in `out/`, but look at different things: **step 6 checks the detection** – how reliably players, referees and the ball were tracked. **Step 7 shows the game** – attempts, possession and where the teams were. Look at step 6 first: if its values are poor, the numbers in step 7 are uncertain too.
+
+### Detection report
+
+Under *Evaluation* choose a `.jsonl` file and click *Evaluate*. The report appears in the progress window and in the log and answers:
 
 | Line | Good looks like |
 |---|---|
@@ -257,18 +261,68 @@ Choose a `.jsonl` file from `out/` and click *Evaluate*. The report in the log a
 ![Step 6](img/en/step6.webp)
 *Step 6: the report on the data file in the log.*
 
+### Tactics board
+
+Under *Tactics board* you stop a result at a *Moment* (e.g. `12:30`) and open that moment as a tactics board: all players and the ball stand where they were at that time, *Trail (s)* draws the last seconds of their paths. On the board you can move players, draw and save; a board you saved for the same moment opens again as you left it. More in [Tactics board scenes](../README.md#tactics-board-scenes).
+
 
 ## Step 7 · Statistics
 
-Choose a `.jsonl` file from `out/`. The statistics follow the sport of the calibration. **Attempts** are counted – whether a shot went in is not something the detection can see.
+Choose a `.jsonl` file from `out/` at the top. The statistics follow the sport of the calibration (`court.json`) and need that calibration. **Attempts** are counted – whether a shot went in is not something the detection can see. Every dot, cell and bar shows its exact values when the mouse rests on it.
 
-* **Key figures:** attempts per team, possession (share of the time a player of the team holds the ball), how often the ball was found, duration.
-* **Shot chart / shot map** (basketball, football, futsal, handball, hockey, lacrosse): every attempt at its place, shaped by kind (circle 2 points or shot, diamond 3 points, triangle free throw or 7 m). *Both / Home / Away* filters, *Table* shows the same data as a list. In basketball the shots come from game-situation detection – it must have been on while processing. In the goal sports an attempt is a fast ball flight that starts within range and points at a goal.
-* **Attempts by zone:** where the attempts were dense, next to it the share of every zone (basketball: restricted area, paint, mid-range, corner 3, above-the-break 3, free throw; football: goal area, penalty area, outside; handball: 6 m, wing, back court, 7 m; futsal, hockey and lacrosse by distance).
-* **Attempts per time section:** the video split into sections of equal length (four in basketball and hockey, otherwise two), with the difference home – away. The program knows no game clock.
-* **Possession** and, for field sports, **ball on the field** (share in the three thirds).
-* **Positions:** where the visible players of each team or the ball were.
-* **Key moments:** attempts, game situations and confirmed substitutions with their time. Tick moments and click *Cut clips*: each gets a short clip from the video in `out/clips/` (6 s before, 4 s after).
+### Key figures
+
+The tiles at the top show attempts per team, **possession** (share of the time a player of the team holds the ball), *Ball seen* (in what percentage of the frames the ball was found) and the duration with start and end time in the video. If *Ball seen* is low, possession and attempts have gaps.
+
+### Shot chart / shot map
+
+In basketball the card is called *Shot chart*, in football, futsal, handball, hockey and lacrosse *Shot map*. Every attempt stands at its place on the field in the team colour; the shape shows the kind (circle 2 points or shot, diamond 3 points, triangle free throw or 7 m). *Both / Home / Away* filters, *Table* shows the same attempts as a list with time, team, kind, zone and distance.
+
+* **Basketball:** the shots come from game-situation detection – it must have been on while processing (step 4).
+* **Goal sports:** an attempt is a fast ball flight that starts within shooting range and points at a goal.
+
+### Attempts by zone
+
+On the left a heat map of the attempts: the field is split into cells of about 2 × 2 m, the darker a cell, the more attempts came from there. On the right the share of every zone as a bar with its count (basketball: restricted area, paint, mid-range, corner 3, above-the-break 3, free throw; football: goal area, penalty area, outside; handball: 6 m, wing, back court, 7 m; futsal, hockey and lacrosse by distance). The *Both / Home / Away* filter applies here too.
+
+### Attempts per time section
+
+The video is split into sections of equal length (four in basketball and hockey, otherwise two); bars per team and below them the difference home – away per section. The program knows no game clock: stoppages count, and a section is not the same as a quarter or half unless the video is exactly one period.
+
+### Possession and ball on the field
+
+A bar splits the time with possession between home and away. For field sports, *Ball on the field* shows how long the ball was in the left third, the middle and the right third – "left" and "right" as in the camera picture.
+
+### Position heat map
+
+The *Positions* card is a heat map: it shows where a team or the ball was during the video.
+
+![Step 7 – heat map](img/en/step7-heat.webp)
+*Step 7: position heat map, with the Home / Away / Ball choice at the top.*
+
+* **Switching:** *Home*, *Away* or *Ball* chooses whose positions are shown. Teams appear in the accent colour, the ball in orange.
+* **How it is made:** the field is split into 24 cells along its length and a matching number across. For every frame each cell counts how many players of the team stood in it (or whether the ball lay in it). Only **visible** players with a team count – estimated positions of hidden players, referees and players without a team colour do not. The ball only counts in frames where it was found.
+* **How to read it:** the stronger a cell, the more time; the strongest cell is the most visited one and the others are measured against it. Empty cells stay blank. Rest the mouse on a cell to see its share of all counted positions in percent.
+* **What for:** where does a team defend, how high does it stand, which side does it attack on, where does the ball spend the most time? Compare *Home* and *Away* in the same section, or two sections of the same team (e.g. first and second half as separate files).
+* **Limits:** players far from the camera are detected less often, so the far side often looks paler. Teams changing ends at half time mix if both halves are in one file. Positions outside the field do not count.
+
+### Team shape
+
+The *Team shape* card shows how wide and how deep each team stands. It only uses the player positions, so it needs no goal or shot detection.
+
+![Step 7 – team shape](img/en/step7-shape.webp)
+*Step 7: team shape, the width over time at the top, the average line-up with the ball in section 1 below.*
+
+* **Width and depth:** *Width* is measured across the field from the outermost player on one side to the one on the other, *depth* along the field. When 7 or more players of a team are visible, the player farthest from the team (usually the goalkeeper) is left out of the depth. A frame only counts when at least 3 players of the team are visible.
+* **With / without the ball:** At the top you see each team's averages, split by possession. Possession means: the team of the player who last had the ball. Without possession detection (for example in sports where the program does not determine a ball carrier) there is only *All*.
+* **Over time:** width or depth over time as a moving average, so the trend shows. Rest the mouse on the chart to see both teams' values at that time.
+* **Average line-up:** For each time section, and for *With the ball*, *Without the ball* or *All*, the field shows the average position of every player slot, the team centre (+) and a rectangle of the average width and depth. Slots visible in less than a fifth of the section are left out.
+* **What for:** Does a team stand tighter in section 3 than at the start? How much does it close up without the ball, how wide does it make the field with it?
+* **Limits:** The values describe the team, not single players: without jersey numbers two player slots can swap people, and the average line-up then blurs. Players far from the camera are found less often, which can underestimate the width.
+
+### Key moments and clips
+
+The list shows attempts, game situations and confirmed substitutions with time, team and zone. Tick moments (*All* selects all) and click *Cut clips*: each gets a short clip from the video in `out/clips/`, from 6 s before to 4 s after the moment. *Show clips* opens the folder. The video from step 2 must still be in the same place.
 
 ---
 

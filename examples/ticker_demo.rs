@@ -10,7 +10,7 @@ fn main() {
     let mode = TickerCfg::parse_mode(&arg("--names", "numbers")).unwrap_or("numbers");
     let cfg = TickerCfg {
         names: mode.into(),
-        home_name: "Schapen Sharks".into(),
+        home_name: "Blue".into(),
         away_name: "Gäste".into(),
         home_players: reco_minimap::jersey::parse_roster_names("7:Anna Müller, 12=Ben, 4:Cem"),
         away_players: reco_minimap::jersey::parse_roster_names("9:Dana"),

@@ -8,8 +8,8 @@
 
 Während `reco-minimap live` das Panoramavideo auswertet, erkennt es **Wechsel** und **Spielsituationen** (Anstoß, Einwurf, Ecke, Strafstoß, Freiwurf, Wurfversuche – welche, hängt von der Sportart ab). Der Ticker macht daraus einen kurzen Text-Feed, neueste Meldung oben, mit der Videozeit:
 
-> 3:01 Wechsel Sharks: #7 raus, #12 rein
-> 1:35 Wurfversuch 3 Punkte → Sharks (knapp an der Linie)
+> 3:01 Wechsel Blau: #7 raus, #12 rein
+> 1:35 Wurfversuch 3 Punkte → Blau (knapp an der Linie)
 
 Er funktioniert für jede Sportart und erscheint auf Deutsch, Englisch, Französisch und Spanisch (jeder Besucher wählt seine Sprache). Du kannst ihn auf Handys in der Halle zeigen, auf der Vereinswebseite einbauen und festlegen, ob **Nummern**, **Namen** oder **beides** erscheinen – und ob jede Meldung erst auf **dein OK** wartet.
 

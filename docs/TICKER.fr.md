@@ -8,8 +8,8 @@
 
 Pendant que `reco-minimap live` analyse la vidéo panoramique, il repère les **changements de joueurs** et les **situations de jeu** (coup d'envoi, touche, corner, penalty, lancer franc, tentatives de tir – selon le sport). Le fil en fait un court flux de texte, le plus récent en haut, avec le temps de la vidéo :
 
-> 3:01 Changement Sharks : #7 sort, #12 entre
-> 1:35 Tir à 3 points → Sharks (près de la ligne)
+> 3:01 Changement Bleus : #7 sort, #12 entre
+> 1:35 Tir à 3 points → Bleus (près de la ligne)
 
 Il fonctionne pour tous les sports et s'affiche en allemand, anglais, français et espagnol (chaque visiteur choisit sa langue). Vous pouvez l'afficher sur les téléphones dans la salle, l'intégrer au site de votre club et décider s'il montre des **numéros**, des **noms** ou **les deux** – et si chaque entrée attend d'abord **votre accord**.
 

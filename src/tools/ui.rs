@@ -961,10 +961,10 @@ mod tests {
     #[test]
     fn the_live_job_passes_the_ticker_settings() {
         let p = json!({"model_dir": "/m", "source": "/v.mp4", "ep": "cpu", "size": "1920x1080", "fps": 25, "port": 8765,
-            "ticker_names": "both", "home_name": " Sharks ", "away_name": "", "network": true, "ticker_approve": true, "ticker_export": true, "ticker_push": " https://dav.example.org/t.json ", "ticker_key": ""});
+            "ticker_names": "both", "home_name": " Blue ", "away_name": "", "network": true, "ticker_approve": true, "ticker_export": true, "ticker_push": " https://dav.example.org/t.json ", "ticker_key": ""});
         let a = build_args("live", Path::new("/nonexistent-project"), &p).unwrap();
         assert_eq!(pair(&a, "--ticker-names").as_deref(), Some("both"));
-        assert_eq!(pair(&a, "--home-name").as_deref(), Some("Sharks"));
+        assert_eq!(pair(&a, "--home-name").as_deref(), Some("Blue"));
         assert!(pair(&a, "--away-name").is_none(), "an empty name is not passed");
         assert_eq!(pair(&a, "--host").as_deref(), Some("0.0.0.0"));
         assert!(a.contains(&"--ticker-approve".to_string()));

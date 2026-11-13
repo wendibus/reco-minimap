@@ -13,6 +13,7 @@ reco-minimap – minimapa (campo, jugadores, árbitros, balón) a partir de un p
   reco-minimap --version                                              mostrar la versión instalada
   reco-minimap update [--check] [--yes]                              buscar una versión más reciente en GitHub; --yes la compila e instala
   reco-minimap fetch-ocr                                            descargar el modelo de dorsales (unos 11 MB, Apache-2.0)
+  reco-minimap fetch-model [--from yolo26n.onnx]                    descargar el modelo de Reco camera (YOLO26n, todos los deportes, 10,4 MB); después --model camera
   reco-minimap ocr-bench <manifest.tsv> [--roster 4,5,7]            medir el lector de dorsales con imágenes recortadas (línea: ruta<TAB>número<TAB>grupo)
   reco-minimap replay    <detecciones.jsonl> --court court.json --teams teams.json [--json out.jsonl] [--minimap out.mp4]
                          volver a pasar detecciones grabadas (run … --dets <archivo>) por el seguimiento, el balón y las

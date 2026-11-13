@@ -17,8 +17,38 @@ function Warn({ children }: { children: React.ReactNode }) {
 }
 
 // ---------------------------------------------------------------- 1 · sport & model
+// Reco Trainer models for the chosen sport: imported ones and what the public model hub lists.
+function TrainerModels() {
+  const { project, models, mutate, activeModel, t } = useApp();
+  const sportId = useSportId();
+  const tm = t.models;
+  const [hub, setHub] = useState<Json | null>(null);
+  useEffect(() => {
+    let stop = false;
+    setHub(null);
+    void api('/api/hub', { sport: project.sport }).then((r) => { if (!stop) setHub(r); });
+    return () => { stop = true; };
+  }, [project.sport]);
+  const mine = models.filter((x) => !x.builtin && sportId(x.sport) === project.sport);
+  const m = activeModel();
+  const sportName = T('sport.' + project.sport);
+  return <div className="mm-trainer">
+    <h3>{tm.trainerTitle(sportName)}</h3>
+    <p className="mm-hint">{mine.length ? tm.imported(mine.length) : tm.noneImported}{' '}
+      {!hub ? <span className="mm-muted">{tm.hubChecking}</span> : !hub.ok ? <span className="mm-muted">{tm.hubOffline}</span> : hub.models.length ? <>{tm.hub(hub.models.length)} {hub.models.map((x: Json) => <span key={x.id} className="mm-chip">{x.name || x.id}{x.size ? ` · ${x.size}` : ''}</span>)}</> : tm.hubNone}
+    </p>
+    {m?.builtin && mine.length > 0 && <div className="mm-row mm-wrap"><span className="mm-hint">{tm.better}</span>
+      <Btn primary hint={t.hints.useTrainer} onClick={() => mutate((p) => { p.model_id = mine[0].id; })}>{tm.useIt(mine[0].id)}</Btn></div>}
+    {!mine.length && <p className="mm-hint">{hub?.ok && hub.models.length ? tm.hubHow : tm.trainNew}</p>}
+  </div>;
+}
+
 export function SetupPanel() {
-  const { project, models, mutate, set, runJob, common, activeModel, refresh, log, t, dir } = useApp();
+  const { project, models, mutate, set, runJob, common, activeModel, refresh, log, t, dir, init } = useApp();
+  const tm = t.models;
+  const camera = init?.camera;
+  const hasCamera = models.some((x) => x.builtin);
+  const chosen = project.model_id || camera?.id;
   const sportId = useSportId();
   const [path, setPath] = useState('');
   const sp = useApp().sport();
@@ -39,13 +69,22 @@ export function SetupPanel() {
         ? <><div className="mm-grid2"><Num k="custom.length" label={T('sport.length')} /><Num k="custom.width" label={T('sport.width')} /><Num k="custom.team_size" label={T('sport.team')} /><Num k="custom.referees" label={T('sport.refs')} /></div><p className="mm-hint">{T('sport.custom_hint')}</p></>
         : <p className="mm-hint">{sp.field[0]} × {sp.field[1]} m · {T('sport.team')}: {sp.team_size} · {T('sport.refs')}: {sp.referees}<br />{T('sport.note')}</p>}
     </Card>
-    <Card title={T('model.title')}>
-      {models.length ? models.map((x, mi) => <div key={`${x.id}-${mi}`} className={`mm-model${x.id === project.model_id ? ' sel' : ''}`}>
-        <input type="radio" name="mdl" checked={x.id === project.model_id} onChange={() => set('model_id', x.id)} data-hint={t.hints.useModel} />
-        <div><b>{x.id}</b> {x.sport && <span className="mm-chip">{sportId(x.sport) ? T('sport.' + sportId(x.sport)) : x.sport}</span>}<br />
-          <span className="mm-muted small">{T('model.classes')}: {x.classes.join(', ')} · {T('model.input')}: {x.input_size}×{x.input_size} · {x.size_mb} MB · <span className={x.sha === 'ok' ? 'ok' : x.sha === 'bad' ? 'bad' : ''}>{T('model.sha_' + x.sha)}</span></span></div>
-        <span>{x.id === project.model_id ? <span className="ok">{T('model.active')}</span> : <Btn hint={t.hints.useModel} onClick={() => mutate((p) => { p.model_id = x.id; const s = sportId(x.sport); if (s) p.sport = s; })}>{T('model.use')}</Btn>}</span>
-      </div>) : <p className="mm-muted">{T('model.none')}</p>}
+    <Card title={tm.cardTitle}>
+      {!hasCamera && camera && <div className={`mm-model${chosen === camera.id ? ' sel' : ''}`}>
+        <span />
+        <div><b>{tm.camera}</b> <span className="mm-chip">{tm.standard}</span><span className="mm-chip">{tm.allSports}</span><br />
+          <span className="mm-muted small">{tm.cameraText}</span><br /><span className="small">{tm.cameraMissing(camera.mb)}</span></div>
+        <span><Btn primary hint={t.hints.fetchCamera} onClick={() => void runJob('fetch_model', {})}>{tm.fetch}</Btn></span>
+      </div>}
+      {models.map((x, mi) => <div key={`${x.id}-${mi}`} className={`mm-model${x.id === chosen ? ' sel' : ''}`}>
+        <input type="radio" name="mdl" checked={x.id === chosen} onChange={() => set('model_id', x.id)} data-hint={t.hints.useModel} />
+        <div><b>{x.builtin ? tm.camera : x.id}</b> {x.builtin ? <><span className="mm-chip">{tm.standard}</span><span className="mm-chip">{tm.allSports}</span></> : x.sport && <span className="mm-chip">{sportId(x.sport) ? T('sport.' + sportId(x.sport)) : x.sport}</span>}<br />
+          {x.builtin && <><span className="mm-muted small">{tm.cameraText}</span><br /></>}
+          <span className="mm-muted small">{x.builtin ? 'person, sports ball' : x.classes.join(', ')} · {T('model.input')}: {x.input_size}×{x.input_size} · {x.size_mb} MB · <span className={x.sha === 'ok' ? 'ok' : x.sha === 'bad' ? 'bad' : ''}>{T('model.sha_' + x.sha)}</span></span></div>
+        <span>{x.id === chosen ? <span className="ok">{T('model.active')}</span> : <Btn hint={t.hints.useModel} onClick={() => mutate((p) => { p.model_id = x.id; const s = sportId(x.sport); if (s) p.sport = s; })}>{T('model.use')}</Btn>}</span>
+      </div>)}
+      {!models.length && !camera && <p className="mm-muted">{T('model.none')}</p>}
+      <TrainerModels />
       <div className="mm-row mm-gap"><Btn hint={t.hints.testModel} disabled={!m || !project.video} onClick={() => void runJob('selfcheck', common())}>{T('model.test')}</Btn></div>
       <p className="mm-hint">{T('model.test_hint')}</p>
       {mismatch && <p className="bad small">{T('model.mismatch', { m: T('sport.' + sportId(m!.sport)), s: T('sport.' + project.sport) })}</p>}

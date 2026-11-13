@@ -1,4 +1,12 @@
-//! RF-DETR inference through ONNX Runtime (`ort`, load-dynamic like reco-detect).
+//! Detector inference through ONNX Runtime (`ort`, load-dynamic like reco-detect).
+//!
+//! Two model families are read:
+//! * RF-DETR from Reco Trainer (`rf-detr-imagenet-v1`): outputs `dets [1,Q,4]` + `labels [1,Q,C]`,
+//!   ImageNet normalisation.
+//! * End-to-end YOLO as used by `reco camera` (Ultralytics YOLO26, `yolo-e2e-v1`): one output
+//!   `[1,Q,6]` = x1,y1,x2,y2,score,class in input pixels, input scaled to 0..1, grey padding.
+//!   Its result is turned into the RF-DETR layout (normalised cx,cy,w,h + one logit per class), so
+//!   everything after inference works the same for both.
 
 use crate::{tr, trs};
 use std::path::{Path, PathBuf};
@@ -8,7 +16,19 @@ use ort::session::Session;
 use ort::value::TensorRef;
 
 use super::video::Frame;
-use crate::detect::{decode_rfdetr, merge_tiles, BoxFormat, Class, DecodeCfg, Det, Tile};
+use crate::detect::{decode_rfdetr, merge_tiles, BoxFormat, Class, DecodeCfg, Det, Norm, Tile};
+
+/// The 80 COCO class names in Ultralytics order (index = class id of COCO YOLO models).
+pub const COCO_CLASSES: [&str; 80] = [
+    "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard", "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch", "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush",
+];
+
+/// Which detector family a model belongs to (decided from its outputs when it is loaded).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Arch {
+    RfDetr,
+    YoloE2e,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Ep {
@@ -81,6 +101,8 @@ pub struct ModelInfo {
     pub classes: Vec<String>,
     pub conf: Option<f32>,
     pub id: String,
+    /// `contract` from runtime.json (`rf-detr-imagenet-v1`, `yolo-e2e-v1`), if any.
+    pub contract: Option<String>,
 }
 
 /// Accepts a Reco Trainer model folder (with `runtime.json`) or a bare `.onnx` file.
@@ -99,9 +121,10 @@ pub fn resolve_model(p: &str) -> Result<ModelInfo, String> {
             classes,
             conf: v["confidenceThreshold"].as_f64().map(|f| f as f32),
             id: v["modelId"].as_str().unwrap_or("model").to_string(),
+            contract: v["contract"].as_str().map(|s| s.to_string()),
         })
     } else {
-        Ok(ModelInfo { onnx: path.to_path_buf(), input_size: 512, classes: default_classes, conf: None, id: path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default() })
+        Ok(ModelInfo { onnx: path.to_path_buf(), input_size: 512, classes: default_classes, conf: None, id: path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), contract: None })
     }
 }
 
@@ -188,11 +211,12 @@ pub struct RfDetr {
     pub info: ModelInfo,
     pub size: usize,
     pub cfg: DecodeCfg,
+    pub arch: Arch,
 }
 
 fn class_from_name(n: &str) -> Option<Class> {
     match n.to_ascii_lowercase().as_str() {
-        "ball" | "basketball" | "puck" | "shuttlecock" => Some(Class::Ball),
+        "ball" | "basketball" | "puck" | "shuttlecock" | "sports ball" => Some(Class::Ball),
         "player" | "person" | "goalkeeper" | "keeper" | "skater" => Some(Class::Player),
         "referee" | "ref" | "umpire" | "linesman" => Some(Class::Referee),
         _ => None,
@@ -211,11 +235,36 @@ impl RfDetr {
         for i in 0..workers {
             sessions.push(build_session(&info, ep, units, i == 0)?);
         }
+        let mut info = info;
+        // the model itself says what it is: one [1,Q,6] output = end-to-end YOLO
+        let outs = sessions[0].outputs();
+        let last = outs.first().and_then(|o| o.dtype().tensor_shape()).and_then(|s| s.last().copied());
+        let arch = if outs.len() == 1 && last == Some(6) { Arch::YoloE2e } else { Arch::RfDetr };
+        // a fixed input size in the model wins over runtime.json
+        if let Some(sz) = sessions[0].inputs().first().and_then(|i| i.dtype().tensor_shape()).and_then(|s| s.last().copied()).filter(|&v| v > 0) {
+            info.input_size = sz as usize;
+        }
+        if arch == Arch::YoloE2e && !info.classes.iter().any(|c| c == "person") {
+            info.classes = COCO_CLASSES.iter().map(|s| s.to_string()).collect();
+        }
         let mut cfg = DecodeCfg::basketball_v1();
         cfg.n_classes = info.classes.len();
         cfg.class_map = info.classes.iter().map(|n| class_from_name(n)).collect();
         cfg.box_format = BoxFormat::CxCyWh;
-        Ok(Self { sessions, t_prep: Default::default(), t_infer: Default::default(), size: info.input_size, info, cfg })
+        if arch == Arch::YoloE2e {
+            // a general COCO model is less sure of players and balls than a trained sport model
+            cfg.thr_player = 0.35;
+            cfg.thr_ball = 0.20;
+        }
+        Ok(Self { sessions, t_prep: Default::default(), t_infer: Default::default(), size: info.input_size, info, cfg, arch })
+    }
+
+    /// How tile pixels are normalised for this model.
+    pub fn norm(&self) -> Norm {
+        match self.arch {
+            Arch::RfDetr => Norm::ImageNet,
+            Arch::YoloE2e => Norm::Unit,
+        }
     }
 
     pub fn workers(&self) -> usize {
@@ -224,8 +273,8 @@ impl RfDetr {
 
     /// One inference on a prepared CHW tensor. Returns (boxes `[nq*4]`, logits `[nq*nc]`, nq, nc).
     pub fn run_raw(&mut self, chw: &[f32]) -> Result<(Vec<f32>, Vec<f32>, usize, usize), String> {
-        let size = self.size;
-        run_session(&mut self.sessions[0], size, chw)
+        let (size, arch, nc) = (self.size, self.arch, self.cfg.n_classes);
+        run_session(&mut self.sessions[0], size, chw, arch, nc)
     }
 
     /// Detections in tile-normalized coordinates.
@@ -241,10 +290,10 @@ impl RfDetr {
     /// Tile preprocessing runs on all cores; inference is spread over the worker sessions
     /// (each model instance has batch size 1).
     pub fn detect(&mut self, frame: &Frame, tiles: &[Tile]) -> Result<Vec<Det>, String> {
-        let size = self.size;
+        let (size, arch, norm) = (self.size, self.arch, self.norm());
         let t0 = std::time::Instant::now();
         let tensors: Vec<Vec<f32>> = std::thread::scope(|sc| {
-            let hs: Vec<_> = tiles.iter().map(|t| sc.spawn(move || frame.tile_tensor(t, size))).collect();
+            let hs: Vec<_> = tiles.iter().map(|t| sc.spawn(move || frame.tile_tensor(t, size, norm))).collect();
             hs.into_iter().map(|h| h.join().expect("tile thread")).collect()
         });
         self.t_prep += t0.elapsed();
@@ -264,7 +313,7 @@ impl RfDetr {
                         let mut out = Vec::new();
                         let mut i = w;
                         while i < tiles.len() {
-                            let (b, l, _nq, nc) = run_session(sess, size, &tensors_ref[i])?;
+                            let (b, l, _nq, nc) = run_session(sess, size, &tensors_ref[i], arch, cfg.n_classes)?;
                             if nc != cfg.n_classes {
                                 return Err(tr!("Modell hat {nc} Klassen-Logits, runtime.json nennt {}", "model has {nc} class logits, runtime.json lists {}", "le modèle a {nc} logits de classe, runtime.json en indique {}", "el modelo tiene {nc} logits de clase, runtime.json indica {}", cfg.n_classes));
                             }
@@ -420,9 +469,31 @@ fn build_session(info: &ModelInfo, ep: Ep, units: Units, announce: bool) -> Resu
     builder.commit_from_file(&info.onnx).map_err(|e| e.to_string())
 }
 
-fn run_session(session: &mut Session, sz: usize, chw: &[f32]) -> Result<(Vec<f32>, Vec<f32>, usize, usize), String> {
+/// End-to-end YOLO rows `[x1,y1,x2,y2,score,class]` (input pixels) -> RF-DETR layout: normalised
+/// cx,cy,w,h boxes and `nc` logits per query (the score's logit at its class, very low elsewhere).
+pub fn yolo_rows_to_detr(rows: &[f32], size: usize, nc: usize) -> (Vec<f32>, Vec<f32>, usize) {
+    let s = size.max(1) as f32;
+    let nq = rows.len() / 6;
+    let (mut boxes, mut logits) = (Vec::with_capacity(nq * 4), vec![-20f32; nq * nc]);
+    for (q, r) in rows.chunks_exact(6).enumerate() {
+        boxes.extend_from_slice(&[(r[0] + r[2]) / 2.0 / s, (r[1] + r[3]) / 2.0 / s, (r[2] - r[0]) / s, (r[3] - r[1]) / s]);
+        let c = r[5].round();
+        if r[4].is_finite() && c >= 0.0 && (c as usize) < nc {
+            let p = r[4].clamp(1e-6, 1.0 - 1e-6);
+            logits[q * nc + c as usize] = (p / (1.0 - p)).ln();
+        }
+    }
+    (boxes, logits, nq)
+}
+
+fn run_session(session: &mut Session, sz: usize, chw: &[f32], arch: Arch, nc: usize) -> Result<(Vec<f32>, Vec<f32>, usize, usize), String> {
     let input = TensorRef::from_array_view(([1usize, 3, sz, sz], chw)).map_err(|e| format!("tensor: {e}"))?;
     let outputs = session.run(ort::inputs![input]).map_err(|e| format!("ort run: {e}"))?;
+    if arch == Arch::YoloE2e {
+        let (_, rows) = outputs[0].try_extract_tensor::<f32>().map_err(|e| format!("extract output0: {e}"))?;
+        let (boxes, logits, nq) = yolo_rows_to_detr(rows, sz, nc);
+        return Ok((boxes, logits, nq, nc));
+    }
     let pick = |name: &str, idx: usize| -> Result<(Vec<i64>, Vec<f32>), String> {
         let v = outputs.get(name).unwrap_or(&outputs[idx]);
         let (shape, data) = v.try_extract_tensor::<f32>().map_err(|e| format!("extract {name}: {e}"))?;
@@ -433,4 +504,28 @@ fn run_session(session: &mut Session, sz: usize, chw: &[f32]) -> Result<(Vec<f32
     let nq = *bs.get(1).ok_or("dets shape")? as usize;
     let nc = *ls.get(2).ok_or("labels shape")? as usize;
     Ok((boxes, logits, nq, nc))
+}
+
+#[cfg(test)]
+mod yolo_tests {
+    use super::*;
+
+    #[test]
+    fn yolo_rows_become_detr_layout() {
+        // one person box 100..300 x 200..600 in a 1280 input, one ball, one empty row
+        let rows = [100.0, 200.0, 300.0, 600.0, 0.9, 0.0, 640.0, 640.0, 660.0, 660.0, 0.4, 32.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let (boxes, logits, nq) = yolo_rows_to_detr(&rows, 1280, 80);
+        assert_eq!(nq, 3);
+        assert!((boxes[0] - 200.0 / 1280.0).abs() < 1e-6 && (boxes[3] - 400.0 / 1280.0).abs() < 1e-6);
+        let mut cfg = DecodeCfg::basketball_v1();
+        cfg.n_classes = 80;
+        cfg.class_map = COCO_CLASSES.iter().map(|n| class_from_name(n)).collect();
+        cfg.thr_player = 0.35;
+        cfg.thr_ball = 0.2;
+        let d = decode_rfdetr(&boxes, &logits, &cfg).unwrap();
+        assert_eq!(d.len(), 2);
+        assert_eq!(d[0].class, Class::Player);
+        assert!((d[0].conf - 0.9).abs() < 1e-4);
+        assert_eq!(d[1].class, Class::Ball);
+    }
 }

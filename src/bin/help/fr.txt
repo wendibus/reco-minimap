@@ -13,6 +13,7 @@ reco-minimap – minimap (terrain, joueurs, arbitres, ballon) à partir d'un pan
   reco-minimap --version                                              afficher la version installée
   reco-minimap update [--check] [--yes]                              chercher une version plus récente sur GitHub ; --yes la compile et l'installe
   reco-minimap fetch-ocr                                            télécharger le modèle de numéros de maillot (environ 11 Mo, Apache-2.0)
+  reco-minimap fetch-model [--from yolo26n.onnx]                    télécharger le modèle de Reco camera (YOLO26n, tous les sports, 10,4 Mo) ; puis --model camera
   reco-minimap ocr-bench <manifest.tsv> [--roster 4,5,7]            mesurer le lecteur de numéros sur des images découpées (ligne : chemin<TAB>numéro<TAB>groupe)
   reco-minimap replay    <détections.jsonl> --court court.json --teams teams.json [--json out.jsonl] [--minimap out.mp4]
                          repasser des détections enregistrées (run … --dets <fichier>) dans le suivi, le ballon et les

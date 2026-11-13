@@ -25,11 +25,11 @@ export async function api(path: string, body?: Json): Promise<Json> {
   }
 }
 
-export type Model = { id: string; dir: string; sport?: string; classes: string[]; input_size: number; size_mb: number; sha: 'ok' | 'bad' | 'none' | string };
+export type Model = { id: string; dir: string; sport?: string; classes: string[]; input_size: number; size_mb: number; sha: 'ok' | 'bad' | 'none' | string; builtin?: boolean; contract?: string };
 export type OutFile = { name: string; path: string; mb: number | null; t: number | null };
 export type Files = { court: Json | null; scales: Json | null; teams: Json | null; out: OutFile[] };
 export type Sport = { id: string; field: [number, number]; team_size: number; referees: number; keepers?: boolean };
-export type Init = Json & { ok: boolean; version: string; default_dir: string; sports: Sport[]; ocr?: { exists: boolean }; lan_ip?: string; ort_error?: string };
+export type Init = Json & { ok: boolean; version: string; default_dir: string; sports: Sport[]; ocr?: { exists: boolean }; camera?: { id: string; mb: number; exists: boolean }; lan_ip?: string; ort_error?: string };
 
 export type JobStatus = 'running' | 'cancelling' | 'done' | 'failed' | 'cancelled';
 export type JobView = {
@@ -173,7 +173,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return !h;
   }), []);
 
-  const activeModel = () => state.models.find((m) => m.id === state.project.model_id) ?? null;
+  // without a choice the general model of Reco camera is used (once it is downloaded)
+  const activeModel = () => state.models.find((m) => m.id === (state.project.model_id || state.init?.camera?.id)) ?? null;
   const sport = () => state.init!.sports.find((s) => s.id === state.project.sport) ?? state.init!.sports[0];
   const isKeeperSport = () => !!state.init?.sports.find((s) => s.id === state.project.sport)?.keepers;
   const common = () => {

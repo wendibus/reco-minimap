@@ -7,7 +7,7 @@ use crate::{tr, trs};
 use std::io::{Read, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
-use crate::detect::{Det, Tile};
+use crate::detect::{Det, Norm, Tile};
 use crate::render::Canvas;
 
 #[derive(Clone, Debug)]
@@ -212,10 +212,12 @@ impl Frame {
     /// Crop `tile`, letterbox it (aspect preserved, centered, padded with the
     /// mean colour) into `size`x`size`, ImageNet-normalise, CHW. Downscaling
     /// averages the source footprint (box filter) to avoid aliasing.
-    pub fn tile_tensor(&self, tile: &Tile, size: usize) -> Vec<f32> {
-        const MEAN: [f32; 3] = [0.485, 0.456, 0.406];
-        const STD: [f32; 3] = [0.229, 0.224, 0.225];
-        let mut out = vec![0f32; 3 * size * size]; // 0.0 == mean colour after normalisation
+    pub fn tile_tensor(&self, tile: &Tile, size: usize, norm: Norm) -> Vec<f32> {
+        let (mean, std, pad) = match norm {
+            Norm::ImageNet => ([0.485f32, 0.456, 0.406], [0.229f32, 0.224, 0.225], 0.0), // 0.0 == mean colour
+            Norm::Unit => ([0.0; 3], [1.0; 3], 114.0 / 255.0),
+        };
+        let mut out = vec![pad; 3 * size * size];
         let (tw, th) = (tile.w as usize, tile.h as usize);
         let s = size as f32 / tw.max(th) as f32; // model px per source px
         let (cw, ch) = ((tw as f32 * s).round() as usize, (th as f32 * s).round() as usize);
@@ -250,7 +252,7 @@ impl Frame {
                 }
                 let (ox, oy) = (x + padx, y + pady);
                 for c in 0..3 {
-                    out[c * size * size + oy * size + ox] = (acc[c] / 255.0 - MEAN[c]) / STD[c];
+                    out[c * size * size + oy * size + ox] = (acc[c] / 255.0 - mean[c]) / std[c];
                 }
             }
         }

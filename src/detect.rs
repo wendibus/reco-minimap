@@ -1,4 +1,5 @@
-//! RF-DETR output decoding, tiling and preprocessing.
+//! Detector output decoding (RF-DETR from Reco Trainer, end-to-end YOLO from Reco camera), tiling
+//! and preprocessing.
 //!
 //! Model contract `rf-detr-imagenet-v1` (from the Reco Trainer `runtime.json`):
 //! input `[1,3,512,512]` RGB, outputs `dets [1,300,4]` + `labels [1,300,4]`.
@@ -42,6 +43,15 @@ impl Det {
         let union = self.w * self.h + o.w * o.h - inter;
         if union <= 0.0 { 0.0 } else { inter / union }
     }
+}
+
+/// Pixel normalisation of the model input.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Norm {
+    /// RF-DETR: `(x/255 - mean) / std` with ImageNet statistics, padding = mean colour (0.0).
+    ImageNet,
+    /// YOLO: `x/255`, padding = grey 114.
+    Unit,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -324,6 +324,10 @@ La tarjeta *Forma del equipo* muestra qué tan ancho y profundo se coloca cada e
 
 La lista muestra intentos, situaciones de juego y cambios confirmados con hora, equipo y zona. Marca momentos (*Todos* los marca todos) y haz clic en *Cortar clips*: cada uno da un clip breve del vídeo en `out/clips/`, de 6 s antes a 4 s después del momento. *Mostrar clips* abre la carpeta. El vídeo del paso 2 tiene que seguir en el mismo sitio.
 
+### Simulación del resumen en directo
+
+¿Qué habría publicado el resumen en directo con este vídeo? La tarjeta muestra las entradas, las entradas cada 10 minutos, los cambios confirmados y posibles, las situaciones de juego y el mayor silencio. *Simular resumen en directo* crea `liveticker.json` (o marca la salida *Archivo del resumen* en el paso 4), *Ver resumen* muestra la página como la habrían visto los espectadores. Así sabes antes de un partido si merece la pena. Los nombres de equipo y la visualización (números/nombres) vienen del paso 5.
+
 ---
 
 ## Actualizar

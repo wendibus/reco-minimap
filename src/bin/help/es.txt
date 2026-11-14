@@ -19,6 +19,7 @@ reco-minimap – minimapa (campo, jugadores, árbitros, balón) a partir de un p
                          volver a pasar detecciones grabadas (run … --dets <archivo>) por el seguimiento, el balón y las
                          situaciones sin el vídeo: segundos en vez de minutos, p. ej. para comparar --thr-player o los colores
   reco-minimap stats     <states.jsonl>            informe con cifras de un proceso (puestos, saltos, balón)
+  reco-minimap ticker    <states.jsonl> [--out f] [--export carpeta]  el resumen en directo que habría dado este resultado (liveticker.json + resumen); también: run/live --ticker-json <archivo>
   reco-minimap review-identities <states.jsonl> --annotations review.json --out reviewed.jsonl   aplicar la plantilla y las correcciones manuales
   reco-minimap snapshot  <states.jsonl> --court court.json --teams teams.json --at 12:34 [--trail 5] [--out scene.json] [--svg scene.svg]
                          extraer un momento de un proceso como escena de pizarra táctica (JSON, ver docs/BOARD.md) y/o SVG

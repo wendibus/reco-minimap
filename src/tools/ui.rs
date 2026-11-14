@@ -42,7 +42,7 @@ struct Job {
 /// Output files named in a job's arguments (relative ones are inside the project folder).
 fn job_outputs(dir: &Path, args: &[String]) -> Vec<PathBuf> {
     args.windows(2)
-        .filter(|w| matches!(w[0].as_str(), "--minimap" | "--alpha" | "--pip" | "--json" | "--dets"))
+        .filter(|w| matches!(w[0].as_str(), "--minimap" | "--alpha" | "--pip" | "--json" | "--dets" | "--ticker-json"))
         .map(|w| {
             let p = PathBuf::from(&w[1]);
             if p.is_absolute() { p } else { dir.join(p) }
@@ -301,7 +301,7 @@ fn project_files(dir: &Path) -> Value {
         for e in rdir.flatten() {
             let p = e.path();
             let ext = p.extension().and_then(|x| x.to_str()).unwrap_or("");
-            if matches!(ext, "mp4" | "mov" | "jsonl") {
+            if matches!(ext, "mp4" | "mov" | "jsonl") || p.to_string_lossy().ends_with(".liveticker.json") {
                 let m = e.metadata().ok();
                 outs.push(json!({"name": e.file_name().to_string_lossy(), "path": p.to_string_lossy(), "mb": m.as_ref().map(|m| (m.len() as f64 / 1e5).round() / 10.0), "t": m.and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs())}));
             }
@@ -503,6 +503,11 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
                 if o["alpha"].as_bool() == Some(true) { paths.push(("--alpha", out(".mov"))); if !get_s(p, "alpha_bg").is_empty() { paths.push(("--alpha-bg", get_s(p, "alpha_bg"))); } }
                 if o["pip"].as_bool() == Some(true) { paths.push(("--pip", out("_pip.mp4"))); }
                 if o["json"].as_bool() == Some(true) { paths.push(("--json", out(".jsonl"))); }
+                // what a live ticker would have reported for this video
+                if o["ticker"].as_bool() == Some(true) {
+                    paths.push(("--ticker-json", out(".liveticker.json")));
+                    ticker_names(&mut a, p);
+                }
                 for (f, v) in &paths { if !f.starts_with("--alpha-bg") { any = true; } pushs(&mut a, &[f, v]); }
                 if !any {
                     return Err(trs!("keine Ausgabe gewählt", "no output chosen", "aucune sortie choisie", "no se ha elegido ninguna salida").into());
@@ -590,6 +595,15 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
                     pushs(&mut a, &[&format!("--{k}"), &v.to_string()]);
                 }
             }
+        }
+        "ticker" => {
+            let f = get_s(p, "file");
+            need(&f, trs!("Datei", "file", "fichier", "archivo"))?;
+            pushs(&mut a, &["ticker", &f]);
+            if dir.join("court.json").exists() {
+                pushs(&mut a, &["--court", "court.json"]);
+            }
+            ticker_names(&mut a, p);
         }
         "stats" => {
             let f = get_s(p, "file");
@@ -709,6 +723,16 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
             jres(&mut s, json!({"sports":sports}));
         }
         ("GET", "/i18n.js") => respond(&mut s, "200 OK", "application/javascript; charset=utf-8", include_str!("i18n.js").as_bytes()),
+        // the ticker page reading a liveticker.json of a project (simulation from a processed video)
+        ("GET", "/ticker") => respond(&mut s, "200 OK", "text/html; charset=utf-8", super::ticker_pub::page_for_hub().as_bytes()),
+        ("GET", "/ticker.js") => respond(&mut s, "200 OK", "application/javascript; charset=utf-8", super::ticker_pub::script().as_bytes()),
+        ("GET", "/api/ticker-feed") => {
+            let file = qparam(&query, "file").map(|v| pct_decode(&v)).unwrap_or_default();
+            match std::fs::read(&file) {
+                Ok(b) if file.ends_with(".liveticker.json") && Path::new(&file).is_absolute() => respond(&mut s, "200 OK", "application/json; charset=utf-8", &b),
+                _ => respond(&mut s, "404 Not Found", "text/plain", b"not found"),
+            }
+        }
         ("GET", "/api/init") => {
             let sports: Vec<Value> = BUILTIN_IDS.iter().filter_map(|id| SportProfile::builtin(id)).map(|p| json!({"id": p.id, "field": [p.field.length, p.field.width], "team_size": p.team_size, "referees": p.referees, "keepers": crate::sport::has_keepers(&p.id)})).collect();
             let ort = super::infer::ensure_ort_runtime().err();
@@ -1036,4 +1060,46 @@ fn hub_models(sport: &str) -> Value {
         .map(|m| json!({"id": m["id"], "name": m["name"], "size": m["size"], "version": m["version"], "classes": m["classes"]}))
         .collect();
     json!({"ok": true, "models": found, "url": "https://github.com/wendibus/reco-models"})
+}
+
+/// `--ticker-names`, `--home-name`, `--away-name` from a job's parameters (live ticker and its simulation).
+fn ticker_names(a: &mut Vec<String>, p: &Value) {
+    if matches!(get_s(p, "ticker_names").as_str(), "numbers" | "names" | "both") {
+        pushs(a, &["--ticker-names", &get_s(p, "ticker_names")]);
+    }
+    for (flag, key) in [("--home-name", "home_name"), ("--away-name", "away_name")] {
+        if !get_s(p, key).trim().is_empty() {
+            pushs(a, &[flag, get_s(p, key).trim()]);
+        }
+    }
+}
+
+/// Decode `%XX` and `+` of a query value.
+fn pct_decode(v: &str) -> String {
+    let b = v.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        let hex = b.get(i + 1..i + 3).and_then(|h| std::str::from_utf8(h).ok()).and_then(|h| u8::from_str_radix(h, 16).ok());
+        match (b[i], hex) {
+            (b'%', Some(x)) => {
+                out.push(x);
+                i += 3;
+                continue;
+            }
+            (b'+', _) => out.push(b' '),
+            (c, _) => out.push(c),
+        }
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+#[cfg(test)]
+mod pct_tests {
+    #[test]
+    fn decodes_paths_with_spaces_and_umlauts() {
+        assert_eq!(super::pct_decode("%2FUsers%2Fa%20b%2Fsp%C3%BCl+x.liveticker.json"), "/Users/a b/spül x.liveticker.json");
+        assert_eq!(super::pct_decode("100%"), "100%");
+    }
 }

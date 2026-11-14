@@ -17,6 +17,7 @@ pub mod review;
 pub mod scales;
 pub mod stats;
 pub mod ticker_pub;
+pub mod ticker_sim;
 pub mod ui;
 pub mod update;
 pub mod video;

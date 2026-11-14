@@ -324,6 +324,10 @@ La carte *Forme de l’équipe* montre la largeur et la profondeur de chaque éq
 
 La liste montre les tentatives, les situations de jeu et les changements confirmés avec heure, équipe et zone. Cochez des moments (*Tous* sélectionne tout) et cliquez *Couper les clips* : chacun donne un court clip de la vidéo dans `out/clips/`, de 6 s avant à 4 s après le moment. *Montrer les clips* ouvre le dossier. La vidéo de l'étape 2 doit toujours se trouver au même endroit.
 
+### Simulation du fil en direct
+
+Qu'aurait annoncé le fil en direct pour cette vidéo ? La carte montre les entrées, les entrées par 10 minutes, les changements confirmés et possibles, les situations de jeu et le plus long silence. *Simuler le fil en direct* crée `liveticker.json` (ou cochez la sortie *Fichier du fil* à l'étape 4), *Voir le fil* montre la page telle que les spectateurs l'auraient vue. Vous savez ainsi avant un match si le fil vaut la peine. Noms d'équipe et affichage (numéros/noms) viennent de l'étape 5.
+
 ---
 
 ## Mise à jour

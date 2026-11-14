@@ -19,6 +19,7 @@ reco-minimap – Minimap (Court, Spieler, Schiris, Ball) aus einem Reco-Panorama
                          Aufgezeichnete Erkennungen (run … --dets <datei>) ohne Video erneut durch Tracking, Ball und
                          Situationen schicken: Sekunden statt Minuten, z.B. um --thr-player oder Farben zu vergleichen
   reco-minimap stats     <states.jsonl>            Zahlen-Report zu einem run-Ergebnis (Slots, Sprünge, Ball)
+  reco-minimap ticker    <states.jsonl> [--out f] [--export ordner]   Live-Ticker, den dieses Ergebnis ergeben hätte (liveticker.json + Zusammenfassung); auch: run/live --ticker-json <datei>
   reco-minimap review-identities <states.jsonl> --annotations review.json --out reviewed.jsonl   Kader und manuelle Korrekturen anwenden
   reco-minimap snapshot  <states.jsonl> --court court.json --teams teams.json --at 12:34 [--trail 5] [--out scene.json] [--svg scene.svg]
                          einen Moment aus einem Lauf als Taktikboard-Szene (JSON, siehe docs/BOARD.md) und/oder SVG herausschneiden

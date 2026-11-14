@@ -80,6 +80,8 @@ Game situations (run/live):
   --scenes          detects formations and shot attempts: basketball tip-off, free throw, throw-in, 2/3-point attempt;
                     football kick-off, penalty, corner, throw-in; handball throw-off, 7 m throw, throw-in; futsal/hockey kick-off, penalty, ...
                     (list per sport: docs/SCENARIOS.md); appears in the log, as `scenes` in the JSON and in `stats`
+  --home-attacks l|r  playing direction: the goal/basket home attacks at the start (left/right as on the minimap); shots, free throws,
+                    corners and penalties then count for the attacking team (also for stats and ticker); --switch-at mm:ss change of ends
 
 run options:
   --ref-color #hex  referee shirt colour (e.g. #000000 or yellow): finds referees by colour even if the model does not

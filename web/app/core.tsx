@@ -179,7 +179,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const isKeeperSport = () => !!state.init?.sports.find((s) => s.id === state.project.sport)?.keepers;
   const common = () => {
     const p = state.project;
-    return { ep: p.run?.ep || 'auto', units: p.run?.units, workers: Number(p.run?.workers) || 1, model_dir: activeModel()?.dir ?? '', video: p.video, numbers: p.run?.numbers, scenes: p.run?.scenes, figures: p.figures };
+    return { ep: p.run?.ep || 'auto', units: p.run?.units, workers: Number(p.run?.workers) || 1, model_dir: activeModel()?.dir ?? '', video: p.video, numbers: p.run?.numbers, scenes: p.run?.scenes, figures: p.figures, direction: p.direction };
   };
 
   const value: Ctx = { ...state, lang, setLanguage, t: TEXT[lang], hints, toggleHints, set, mutate, openProject, refresh, log, logLines, jobs, runJob, cancelJob, activeModel, sport, common, isKeeperSport };

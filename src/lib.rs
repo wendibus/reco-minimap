@@ -11,6 +11,7 @@
 pub mod ball;
 pub mod board;
 pub mod detect;
+pub mod direction;
 pub mod geom;
 pub mod identity;
 pub mod jersey;

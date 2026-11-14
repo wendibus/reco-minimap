@@ -80,6 +80,8 @@ Spielsituationen (run/live):
   --scenes          erkennt Aufstellungen und Wurfversuche: Basketball Sprungball, Freiwurf, Einwurf, 2er/3er-Versuch;
                     Fußball Anstoß, Elfmeter, Ecke, Einwurf; Handball Anwurf, 7 Meter, Einwurf; Futsal/Hockey Anstoß, Strafstoß, ...
                     (Liste je Sportart: docs/SZENARIEN.de.md); erscheint im Protokoll, als `scenes` im JSON und in `stats`
+  --home-attacks l|r  Spielrichtung: Tor/Korb, auf das Heim zu Beginn spielt (links/rechts wie in der Minikarte); Würfe, Freiwürfe,
+                    Ecken und Strafwürfe zählen dann für das angreifende Team (auch bei stats und ticker); --switch-at mm:ss Seitenwechsel
 
 run-Optionen:
   --ref-color #hex  Schiri-Trikotfarbe (z.B. #000000 oder gelb): erkennt Schiris über die Farbe, auch wenn das Modell sie nicht findet

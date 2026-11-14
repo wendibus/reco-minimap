@@ -163,6 +163,10 @@ Haz clic en *Medir*. El programa mira una docena de imágenes y aprende qué tam
 ![Colores de camiseta y figuras](img/es/step3-colours.webp)
 *Colores de camiseta y figuras: para los personajes animados del vídeo de prueba la franja de la camiseta está más abajo (0,3 a 0,65) y la muestra de color se apoya en el rojo y el azul.*
 
+### 3d · Dirección de juego
+
+En deportes con porterías o canastas (baloncesto, fútbol, fútbol sala, balonmano, hockey, lacrosse): **El local ataca al principio hacia** *izquierda* o *derecha* (como en el minimapa) y, si hace falta, **Cambio de campo en** como tiempo del vídeo, p. ej. `20:00`. Tiros, tiros libres, córneres, penaltis y lanzamientos de 7 m cuentan entonces para el equipo que ataca esa portería, aunque el color de la camiseta del tirador se haya reconocido mal. Con *Estimar automáticamente*, las estadísticas deducen la dirección de los intentos y solo la aplican si es clara (al menos 6 intentos, encaja el 70 %). El paso 7 muestra bajo el mapa de tiros qué dirección se aplica y cuántos intentos se reasignaron.
+
 ## Paso 4 · Procesar
 
 1. **Segmentos.** Cada fila es un proceso: *Nombre*, *Inicio* y *Fin* como `min:s` (o `h:min:s`, o segundos). Un fin vacío significa hasta el final del vídeo; así puedes analizar solo una parte de una grabación larga. Dividir un partido en cuartos es más seguro – una interrupción cuesta un cuarto, no el partido entero. *Añadir segmento* añade una fila.

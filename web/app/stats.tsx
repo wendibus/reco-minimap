@@ -12,6 +12,7 @@ type Stats = Json & {
   possession: { home: number; away: number; frames_held: number; ball_seen: number };
   thirds: number[]; heat: { nx: number; ny: number; home: number[]; away: number[]; ball: number[] };
   shape?: Shape;
+  direction?: { source: 'given' | 'estimated' | 'unknown'; home_start: 'l' | 'r' | null; switch_at: number | null; agree: number; total: number; reassigned: number };
   moments: { t: number; type: 'attempt' | 'scene' | 'sub'; kind?: string; team: Team; zone?: string; out?: number | null; in?: number | null }[];
 };
 
@@ -78,7 +79,7 @@ function TickerSimCard({ file }: { file: string }) {
     if (!exists) return;
     void fetch(feed, { cache: 'no-store' }).then((r) => r.ok ? r.json() : null).then((j) => setSim(j?.simulation ?? null)).catch(() => setSim(null));
   }, [path, exists, files.out]); // eslint-disable-line react-hooks/exhaustive-deps
-  const make = () => void runJob('ticker', { file, ticker_names: project.live?.ticker_names, home_name: project.live?.home_name, away_name: project.live?.away_name });
+  const make = () => void runJob('ticker', { file, direction: project.direction, ticker_names: project.live?.ticker_names, home_name: project.live?.home_name, away_name: project.live?.away_name });
   const scenes = sim ? Object.values(sim.scenes ?? {}).reduce((a: number, b) => a + Number(b), 0) : 0;
   return <Card title={tx.title} hint={tx.hint}>
     {sim ? <>
@@ -160,6 +161,7 @@ export function StatsPanel() {
             {stats.goals.map((g, i) => <circle key={i} cx={g[0]} cy={g[1]} r={stats.field.length / 160} className="mm-goal" />)}
             {shown.map((a, i) => <Marker key={i} a={a} size={stats.field.length / 75} color={colors[a.team]} tip={`${clock(a.t)} · ${teamName[a.team]} · ${kindLabel(a.kind)} · ${zoneLabel(a.zone)} · ${a.distance.toFixed(1)} m`} />)}
           </Field>
+          {stats.direction && <DirectionLine d={stats.direction} />}
           <div className="mm-legend">
             {(['home', 'away'] as Team[]).map((k) => <span key={k}><i className="mm-sw" style={{ background: colors[k] }} />{teamName[k]}</span>)}
             {basket ? <><span><Shape kind="shot2" />{ts.legend2}</span><span><Shape kind="shot3" />{ts.legend3}</span><span><Shape kind="free_throw" />{ts.legendFt}</span></>
@@ -365,4 +367,15 @@ function ShapeLines({ shape, metric, colors, names }: { shape: Shape; metric: 'w
       onPointerEnter={(e) => { setHover(i); setTipGlobal({ x: e.clientX, y: e.clientY, text: `${clock(p.t)} · ${(['home', 'away'] as const).map((k) => `${names[k]} ${p[k] ? p[k]![metric].toFixed(1) + ' m' : '–'}`).join(' · ')}` }); }}
       onPointerMove={(e) => setTipGlobal({ x: e.clientX, y: e.clientY, text: `${clock(p.t)} · ${(['home', 'away'] as const).map((k) => `${names[k]} ${p[k] ? p[k]![metric].toFixed(1) + ' m' : '–'}`).join(' · ')}` })} />)}
   </svg>;
+}
+
+/** Which end each team attacked, where it came from, and how many attempts it moved. */
+function DirectionLine({ d }: { d: NonNullable<Stats['direction']> }) {
+  const { t } = useApp();
+  const td = t.direction;
+  const how = d.source === 'given' ? td.given : d.source === 'estimated' ? td.estimated(d.agree, d.total) : d.home_start ? td.unsure(d.agree, d.total) : td.unknown;
+  return <p className="mm-hint">
+    <strong>{td.label}</strong> {d.home_start && d.source !== 'unknown' ? td.line(d.home_start, d.switch_at != null ? clock(d.switch_at) : null) + ' · ' : ''}{how}
+    {d.reassigned > 0 ? ' · ' + td.reassigned(d.reassigned) : ''}
+  </p>;
 }

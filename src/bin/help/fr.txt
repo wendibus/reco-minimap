@@ -81,6 +81,8 @@ Situations de jeu (run/live) :
   --scenes          détecte les placements et les tentatives de tir : basketball entre-deux, lancer franc, remise en jeu, tir à 2/3 points ;
                     football coup d'envoi, penalty, corner, touche ; handball engagement, jet de 7 m, touche ; futsal/hockey coup d'envoi, penalty, ...
                     (liste par sport : docs/SCENARIOS.fr.md) ; apparaît dans le journal, sous `scenes` dans le JSON et dans `stats`
+  --home-attacks l|r  sens du jeu : but/panier que domicile attaque au début (gauche/droite comme sur la minicarte) ; tirs, lancers francs,
+                    corners et penaltys comptent alors pour l'équipe qui attaque (aussi pour stats et ticker) ; --switch-at mm:ss changement de côté
 
 Options de run :
   --ref-color #hex  couleur du maillot des arbitres (p. ex. #000000 ou jaune) : trouve les arbitres par la couleur même si le modèle ne les voit pas

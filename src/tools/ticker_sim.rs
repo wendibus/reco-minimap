@@ -20,13 +20,15 @@ pub struct TickerSim {
     subs_confirmed: usize,
     subs_possible: usize,
     scenes: std::collections::BTreeMap<String, usize>,
+    /// Known playing direction: re-assigns attempts and set pieces of an older result.
+    pub direction: Option<crate::direction::Direction>,
 }
 
 impl TickerSim {
     /// `cfg.approve` is ignored: a simulation shows everything the detection would have sent.
     pub fn new(mut cfg: TickerCfg) -> Self {
         cfg.approve = false;
-        Self { hub: Hub::with_ticker("{}".into(), Some(cfg)), frames: 0, t_first: None, t_last: 0.0, times: Vec::new(), subs_confirmed: 0, subs_possible: 0, scenes: Default::default() }
+        Self { hub: Hub::with_ticker("{}".into(), Some(cfg)), frames: 0, t_first: None, t_last: 0.0, times: Vec::new(), subs_confirmed: 0, subs_possible: 0, scenes: Default::default(), direction: None }
     }
 
     /// One frame of a result (`{"t": …, "events": [...]}`, as `run --json` writes it).
@@ -36,7 +38,16 @@ impl TickerSim {
         self.t_first.get_or_insert(t);
         self.t_last = self.t_last.max(t);
         let Some(events) = frame["events"].as_array().filter(|e| !e.is_empty()) else { return };
-        for e in events {
+        let mut events = events.clone();
+        if let Some(d) = self.direction {
+            for e in events.iter_mut().filter(|e| e["type"] == "scene" && crate::direction::is_attacking_scene(e["kind"].as_str().unwrap_or(""))) {
+                if let Some(side) = e["side"].as_str().and_then(|s| s.chars().next()).filter(|c| matches!(c, 'l' | 'r')) {
+                    let et = e["t"].as_f64().unwrap_or(t);
+                    e["team"] = json!(if d.attacker(side, et) == crate::team::Team::Home { "home" } else { "away" });
+                }
+            }
+        }
+        for e in &events {
             self.times.push(e["t"].as_f64().unwrap_or(t));
             match (e["type"].as_str(), e["kind"].as_str()) {
                 (Some("sub"), Some("confirmed")) => self.subs_confirmed += 1,
@@ -45,7 +56,7 @@ impl TickerSim {
                 _ => {}
             }
         }
-        self.hub.push_events(events);
+        self.hub.push_events(&events);
     }
 
     pub fn entries(&self) -> usize {
@@ -121,9 +132,10 @@ impl TickerSim {
 }
 
 /// Build the simulation from a result file (`run --json`).
-pub fn from_jsonl(path: &Path, cfg: TickerCfg) -> Result<TickerSim, String> {
+pub fn from_jsonl(path: &Path, cfg: TickerCfg, direction: Option<crate::direction::Direction>) -> Result<TickerSim, String> {
     let txt = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut sim = TickerSim::new(cfg);
+    sim.direction = direction;
     for line in txt.lines() {
         if let Ok(v) = serde_json::from_str::<Value>(line) {
             sim.add_frame(&v);

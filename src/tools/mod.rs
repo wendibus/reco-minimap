@@ -16,6 +16,7 @@ pub mod progress;
 pub mod review;
 pub mod scales;
 pub mod stats;
+pub mod stats_players;
 pub mod ticker_pub;
 pub mod ticker_sim;
 pub mod ui;

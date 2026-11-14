@@ -432,7 +432,7 @@ fn attempt_side(goals: usize, a: &Attempt) -> Option<char> {
 /// Playing direction for the attempts: the given one, or else an estimate from the attempts
 /// themselves. A given or reliable direction re-assigns each attempt to the team attacking its end.
 /// Returns the `direction` block of the report.
-pub fn apply_direction(profile: &SportProfile, att: &mut [Attempt], given: Option<Direction>) -> Value {
+pub fn apply_direction(profile: &SportProfile, att: &mut [Attempt], given: Option<Direction>) -> (Value, Option<Direction>) {
     let ng = goals(profile).len();
     let team = |s: &str| match s {
         "home" => Team::Home,
@@ -460,14 +460,15 @@ pub fn apply_direction(profile: &SportProfile, att: &mut [Attempt], given: Optio
         }
     }
     let shown = dir.or(est.map(|e| e.dir));
-    json!({
+    let v = json!({
         "source": source,
         "home_start": shown.map(|d| d.home_start.to_string()),
         "switch_at": shown.and_then(|d| d.switch_at).map(r2),
         "agree": shown.map(|d| fits(&d)).unwrap_or(0),
         "total": obs.len(),
         "reassigned": reassigned,
-    })
+    });
+    (v, dir)
 }
 
 /// [`report`] with a known playing direction (see [`apply_direction`]).
@@ -478,7 +479,7 @@ pub fn report_with(profile: &SportProfile, frames: &[Value], given: Option<Direc
     let t0 = frames.first().and_then(|f| f["t"].as_f64()).unwrap_or(0.0);
     let t1 = frames.last().and_then(|f| f["t"].as_f64()).unwrap_or(0.0);
     let mut att = attempts(profile, frames);
-    let direction = apply_direction(profile, &mut att, given);
+    let (direction, dir) = apply_direction(profile, &mut att, given);
     let att = att;
 
     // possession (ball held by a player of a team), ball in thirds, position heat maps
@@ -598,6 +599,8 @@ pub fn report_with(profile: &SportProfile, frames: &[Value], given: Option<Direc
         "heat": {"nx": nx, "ny": ny, "home": heat["home"], "away": heat["away"], "ball": heat["ball"]},
         "shape": shape(profile, frames),
         "direction": direction,
+        "players": super::stats_players::players(frames),
+        "score": super::stats_players::score(profile, frames, &att, dir),
         "moments": moments,
     })
 }

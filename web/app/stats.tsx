@@ -12,9 +12,32 @@ type Stats = Json & {
   possession: { home: number; away: number; frames_held: number; ball_seen: number };
   thirds: number[]; heat: { nx: number; ny: number; home: number[]; away: number[]; ball: number[] };
   shape?: Shape;
+  players?: { home: PlayerTime[]; away: PlayerTime[]; without_number: { home: number; away: number }; numbers_seen: boolean };
+  score?: { supported: boolean; method?: string; home: number; away: number; likely?: { home: number; away: number }; events: ScoreEvent[] };
   direction?: { source: 'given' | 'estimated' | 'unknown'; home_start: 'l' | 'r' | null; switch_at: number | null; agree: number; total: number; reassigned: number };
   moments: { t: number; type: 'attempt' | 'scene' | 'sub'; kind?: string; team: Team; zone?: string; out?: number | null; in?: number | null }[];
 };
+
+type PlayerTime = { number: number; seconds: number; share: number };
+type ScoreEvent = { t: number; team: Team; points: number; kind: string; evidence: string[]; restart_t: number; confidence: 'likely' | 'possible' };
+
+/** The name of a restart differs per sport (same table as the ticker and the live view). */
+export function sceneKey(k: string, sport: string): string {
+  if (k === 'kickoff') return ({ handball: 'throw_off', hockey: 'centre_pass', lacrosse: 'face_off' } as Record<string, string>)[sport] ?? k;
+  if (k === 'throw_in') return ({ basketball: 'inbound', futsal: 'kick_in' } as Record<string, string>)[sport] ?? k;
+  if (k === 'penalty' && sport === 'hockey') return 'penalty_stroke';
+  return k;
+}
+
+/** "7:Anna, 12:Ben" -> {7: "Anna", 12: "Ben"} (the squad format of step 4). */
+function rosterNames(s: string | undefined): Record<number, string> {
+  const out: Record<number, string> = {};
+  for (const tok of (s ?? '').split(/[,;\n]/)) {
+    const m = tok.match(/^\s*(\d+)\D*?[:=]\s*(.+?)\s*$/);
+    if (m && !(+m[1] in out)) out[+m[1]] = m[2];
+  }
+  return out;
+}
 
 /** Which charts a sport gets (attempts only where the tracking can see them). */
 function sections(sport: string) {
@@ -135,7 +158,7 @@ export function StatsPanel() {
   if (!stats) return <>{picker}{file && <TickerSimCard file={file} />}</>;
 
   const sec = sections(stats.sport);
-  const kindLabel = (k?: string) => (k && ts.kinds[k]) || k || '';
+  const kindLabel = (k?: string) => (k && (ts.kinds[sceneKey(k, stats.sport)] || ts.kinds[k])) || k || '';
   const zoneLabel = (z?: string) => (z && ts.zones[z]) || z || '';
   const segmented = <div className="segmented" role="group" aria-label={ts.both}>{(['both', 'home', 'away'] as const).map((k) => <button key={k} type="button" data-hint={t.hints.teamFilter} className={team === k ? 'active' : ''} onClick={() => setTeam(k)}>{k === 'both' ? ts.both : teamName[k]}</button>)}</div>;
   const dur = stats.t1 - stats.t0;
@@ -146,6 +169,7 @@ export function StatsPanel() {
     {picker}
     <TickerSimCard file={file} />
     <div className="mm-tiles">
+      {stats.score?.supported && stats.score.events.length > 0 && <Tile label={ts.scoreTile} value={`${stats.score.home}:${stats.score.away}`} sub={stats.score.likely ? ts.scoreLikely(stats.score.likely.home, stats.score.likely.away) : undefined} />}
       {sec.shots && <><Tile label={`${ts.attempts} · ${ts.home}`} value={stats.totals.home} swatch={colors.home} /><Tile label={`${ts.attempts} · ${ts.away}`} value={stats.totals.away} swatch={colors.away} /></>}
       {sec.possession && <Tile label={`${ts.possession} · ${ts.home}`} value={`${Math.round(stats.possession.home * 100)} %`} sub={`${ts.away} ${Math.round(stats.possession.away * 100)} %`} />}
       <Tile label={ts.ballSeen} value={`${Math.round(stats.possession.ball_seen * 100)} %`} />
@@ -208,6 +232,9 @@ export function StatsPanel() {
       <div className="segmented" role="group">{(['home', 'away', 'ball'] as const).map((k) => <button key={k} type="button" data-hint={t.hints.heatLayer} className={layer === k ? 'active' : ''} onClick={() => setLayer(k)}>{k === 'ball' ? ts.ball : teamName[k]}</button>)}</div>
       <Field s={stats}>{heatCells(stats, stats.heat[layer], stats.heat.nx, stats.heat.ny, layer === 'ball' ? 'var(--ball)' : 'var(--accent)', (n) => `${Math.round(n / Math.max(1, stats.heat[layer].reduce((a, b) => a + b, 0)) * 1000) / 10} %`)}</Field>
     </Card>}
+
+    {stats.score && <ScoreCard s={stats} colors={colors} names={teamName} kindLabel={kindLabel} />}
+    {stats.players && <PlayersCard p={stats.players} span={dur} colors={colors} names={teamName} roster={{ home: rosterNames(project.run?.numbers?.roster_home), away: rosterNames(project.run?.numbers?.roster_away) }} />}
 
     {stats.shape && <ShapeCard s={stats} shape={stats.shape} colors={colors} names={teamName} />}
 
@@ -378,4 +405,43 @@ function DirectionLine({ d }: { d: NonNullable<Stats['direction']> }) {
     <strong>{td.label}</strong> {d.home_start && d.source !== 'unknown' ? td.line(d.home_start, d.switch_at != null ? clock(d.switch_at) : null) + ' · ' : ''}{how}
     {d.reassigned > 0 ? ' · ' + td.reassigned(d.reassigned) : ''}
   </p>;
+}
+
+/** The estimated score with every scoring event and its evidence. */
+function ScoreCard({ s, colors, names, kindLabel }: { s: Stats; colors: Record<Team, string>; names: Record<Team, string>; kindLabel: (k?: string) => string }) {
+  const { t } = useApp();
+  const ts = t.stats, sc = s.score!;
+  const hint = s.sport === 'basketball' ? ts.scoreHintBasket : ts.scoreHintGoal;
+  return <Card title={ts.score} hint={sc.supported ? hint : undefined}>
+    {!sc.supported ? <p className="mm-muted">{ts.scoreNone}</p> : sc.events.length === 0 ? <p className="mm-muted">{ts.scoreEmpty}</p> : <>
+      <div className="mm-legend">{(['home', 'away'] as Team[]).map((k) => <span key={k}><i className="mm-sw" style={{ background: colors[k] }} />{names[k]} <strong>{sc[k as 'home' | 'away']}</strong></span>)}</div>
+      <div className="mm-scroll"><table className="mm-table mm-score"><tbody>{sc.events.map((e, i) => <tr key={i} className={e.confidence === 'possible' ? 'mm-weak' : ''}>
+        <td>{clock(e.t)}</td><td><i className="mm-sw" style={{ background: colors[e.team] }} />{names[e.team]}</td>
+        <td>{kindLabel(e.kind === 'goal' ? 'goal' : e.kind === 'shot3' ? 'made3' : 'made2')}</td><td>{ts.points(e.points)}</td>
+        <td>{e.confidence === 'likely' ? ts.likely : ts.possible}</td><td className="mm-muted">{ts.restartAt(clock(e.restart_t))}</td>
+      </tr>)}</tbody></table></div>
+    </>}
+  </Card>;
+}
+
+/** Time on the field per jersey number, one column per team. */
+function PlayersCard({ p, span, colors, names, roster }: { p: NonNullable<Stats['players']>; span: number; colors: Record<Team, string>; names: Record<Team, string>; roster: Record<'home' | 'away', Record<number, string>> }) {
+  const { t } = useApp();
+  const ts = t.stats;
+  const mm = (sec: number) => clock(sec);
+  return <Card title={ts.playersTitle} hint={ts.playersHint}>
+    {!p.numbers_seen ? <p className="mm-muted">{ts.noNumbers}</p> : <div className="mm-split">
+      {(['home', 'away'] as const).map((k) => <div key={k}>
+        <h3><i className="mm-sw" style={{ background: colors[k] }} />{names[k]}</h3>
+        <div className="mm-bars">
+          {p[k].map((pl) => <div key={pl.number} className="mm-bar-row" title={`${pl.seconds.toFixed(0)} s`}>
+            <span className="mm-bar-label">#{pl.number}{roster[k][pl.number] ? ' ' + roster[k][pl.number] : ''}</span>
+            <span className="mm-bar-track"><span className="mm-bar-fill" style={{ width: `${Math.min(100, (pl.seconds / Math.max(1, span)) * 100)}%`, background: colors[k] }} /></span>
+            <span className="mm-bar-value">{mm(pl.seconds)} · {Math.round(pl.share * 100)} %</span>
+          </div>)}
+          {p.without_number[k] > 0 && <div className="mm-bar-row mm-weak"><span className="mm-bar-label">{ts.withoutNumber}</span><span className="mm-bar-track" /><span className="mm-bar-value">{mm(p.without_number[k])}</span></div>}
+        </div>
+      </div>)}
+    </div>}
+  </Card>;
 }

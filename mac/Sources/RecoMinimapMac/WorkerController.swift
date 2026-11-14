@@ -11,12 +11,16 @@ enum WorkerError: Error, LocalizedError {
         switch self {
         case .programMissing:
             return L("Das Programm reco-minimap fehlt in dieser Version. Bitte Reco Minimap neu installieren.",
-                     "The reco-minimap program is missing from this version. Please reinstall Reco Minimap.")
+                     "The reco-minimap program is missing from this version. Please reinstall Reco Minimap.",
+                     "Le programme reco-minimap manque dans cette version. Veuillez réinstaller Reco Minimap.",
+                     "Falta el programa reco-minimap en esta versión. Vuelve a instalar Reco Minimap.")
         case .exited(let status):
             return L("reco-minimap wurde unerwartet beendet (Status \(status)). Details stehen im Protokoll.",
-                     "reco-minimap exited unexpectedly (status \(status)). The log has the details.")
+                     "reco-minimap exited unexpectedly (status \(status)). The log has the details.",
+                     "reco-minimap s'est arrêté de façon inattendue (statut \(status)). Le journal contient les détails.",
+                     "reco-minimap se cerró de forma inesperada (estado \(status)). El registro tiene los detalles.")
         case .timeout:
-            return L("reco-minimap hat sich nicht rechtzeitig gemeldet.", "reco-minimap did not respond in time.")
+            return L("reco-minimap hat sich nicht rechtzeitig gemeldet.", "reco-minimap did not respond in time.", "reco-minimap n'a pas répondu à temps.", "reco-minimap no respondió a tiempo.")
         }
     }
 }

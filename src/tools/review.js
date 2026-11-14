@@ -189,6 +189,6 @@ if (typeof document !== 'undefined') (async function boot() {
     requestAnimationFrame(draw);
   }
   window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
-  try {const r=await fetch('/api/review/sports');if(!r.ok)throw Error(tt('review.e_sports'));sports=(await r.json()).sports.filter(s=>s.id!=='custom');for(const s of sports)$('sport').add(new Option(s.id,s.id));$('sport').value='basketball';}catch(e){status(e.message);}
+  try {const r=await fetch('/api/review/sports');if(!r.ok)throw Error(tt('review.e_sports'));sports=(await r.json()).sports.filter(s=>s.id!=='custom');for(const s of sports)$('sport').add(new Option(tt('sport.'+s.id),s.id));$('sport').value='basketball';}catch(e){status(e.message);}
   controls();requestAnimationFrame(draw);
 })();

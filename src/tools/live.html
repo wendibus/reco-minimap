@@ -33,7 +33,8 @@ function connect() {
 }
 connect();
 function sceneLabel(ev) {
-  const k = ev.kind === 'kickoff' && SPORT === 'handball' ? 'throw_off' : (ev.kind === 'throw_in' && SPORT === 'basketball' ? 'inbound' : ev.kind);
+  const sceneKey = (k, sport) => k === 'kickoff' ? ({ handball: 'throw_off', hockey: 'centre_pass', lacrosse: 'face_off' }[sport] || k) : k === 'throw_in' ? ({ basketball: 'inbound', futsal: 'kick_in' }[sport] || k) : k === 'penalty' && sport === 'hockey' ? 'penalty_stroke' : k;
+  const k = sceneKey(ev.kind, SPORT);
   const side = ev.side === 'l' ? ' ←' : (ev.side === 'r' ? ' →' : '');
   const team = ev.team === 'home' || ev.team === 'away' ? T('team.' + ev.team) : '';
   return T('scene.line', {scene: T('scene.' + k) + side + (ev.borderline ? ' ' + T('scene.borderline') : ''), team: team ? '(' + team + ')' : ''}).trim();

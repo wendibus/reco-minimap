@@ -291,7 +291,7 @@ A la izquierda, un mapa de calor de los intentos: el campo se divide en celdas d
 
 ### Intentos por tramo
 
-El vídeo se divide en tramos de igual duración (cuatro en baloncesto y hockey, si no dos); barras por equipo y debajo la diferencia local – visitante por tramo. El programa no conoce el reloj del partido: las interrupciones cuentan, y un tramo no es lo mismo que un cuarto o una parte salvo que el vídeo sea exactamente un periodo.
+El vídeo se divide en tramos de igual duración (cuatro en baloncesto, hockey, lacrosse y fútbol americano, cinco en voleibol, si no dos); barras por equipo y debajo la diferencia local – visitante por tramo. El programa no conoce el reloj del partido: las interrupciones cuentan, y un tramo no es lo mismo que un cuarto o una parte salvo que el vídeo sea exactamente un periodo.
 
 ### Posesión y balón en el campo
 
@@ -323,6 +323,14 @@ La tarjeta *Forma del equipo* muestra qué tan ancho y profundo se coloca cada e
 * **Colocación media:** para cada sección de tiempo, y para *Con balón*, *Sin balón* o *Todo*, el campo muestra la posición media de cada puesto, el centro del equipo (+) y un rectángulo con la anchura y profundidad medias. Los puestos visibles en menos de una quinta parte de la sección no aparecen.
 * **Para qué:** ¿Está un equipo más junto en la sección 3 que al principio? ¿Cuánto se cierra sin balón y cuánto abre el campo con balón?
 * **Límites:** los valores describen al equipo, no a jugadores concretos: sin dorsales, dos puestos pueden intercambiar persona y la colocación media se difumina. Los jugadores lejos de la cámara se detectan menos, lo que puede subestimar la anchura.
+
+### Marcador (estimado)
+
+La detección no ve directamente si un tiro entra. Sí ve cómo se reanuda el juego: en **baloncesto**, tras una canasta el otro equipo saca desde la línea de fondo bajo esa canasta en pocos segundos; en **fútbol, fútbol sala, balonmano, hockey y lacrosse**, el otro equipo hace el saque de centro tras un gol. Con ello la tarjeta estima el marcador y lista cada tanto con tiempo, equipo, puntos y *probable* o *posible*. Los tiros libres no se cuentan; en voleibol, rugby y fútbol americano no se puede estimar. Compruébalo con los clips y ajusta la dirección de juego en el paso 3 para que los equipos sean más fiables.
+
+### Tiempo de juego por jugador
+
+Tiempo en el campo por dorsal, para local y visitante, con la parte de la duración del vídeo. Cada rastro seguido sin interrupción cuenta para el dorsal que más se leyó en él; los rastros sin dorsal aparecen como *sin dorsal leído*. Hace falta activar *Leer y mostrar los dorsales* al procesar. Los nombres salen de la plantilla del paso 4 (`7:Anna`).
 
 ### Momentos clave y clips
 

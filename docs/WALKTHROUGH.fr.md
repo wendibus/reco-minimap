@@ -291,7 +291,7 @@ Chaque tentative se trouve à son endroit sur le terrain, dans la couleur de l'�
 
 ### Tentatives par section
 
-La vidéo est divisée en sections de même durée (quatre au basket et au hockey, sinon deux) ; des barres par équipe et en dessous la différence domicile – visiteurs par section. Le programme ne connaît pas le chronomètre du match : les arrêts de jeu comptent, et une section n'est pas un quart-temps ou une mi-temps, sauf si la vidéo correspond exactement à une période.
+La vidéo est divisée en sections de même durée (quatre au basket, au hockey, à la crosse et au football américain, cinq au volley-ball, sinon deux) ; des barres par équipe et en dessous la différence domicile – visiteurs par section. Le programme ne connaît pas le chronomètre du match : les arrêts de jeu comptent, et une section n'est pas un quart-temps ou une mi-temps, sauf si la vidéo correspond exactement à une période.
 
 ### Possession et ballon sur le terrain
 
@@ -323,6 +323,14 @@ La carte *Forme de l’équipe* montre la largeur et la profondeur de chaque éq
 * **Placement moyen :** pour chaque section de temps, et pour *Avec le ballon*, *Sans le ballon* ou *Tout*, le terrain montre la position moyenne de chaque place de joueur, le centre de l’équipe (+) et un rectangle de la largeur et de la profondeur moyennes. Les places visibles moins d’un cinquième de la section sont omises.
 * **À quoi ça sert :** une équipe est-elle plus resserrée dans la section 3 qu’au début ? À quel point se resserre-t-elle sans le ballon, à quel point écarte-t-elle le jeu avec le ballon ?
 * **Limites :** les valeurs décrivent l’équipe, pas des joueurs isolés : sans numéros de maillot, deux places peuvent échanger de joueur et le placement moyen devient flou. Les joueurs loin de la caméra sont moins souvent détectés, ce qui peut sous-estimer la largeur.
+
+### Score (estimé)
+
+La détection ne voit pas directement si un tir est réussi. Elle voit en revanche comment le jeu reprend : au **basketball**, après un panier, l’autre équipe remet en jeu depuis la ligne de fond sous ce panier en quelques secondes ; au **football, futsal, handball, hockey et lacrosse**, l’autre équipe engage après un but. La carte en déduit le score et liste chaque point avec le temps, l’équipe, les points et *probable* ou *possible*. Les lancers francs ne sont pas comptés ; volley-ball, rugby et football américain ne peuvent pas être estimés. Vérifiez avec les clips – et réglez le sens du jeu à l’étape 3 pour des équipes plus fiables.
+
+### Temps de jeu par joueur
+
+Temps sur le terrain par numéro de maillot, pour domicile et extérieur, avec la part de la durée de la vidéo. Chaque trace suivie sans interruption compte pour le numéro le plus souvent lu sur elle ; les traces sans numéro figurent sous *sans numéro lu*. Il faut activer *Lire et afficher les numéros de maillot* lors du traitement. Les noms viennent de l’effectif de l’étape 4 (`7:Anna`).
 
 ### Moments clés et clips
 

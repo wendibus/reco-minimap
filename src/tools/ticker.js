@@ -10,10 +10,11 @@ const STYLE = `
 header{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-bottom:10px}
 h1{font-size:20px;margin:0;flex:1 1 100%}
 h1 .vs{color:var(--dim);font-weight:400;padding:0 6px}
-.home{color:var(--home)}.away{color:var(--away)}
+h1 .home{color:var(--home)}h1 .away{color:var(--away)}
 .sub{color:var(--dim);font-size:13px;flex:1 1 100%}
 .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#43c37b;margin-right:6px;animation:p 1.6s infinite}
 .dot.off{background:#c9a227;animation:none}
+.dot.sim{background:var(--acc);animation:none;border-radius:2px}
 @keyframes p{50%{opacity:.35}}
 .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0 14px}
 .seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
@@ -56,7 +57,7 @@ function mount(root, o) {
   const T = (k, v) => { let s = (RT_STRINGS[LANG] || {})[k]; if (s === undefined) s = RT_STRINGS.en[k]; if (s === undefined) return k; if (v) for (const n in v) s = s.split('{' + n + '}').join(v[n]); return s; };
   const hasKey = k => RT_STRINGS.en[k] !== undefined;
   let cfg = { names: 'numbers', teams: { home: '', away: '' }, players: { home: {}, away: {} }, sport: '' };
-  let events = [], seq = 0, mode = 'numbers', lastOk = 0, pending = [], manual = false, retracted = [], beat = null, beatAt = 0, timer = 0, stopped = false;
+  let events = [], seq = 0, mode = 'numbers', lastOk = 0, pending = [], manual = false, retracted = [], beat = null, beatAt = 0, timer = 0, stopped = false, sim = null;
 
   root.innerHTML = `<style>${STYLE}</style><div class="w ${['dark', 'light'].includes(o.theme) ? o.theme : 'auto'}">
 <header ${o.embed ? 'hidden' : ''}><h1><span class="home" data-r="th"></span><span class="vs">–</span><span class="away" data-r="ta"></span></h1>
@@ -112,8 +113,11 @@ function mount(root, o) {
     R.empty.hidden = rows.length > 0; R.empty.textContent = T('ticker.empty');
     const sport = cfg.sport && hasKey('sport.' + cfg.sport) ? T('sport.' + cfg.sport) : '';
     const live = beat !== null ? Date.now() - beatAt < 45000 : Date.now() - lastOk < 12000;
-    R.dot.className = 'dot' + (live ? '' : ' off');
-    R.status.textContent = (sport ? sport + ' · ' : '') + (live ? T('ticker.live') : T('ticker.offline'));
+    // a liveticker.json made from a recorded video: say so instead of "live"
+    const simLine = sim ? T('ticker.sim') + ' · ' + T('ticker.sim_stats', { n: sim.entries || 0, d: clock(sim.duration), g: clock(sim.longest_gap) }) : '';
+    R.dot.className = 'dot' + (sim ? ' sim' : live ? '' : ' off');
+    R.status.textContent = (sport ? sport + ' · ' : '') + (sim ? simLine : live ? T('ticker.live') : T('ticker.offline'));
+    R.note.textContent = T(sim ? 'ticker.sim_note' : 'ticker.note');
     W.querySelectorAll('[data-m]').forEach(b => b.classList.toggle('on', b.dataset.m === mode));
     if (o.admin) drawPending();
     if (o.onDraw) o.onDraw();
@@ -150,7 +154,7 @@ function mount(root, o) {
         events = events.concat(j.events || []); seq = j.seq; retracted = j.retracted || []; lastOk = Date.now(); setupMode();
       } else {
         const r = await fetch(o.feed + (o.feed.includes('?') ? '&' : '?') + 't=' + Date.now(), { cache: 'no-store' }); if (!r.ok) throw new Error(r.status);
-        const j = await r.json(); cfg = j.config || cfg; events = j.events || []; retracted = j.retracted || []; lastOk = Date.now();
+        const j = await r.json(); cfg = j.config || cfg; events = j.events || []; retracted = j.retracted || []; sim = j.simulation || null; lastOk = Date.now();
         if (j.beat !== undefined && j.beat !== beat) { beat = j.beat; beatAt = Date.now(); } // the sender writes a new beat every few seconds
         setupMode();
       }
@@ -161,7 +165,7 @@ function mount(root, o) {
     R.aq.textContent = T('ticker.a_queue'); R.relall.textContent = T('ticker.a_release_all'); R.amanual.textContent = T('ticker.a_manual'); R.ahint.textContent = T('ticker.a_hint');
     const m = { numbers: 'ticker.m_numbers', names: 'ticker.m_names', both: 'ticker.m_both' };
     W.querySelectorAll('[data-m]').forEach(b => { b.textContent = T(m[b.dataset.m]); });
-    R.share.textContent = T('ticker.share'); R.note.textContent = T('ticker.note');
+    R.share.textContent = T('ticker.share');
     R.lang.innerHTML = LANG_IDS.map(k => `<option value="${k}"${k === LANG ? ' selected' : ''}>${esc(RT_STRINGS[k]['lang.name'])}</option>`).join('');
     draw();
   }
@@ -182,7 +186,7 @@ function mount(root, o) {
     try { await navigator.clipboard.writeText(url); R.share.textContent = T('ticker.copied'); setTimeout(() => { R.share.textContent = T('ticker.share'); }, 1800); } catch (x) { prompt(T('ticker.share'), url); }
   };
   texts(); poll(); timer = setInterval(poll, o.admin ? 1500 : o.every);
-  return { stop() { stopped = true; clearInterval(timer); }, title: () => T('ticker.title') + (o.admin ? ' – ' + T('ticker.a_title') : ''), lang: () => LANG };
+  return { stop() { stopped = true; clearInterval(timer); }, title: () => T('ticker.title') + (sim ? ' – ' + T('ticker.sim') : o.admin ? ' – ' + T('ticker.a_title') : ''), lang: () => LANG };
 }
 
 // <reco-ticker feed="ticker.json" lang="de" show="numbers" max="20" theme="auto">  (embedded by default: no header)

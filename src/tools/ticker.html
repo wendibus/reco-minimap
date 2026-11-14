@@ -31,12 +31,12 @@ body.embed #app{padding:0;max-width:none}
     admin: admin ? location.origin : false,
     lang: Q.get('lang') || '', show: Q.get('show') || '', max: parseInt(Q.get('max')) || 0, embed, theme: Q.get('theme') || 'auto',
     onDraw() {
-      if (t) document.title = t.title();
+      if (t) { document.title = t.title(); document.documentElement.lang = t.lang(); }
       // an iframe on another web page asks for its height so it never needs a scroll bar
       if (embed && window.parent !== window) parent.postMessage({ type: 'reco-ticker-height', height: document.getElementById('app').scrollHeight }, '*');
     }
   });
-  document.title = t.title();
+  document.title = t.title(); document.documentElement.lang = t.lang();
 })();
 </script>
 </body>

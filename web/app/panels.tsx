@@ -160,6 +160,10 @@ export function CalibPanel() {
       <Check k="figures.shirt_match" label={T('cal.shirt_match')} /><p className="mm-hint">{T('cal.shirt_match_hint')}</p>
       <Check k="figures.no_referees" label={T('cal.no_referees')} />
     </Card>
+    {['basketball', 'football', 'futsal', 'handball', 'hockey', 'lacrosse'].includes(project.sport) && <Card title={t.direction.title} hint={t.direction.hint}>
+      <div className="mm-grid2"><Sel k="direction.home" label={t.direction.home} options={[['', t.direction.auto], ['l', t.direction.left], ['r', t.direction.right]]} /><Text k="direction.switch" label={t.direction.switch} placeholder="24:00" /></div>
+      <p className="mm-hint">{t.direction.switchHint}</p>
+    </Card>}
   </>;
 }
 

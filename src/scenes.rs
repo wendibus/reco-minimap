@@ -135,6 +135,8 @@ pub struct SceneDetector {
     pending: Option<PendingShot>,
     recent_substitutions: Vec<crate::SubEvent>,
     last_t: Option<f64>,
+    /// Known playing direction: attempts and set pieces at an end go to the team attacking it.
+    pub direction: Option<crate::direction::Direction>,
 }
 
 fn in_rect(p: Vec2, r: (f32, f32, f32, f32), pad: f32) -> bool {
@@ -150,7 +152,7 @@ impl SceneDetector {
     /// Explicit policy allows custom field dimensions without guessing rules from
     /// geometry or a display name. Unsupported sports use `SceneRules::None`.
     pub fn with_rules(profile: SportProfile, rules: SceneRules) -> Self {
-        Self { rules, profile, cfg: SceneCfg::default(), active: HashMap::new(), last_fire: HashMap::new(), holder: None, prev_state: None, pending: None, recent_substitutions:Vec::new(),last_t:None }
+        Self { rules, profile, cfg: SceneCfg::default(), active: HashMap::new(), last_fire: HashMap::new(), holder: None, prev_state: None, pending: None, recent_substitutions:Vec::new(),last_t:None, direction: None }
     }
 
     pub fn profile(&self) -> &SportProfile {
@@ -207,6 +209,17 @@ impl SceneDetector {
         let rearm = self.cfg.rearm_gap;
         self.active.retain(|k, e| present.contains(k) || t - e.last_seen <= rearm);
         self.shots(s, &mut out);
+        if let Some(d) = self.direction {
+            for e in out.iter_mut() {
+                if let Some(side) = e.side.filter(|_| crate::direction::is_attacking_scene(e.kind.key())) {
+                    let att = d.attacker(side, e.t);
+                    if e.team != Some(att) {
+                        e.team = Some(att);
+                        e.evidence.push("playing_direction");
+                    }
+                }
+            }
+        }
         out
     }
 

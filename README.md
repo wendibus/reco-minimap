@@ -349,6 +349,8 @@ Each scene must hold for 1–2 s before it fires, and fires once per formation. 
 * The full catalogue, including what is feasible but not implemented (timeouts, free-kick walls, scrums, snap formations …) and what is not possible from positions, is in **[docs/SCENARIOS.md](docs/SCENARIOS.md)**.
 * **Verified on constructed formations only** – positive cases and the look-alikes that must not fire. Expect to tune thresholds on real games.
 
+**Playing direction.** The team of an attempt is the team of the player who last held the ball, so a misread shirt colour gives the attempt to the wrong team. If you know which end the home team attacks at the start, set it: in the interface in step 3 (*Playing direction*), on the command line with `--home-attacks l|r` and, if the video contains it, `--switch-at mm:ss` for the change of ends. Shots, free throws, corners, penalties and 7 m throws then count for the team attacking that end. Without a setting, `stats` estimates the direction from the attempts themselves (also a change of ends) and applies it only when at least 6 attempts give a clear majority (70 %); step 7 shows the direction, where it came from and how many attempts it moved.
+
 ## Statistics
 
 Step 7 of the interface, or on the command line:
@@ -462,6 +464,7 @@ Common options (see `reco-minimap --help` for all):
 | `--dets f.jsonl` | Record the detections of `run` for `replay` (record with a low `--thr-player`, e.g. 0.3, to compare thresholds later) |
 | `--ep cpu\|auto\|cuda\|tensorrt\|directml\|coreml`, `--device N`, `--units all\|gpu\|ane\|cpu` | Execution provider and GPU number (see *Choosing the compute device*; `--units` is CoreML only: on M-series `all` ≈ `gpu`, the Neural Engine did not help for this model) |
 | `--scenes` | Recognise game situations (throw-in, free throw, kick-off, penalty, corner, 7 m, 2/3-point attempts …) |
+| `--home-attacks l\|r`, `--switch-at mm:ss` | Playing direction: the end home attacks at the start and the change of ends. Attempts and set pieces then count for the attacking team (also `stats`, `ticker`) |
 | `--numbers --roster-home … --roster-away … --hires …` | Read jersey numbers and detect substitutions |
 | `--thr-player 0.60 --thr-ball 0.30 --thr-ref 0.50` | Detection thresholds (defaults shown) |
 | `--thr-player-low 0.30` | (`run`, `live`, `replay`) Player detections between this value and `--thr-player` keep an existing dot going but never start one. A model that is unsure in a crowd then still follows the players, without its false positives becoming players. Set it equal to `--thr-player` to turn this off |

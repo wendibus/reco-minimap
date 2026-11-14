@@ -10,7 +10,9 @@ use std::collections::HashMap;
 
 use serde_json::{json, Value};
 
+use crate::direction::{estimate, Direction, Obs};
 use crate::geom::Vec2;
+use crate::team::Team;
 use crate::sport::SportProfile;
 
 /// One shot / throw attempt.
@@ -419,12 +421,65 @@ pub fn shape(profile: &SportProfile, frames: &[Value]) -> Value {
 
 /// The full statistics of a run as JSON (see the module documentation).
 pub fn report(profile: &SportProfile, frames: &[Value]) -> Value {
+    report_with(profile, frames, None)
+}
+
+/// End (`'l'` / `'r'`) an attempt went for; `None` if the sport has no two ends.
+fn attempt_side(goals: usize, a: &Attempt) -> Option<char> {
+    (goals == 2).then(|| if a.goal == 0 { 'l' } else { 'r' })
+}
+
+/// Playing direction for the attempts: the given one, or else an estimate from the attempts
+/// themselves. A given or reliable direction re-assigns each attempt to the team attacking its end.
+/// Returns the `direction` block of the report.
+pub fn apply_direction(profile: &SportProfile, att: &mut [Attempt], given: Option<Direction>) -> Value {
+    let ng = goals(profile).len();
+    let team = |s: &str| match s {
+        "home" => Team::Home,
+        "away" => Team::Away,
+        _ => Team::Unknown,
+    };
+    let obs: Vec<Obs> = att.iter().filter_map(|a| Some(Obs { t: a.t, team: team(&a.team), side: attempt_side(ng, a)? })).collect();
+    let est = estimate(&obs);
+    let (dir, source) = match (given, est) {
+        (Some(d), _) => (Some(d), "given"),
+        (None, Some(e)) if e.reliable() => (Some(e.dir), "estimated"),
+        _ => (None, "unknown"),
+    };
+    let fits = |d: &Direction| obs.iter().filter(|o| d.attacker(o.side, o.t) == o.team).count();
+    let mut reassigned = 0;
+    if let Some(d) = dir {
+        for a in att.iter_mut() {
+            if let Some(side) = attempt_side(ng, a) {
+                let k = if d.attacker(side, a.t) == Team::Home { "home" } else { "away" };
+                if a.team != k {
+                    a.team = k.into();
+                    reassigned += 1;
+                }
+            }
+        }
+    }
+    let shown = dir.or(est.map(|e| e.dir));
+    json!({
+        "source": source,
+        "home_start": shown.map(|d| d.home_start.to_string()),
+        "switch_at": shown.and_then(|d| d.switch_at).map(r2),
+        "agree": shown.map(|d| fits(&d)).unwrap_or(0),
+        "total": obs.len(),
+        "reassigned": reassigned,
+    })
+}
+
+/// [`report`] with a known playing direction (see [`apply_direction`]).
+pub fn report_with(profile: &SportProfile, frames: &[Value], given: Option<Direction>) -> Value {
     let sport = profile.id.as_str();
     let (l, w) = (profile.field.length, profile.field.width);
     let n = frames.len();
     let t0 = frames.first().and_then(|f| f["t"].as_f64()).unwrap_or(0.0);
     let t1 = frames.last().and_then(|f| f["t"].as_f64()).unwrap_or(0.0);
-    let att = attempts(profile, frames);
+    let mut att = attempts(profile, frames);
+    let direction = apply_direction(profile, &mut att, given);
+    let att = att;
 
     // possession (ball held by a player of a team), ball in thirds, position heat maps
     let nx = 24usize;
@@ -542,6 +597,7 @@ pub fn report(profile: &SportProfile, frames: &[Value]) -> Value {
         "thirds": thirds.iter().map(|c| r2(*c as f64 / ball_seen.max(1) as f64)).collect::<Vec<_>>(),
         "heat": {"nx": nx, "ny": ny, "home": heat["home"], "away": heat["away"], "ball": heat["ball"]},
         "shape": shape(profile, frames),
+        "direction": direction,
         "moments": moments,
     })
 }
@@ -636,5 +692,27 @@ mod tests {
         let mut pts: Vec<(f32, f32)> = (0..10).map(|i| (40.0 + (i % 4) as f32 * 5.0, 5.0 + i as f32 * 6.0)).collect();
         pts.push((2.0, 34.0));
         assert_eq!(team_spread(&pts).unwrap().1, 15.0);
+    }
+
+    #[test]
+    fn playing_direction_reassigns_attempts() {
+        let p = SportProfile::basketball();
+        let shot = |t: f64, team: &str, side: &str| frame(t, json!({"state": "flight"}), json!([]), json!([{"type": "scene", "phase": "attempt", "kind": "shot2", "team": team, "side": side, "x": if side == "l" { 4.0 } else { 24.0 }, "y": 7.5, "confidence": 0.6, "t": t}]));
+        // home attacks right, away left; one shot has the wrong team colour
+        let mut frames: Vec<Value> = (0..8).map(|i| shot(i as f64 * 10.0, if i % 2 == 0 { "home" } else { "away" }, if i % 2 == 0 { "r" } else { "l" })).collect();
+        frames.push(shot(90.0, "away", "r"));
+        let r = report(&p, &frames);
+        assert_eq!(r["direction"]["source"], "estimated");
+        assert_eq!(r["direction"]["home_start"], "r");
+        assert_eq!(r["direction"]["reassigned"], 1);
+        assert_eq!(r["totals"]["home"], 5);
+        // given the other way round, everything flips
+        let r = report_with(&p, &frames, Direction::new('l', None));
+        assert_eq!(r["direction"]["source"], "given");
+        assert_eq!(r["totals"]["home"], 4);
+        // too few attempts: shown, but nothing re-assigned
+        let r = report(&p, &frames[..3]);
+        assert_eq!(r["direction"]["source"], "unknown");
+        assert_eq!(r["direction"]["reassigned"], 0);
     }
 }

@@ -81,6 +81,8 @@ Situaciones de juego (run/live):
   --scenes          detecta formaciones e intentos de tiro: baloncesto salto inicial, tiro libre, saque de banda, tiro de 2/3 puntos;
                     fútbol saque inicial, penalti, córner, saque de banda; balonmano saque de centro, lanzamiento de 7 m, saque de banda; fútbol sala/hockey saque inicial, penalti, ...
                     (lista por deporte: docs/SCENARIOS.es.md); aparece en el registro, como `scenes` en el JSON y en `stats`
+  --home-attacks l|r  dirección de juego: portería/canasta que ataca el local al principio (izquierda/derecha como en el minimapa); tiros,
+                    tiros libres, córneres y penaltis cuentan para el equipo atacante (también en stats y ticker); --switch-at mm:ss cambio de campo
 
 Opciones de run:
   --ref-color #hex  color de la camiseta de los árbitros (p. ej. #000000 o amarillo): encuentra a los árbitros por el color aunque el modelo no los vea

@@ -163,6 +163,10 @@ Cliquez *Mesurer*. Le programme examine une douzaine d'images et apprend quelle 
 ![Couleurs des maillots et silhouettes](img/fr/step3-colours.webp)
 *Couleurs des maillots et silhouettes : pour les personnages animés de la vidéo de test, la zone du maillot est plus basse (0,3 à 0,65) et l'échantillon de couleur s'appuie sur le rouge et le bleu.*
 
+### 3d · Sens du jeu
+
+Pour les sports avec buts ou paniers (basketball, football, futsal, handball, hockey, lacrosse) : **Domicile attaque au début vers** *gauche* ou *droite* (comme sur la minicarte), et si besoin **Changement de côté à** en temps vidéo, p. ex. `20:00`. Tirs, lancers francs, corners, penaltys et jets de 7 m comptent alors pour l'équipe qui attaque ce but – même si la couleur du maillot du tireur a été mal reconnue. Avec *Estimer automatiquement*, les statistiques déduisent le sens des tentatives et ne l'appliquent que s'il est net (au moins 6 tentatives, 70 % concordent). L'étape 7 indique sous la carte des tirs le sens retenu et combien de tentatives ont été réattribuées.
+
 ## Étape 4 · Traitement
 
 1. **Segments.** Chaque ligne est un traitement : *Nom*, *Début* et *Fin* sous la forme `min:s` (ou `h:min:s`, ou des secondes). Une fin vide signifie jusqu'à la fin de la vidéo ; vous pouvez ainsi n'analyser qu'une partie d'un long enregistrement. Découper un match en quart-temps est plus sûr – une interruption coûte un quart-temps, pas le match entier. *Ajouter un segment* ajoute une ligne.

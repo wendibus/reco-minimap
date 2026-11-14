@@ -60,6 +60,15 @@ const de = {
     view: 'Ticker ansehen', remake: 'Neu erzeugen', make: 'Liveticker simulieren',
     none: 'Für dieses Ergebnis gibt es noch keine Simulation.', unreadable: 'Die Datei liveticker.json lässt sich nicht lesen.',
   },
+  direction: {
+    title: 'Spielrichtung', hint: 'Auf welches Tor bzw. welchen Korb die Heimmannschaft zu Beginn spielt (links/rechts wie in der Minikarte). Würfe, Freiwürfe, Ecken und Strafwürfe zählen dann für das angreifende Team – auch wenn beim Werfer die Trikotfarbe falsch erkannt wurde.',
+    home: 'Heim spielt zu Beginn auf', auto: 'Automatisch schätzen', left: 'Links', right: 'Rechts',
+    switch: 'Seitenwechsel bei (mm:ss im Video)', switchHint: 'Leer lassen, wenn das Video keinen Seitenwechsel enthält. Die Statistik übernimmt die Einstellung sofort, Spielsituationen und Ticker ab der nächsten Verarbeitung.',
+    label: 'Spielrichtung:', line: (side: string, sw: string | null) => `Heim spielt zuerst nach ${side === 'l' ? 'links' : 'rechts'}${sw ? `, Seitenwechsel bei ${sw}` : ''}`,
+    given: 'eingestellt', estimated: (a: number, n: number) => `geschätzt – ${a} von ${n} Versuchen passen dazu`,
+    unsure: (a: number, n: number) => `unsicher (${a} von ${n} Versuchen) – nicht angewendet; in Schritt 3 einstellen`, unknown: 'unbekannt – in Schritt 3 einstellen',
+    reassigned: (n: number) => `${n} ${n === 1 ? 'Versuch' : 'Versuche'} dem angreifenden Team zugeordnet`,
+  },
   job: {
     titles: { run: 'Video verarbeiten', calibrate: 'Kalibrierung', scales: 'Spielergrößen messen', colors: 'Trikotfarben bestimmen', selfcheck: 'Modell testen', fetch_ocr: 'Nummern-Modell laden', fetch_model: 'Modell von Reco camera laden', ticker: 'Liveticker simulieren', update: 'Update installieren', stats: 'Lauf-Report', clip: 'Clips schneiden', live: 'Live-Modus', board: 'Taktiktafel' } as Record<string, string>,
     fallback: 'Vorgang läuft', segment: (i: number, n: number, name: string) => `Abschnitt ${i}/${n}: ${name}`,
@@ -156,6 +165,15 @@ const en: Text = {
     view: 'View ticker', remake: 'Create again', make: 'Simulate live ticker',
     none: 'There is no simulation for this result yet.', unreadable: 'The file liveticker.json cannot be read.',
   },
+  direction: {
+    title: 'Playing direction', hint: 'Which goal or basket the home team attacks at the start (left/right as on the minimap). Shots, free throws, corners and penalties then count for the attacking team – even when the shooter\'s shirt colour was misread.',
+    home: 'Home attacks at the start', auto: 'Estimate automatically', left: 'Left', right: 'Right',
+    switch: 'Change of ends at (mm:ss in the video)', switchHint: 'Leave empty if the video has no change of ends. Statistics use the setting at once; game situations and the ticker from the next processing on.',
+    label: 'Playing direction:', line: (side: string, sw: string | null) => `Home attacks ${side === 'l' ? 'left' : 'right'} first${sw ? `, change of ends at ${sw}` : ''}`,
+    given: 'set by you', estimated: (a: number, n: number) => `estimated – ${a} of ${n} attempts fit`,
+    unsure: (a: number, n: number) => `unsure (${a} of ${n} attempts) – not applied; set it in step 3`, unknown: 'unknown – set it in step 3',
+    reassigned: (n: number) => `${n} ${n === 1 ? 'attempt' : 'attempts'} given to the attacking team`,
+  },
   job: {
     titles: { run: 'Processing the video', calibrate: 'Calibration', scales: 'Measuring player sizes', colors: 'Finding shirt colours', selfcheck: 'Testing the model', fetch_ocr: 'Downloading the number model', fetch_model: 'Downloading the Reco camera model', ticker: 'Simulating the live ticker', update: 'Installing the update', stats: 'Run report', clip: 'Cutting clips', live: 'Live mode', board: 'Tactics board' },
     fallback: 'Operation running', segment: (i, n, name) => `Section ${i}/${n}: ${name}`,
@@ -250,6 +268,15 @@ const fr: Text = {
     view: 'Voir le fil', remake: 'Recréer', make: 'Simuler le fil en direct',
     none: 'Pas encore de simulation pour ce résultat.', unreadable: 'Le fichier liveticker.json est illisible.',
   },
+  direction: {
+    title: 'Sens du jeu', hint: 'Le but ou panier que l\'équipe à domicile attaque au début (gauche/droite comme sur la minicarte). Tirs, lancers francs, corners et penaltys comptent alors pour l\'équipe qui attaque – même si la couleur du maillot du tireur a été mal reconnue.',
+    home: 'Domicile attaque au début vers', auto: 'Estimer automatiquement', left: 'Gauche', right: 'Droite',
+    switch: 'Changement de côté à (mm:ss dans la vidéo)', switchHint: 'Laisser vide si la vidéo ne contient pas de changement de côté. Les statistiques appliquent le réglage tout de suite ; situations de jeu et fil en direct au prochain traitement.',
+    label: 'Sens du jeu :', line: (side: string, sw: string | null) => `Domicile attaque d'abord à ${side === 'l' ? 'gauche' : 'droite'}${sw ? `, changement de côté à ${sw}` : ''}`,
+    given: 'réglé', estimated: (a: number, n: number) => `estimé – ${a} tentatives sur ${n} concordent`,
+    unsure: (a: number, n: number) => `incertain (${a} sur ${n} tentatives) – non appliqué ; à régler à l'étape 3`, unknown: 'inconnu – à régler à l\'étape 3',
+    reassigned: (n: number) => `${n} ${n === 1 ? 'tentative attribuée' : 'tentatives attribuées'} à l'équipe qui attaque`,
+  },
   job: {
     titles: { run: 'Traitement de la vidéo', calibrate: 'Calibrage', scales: 'Mesure de la taille des joueurs', colors: 'Couleurs de maillot', selfcheck: 'Test du modèle', fetch_ocr: 'Téléchargement du modèle de numéros', fetch_model: 'Téléchargement du modèle de Reco camera', ticker: 'Simulation du fil en direct', update: 'Installation de la mise à jour', stats: 'Rapport de traitement', clip: 'Découpe des clips', live: 'Mode direct', board: 'Tableau tactique' },
     fallback: 'Opération en cours', segment: (i, n, name) => `Section ${i}/${n} : ${name}`,
@@ -343,6 +370,15 @@ const es: Text = {
     empty: 'El resumen se habría quedado mudo. Los cambios necesitan los dorsales; las situaciones de juego, su detección (paso 4).',
     view: 'Ver resumen', remake: 'Crear de nuevo', make: 'Simular resumen en directo',
     none: 'Aún no hay simulación para este resultado.', unreadable: 'No se puede leer el archivo liveticker.json.',
+  },
+  direction: {
+    title: 'Dirección de juego', hint: 'La portería o canasta que ataca el equipo local al principio (izquierda/derecha como en el minimapa). Tiros, tiros libres, córneres y penaltis cuentan entonces para el equipo atacante, aunque el color de la camiseta del tirador se haya reconocido mal.',
+    home: 'El local ataca al principio hacia', auto: 'Estimar automáticamente', left: 'Izquierda', right: 'Derecha',
+    switch: 'Cambio de campo en (mm:ss del vídeo)', switchHint: 'Déjalo vacío si el vídeo no tiene cambio de campo. Las estadísticas aplican el ajuste al momento; las situaciones de juego y el resumen en directo, desde el próximo procesamiento.',
+    label: 'Dirección de juego:', line: (side: string, sw: string | null) => `El local ataca primero hacia la ${side === 'l' ? 'izquierda' : 'derecha'}${sw ? `, cambio de campo en ${sw}` : ''}`,
+    given: 'ajustada', estimated: (a: number, n: number) => `estimada: encajan ${a} de ${n} intentos`,
+    unsure: (a: number, n: number) => `dudosa (${a} de ${n} intentos): no aplicada; ajústala en el paso 3`, unknown: 'desconocida: ajústala en el paso 3',
+    reassigned: (n: number) => `${n} ${n === 1 ? 'intento asignado' : 'intentos asignados'} al equipo atacante`,
   },
   job: {
     titles: { run: 'Procesando el vídeo', calibrate: 'Calibración', scales: 'Midiendo el tamaño de los jugadores', colors: 'Colores de camiseta', selfcheck: 'Probando el modelo', fetch_ocr: 'Descargando el modelo de dorsales', fetch_model: 'Descargando el modelo de Reco camera', ticker: 'Simulando el resumen en directo', update: 'Instalando la actualización', stats: 'Informe del proceso', clip: 'Cortando clips', live: 'Modo en directo', board: 'Pizarra táctica' },

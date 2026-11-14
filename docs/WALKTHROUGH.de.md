@@ -163,6 +163,10 @@ Klicke *Messen*. Das Programm schaut sich etwa ein Dutzend Bilder an und lernt, 
 ![Trikotfarben und Figuren](img/de/step3-colours.webp)
 *Trikotfarben und Figuren: Für die Zeichentrickfiguren des Testvideos liegt der Trikot-Bereich tiefer (0,3 bis 0,65), und die Farbprobe lehnt sich an Rot und Blau an.*
 
+### 3d · Spielrichtung
+
+Bei Sportarten mit Toren oder Körben (Basketball, Fußball, Futsal, Handball, Hockey, Lacrosse): **Heim spielt zu Beginn auf** *links* oder *rechts* (wie in der Minikarte), dazu bei Bedarf **Seitenwechsel bei** als Videozeit, z. B. `20:00`. Würfe, Freiwürfe, Ecken, Elfmeter und 7-Meter zählen dann für das Team, das auf dieses Tor spielt – auch wenn beim Werfer die Trikotfarbe falsch erkannt wurde. Bei *Automatisch schätzen* leitet die Statistik die Richtung aus den Würfen ab und wendet sie nur an, wenn sie eindeutig ist (mindestens 6 Versuche, 70 % passen). Schritt 7 zeigt unter dem Wurfbild, welche Richtung gilt und wie viele Versuche umgeteilt wurden.
+
 ## Schritt 4 · Verarbeiten
 
 1. **Abschnitte.** Jede Zeile ist ein Lauf: *Name*, *Start* und *Ende* als `min:s` (oder `h:min:s` oder reine Sekunden). Ein leeres Ende heißt bis zum Schluss des Videos; so lässt sich auch nur ein Teil einer langen Aufnahme auswerten. Ein Spiel in Viertel zu teilen ist sicherer – ein Abbruch kostet ein Viertel, nicht das ganze Spiel. *Abschnitt hinzufügen* fügt eine Zeile hinzu.

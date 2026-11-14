@@ -328,7 +328,23 @@ fn stats_for(dir: &Path, file: &str) -> Result<Value, String> {
         return Err(trs!("zu wenige Bilder in der Datei", "too few frames in the file", "trop peu d'images dans le fichier", "muy pocas imágenes en el archivo").into());
     }
     let profile = CourtCalib::load(&dir.join("court.json").to_string_lossy()).map(|c| c.profile()).map_err(|e| e.to_string())?;
-    Ok(super::stats::report(&profile, &frames))
+    let proj = std::fs::read_to_string(dir.join("project.json")).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).unwrap_or_else(|| json!({}));
+    Ok(super::stats::report_with(&profile, &frames, project_direction(&proj["direction"])))
+}
+
+/// The playing direction set in the project (`{"home": "l"|"r"|"auto", "switch": "24:00"}`).
+fn project_direction(d: &Value) -> Option<crate::direction::Direction> {
+    crate::direction::Direction::parse(&get_s(d, "home"), &get_s(d, "switch"))
+}
+
+/// `--home-attacks` / `--switch-at` for a job, if the project has a direction.
+fn direction_args(a: &mut Vec<String>, p: &Value) {
+    if let Some(d) = project_direction(&p["direction"]) {
+        pushs(a, &["--home-attacks", &d.home_start.to_string()]);
+        if let Some(s) = d.switch_at {
+            pushs(a, &["--switch-at", &format!("{s}")]);
+        }
+    }
 }
 
 // ---------------------------------------------------------------- jobs
@@ -466,6 +482,7 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
             if p["scenes"].as_bool() == Some(true) {
                 pushs(&mut a, &["--scenes"]);
             }
+            direction_args(&mut a, p);
             if let Some(t) = &torso {
                 pushs(&mut a, &["--torso", t]);
             }
@@ -604,6 +621,7 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
                 pushs(&mut a, &["--court", "court.json"]);
             }
             ticker_names(&mut a, p);
+            direction_args(&mut a, p);
         }
         "stats" => {
             let f = get_s(p, "file");

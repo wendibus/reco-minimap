@@ -163,6 +163,10 @@ Click *Measure*. The program looks at a dozen frames and learns how tall a playe
 ![Shirt colours and figures](img/en/step3-colours.webp)
 *Shirt colours and figures: for the cartoon figures of the test video the shirt band sits lower (0.3 to 0.65), and the colour sample leans on red and blue.*
 
+### 3d · Playing direction
+
+For sports with goals or baskets (basketball, football, futsal, handball, hockey, lacrosse): **Home attacks at the start** *left* or *right* (as on the minimap), and if needed **Change of ends at** as video time, e.g. `20:00`. Shots, free throws, corners, penalties and 7 m throws then count for the team attacking that end – even when the shooter's shirt colour was misread. With *Estimate automatically* the statistics derive the direction from the attempts and apply it only when it is clear (at least 6 attempts, 70 % fit). Step 7 shows below the shot chart which direction applies and how many attempts were moved.
+
 ## Step 4 · Process
 
 1. **Segments.** Each row is one run: a *Name*, a *Start* and an *End* as `min:s` (or `h:min:s`, or plain seconds). An empty end means up to the end of the video, so you can analyse just a part of a long recording. Splitting a game into quarters is safer – an interruption costs one quarter, not the whole game. *Add segment* adds a row.

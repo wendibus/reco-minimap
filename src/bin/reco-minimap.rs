@@ -800,7 +800,7 @@ fn cmd_stats(o: &Opts, path: &str) {
         let profile = o.s("court").map(|p| load_court(p).1).unwrap_or_else(SportProfile::basketball);
         let txt = std::fs::read_to_string(path).unwrap_or_else(|e| fail(format!("{path}: {e}")));
         let frames: Vec<serde_json::Value> = txt.lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
-        let r = reco_minimap::tools::stats::report(&profile, &frames);
+        let r = reco_minimap::tools::stats::report_with(&profile, &frames, direction_opt(o));
         match o.s("json").filter(|v| !v.is_empty() && *v != "true") {
             Some(out) => std::fs::write(out, serde_json::to_string_pretty(&r).unwrap()).unwrap_or_else(|e| fail(format!("{out}: {e}"))),
             None => println!("{}", serde_json::to_string_pretty(&r).unwrap()),
@@ -1254,7 +1254,7 @@ fn cmd_live(o: &Opts, input: &str) {
     teams.apply(&mut mcfg);
     mcfg.tracker.spawn_conf = { let (low, high) = thr_players(o); if low < high { high } else { 0.0 } };
     let mut numbers = numbers_setup(o, &mut mcfg).map(|nm| BackgroundOcr::new(nm.reader,nm.min_h,nm.max_reads));
-    let mut scenes = o.has("scenes").then(|| SceneDetector::new(profile.clone()));
+    let mut scenes = o.has("scenes").then(|| { let mut d = SceneDetector::new(profile.clone()); d.direction = direction_opt(o); d });
     let mut mm = Minimap::new(mcfg, Box::new(projector));
 
     let draw_home = o.s("draw-home").and_then(parse_hex).unwrap_or(home);
@@ -1516,6 +1516,11 @@ fn state_json_with(s: &FrameState, scenes: &[SceneEvent]) -> serde_json::Value {
 }
 
 /// What the live ticker may show and the team names (`live`, and `run --ticker-json` / `ticker` for a simulation).
+/// `--home-attacks l|r` (end the home team attacks at the start) and `--switch-at mm:ss`.
+fn direction_opt(o: &Opts) -> Option<reco_minimap::direction::Direction> {
+    o.s("home-attacks").and_then(|h| reco_minimap::direction::Direction::parse(h, o.s("switch-at").unwrap_or("")))
+}
+
 fn ticker_cfg(o: &Opts, sport: &str) -> reco_minimap::tools::live::TickerCfg {
     // live ticker: what the public page may show (names only when the operator allows them)
     let ticker_mode = match o.s("ticker-names") {
@@ -1537,7 +1542,7 @@ fn ticker_cfg(o: &Opts, sport: &str) -> reco_minimap::tools::live::TickerCfg {
 /// produced, as liveticker.json (format of the live hub's /ticker.json) with a summary of how it would have done.
 fn cmd_ticker(o: &Opts, input: &str) {
     let sport = o.s("court").map(|c| load_court(c).1.id).unwrap_or_else(|| "basketball".into());
-    let sim = reco_minimap::tools::ticker_sim::from_jsonl(std::path::Path::new(input), ticker_cfg(o, &sport)).unwrap_or_else(|e| fail(e));
+    let sim = reco_minimap::tools::ticker_sim::from_jsonl(std::path::Path::new(input), ticker_cfg(o, &sport), direction_opt(o)).unwrap_or_else(|e| fail(e));
     let out = o.s("out").map(std::path::PathBuf::from).unwrap_or_else(|| reco_minimap::tools::ticker_sim::default_path(std::path::Path::new(input)));
     sim.write(&out, input, o.s("export").map(std::path::Path::new)).unwrap_or_else(|e| fail(e));
     eprintln!("{}", sim.summary_line());
@@ -1580,7 +1585,7 @@ fn cmd_run(o: &Opts, input: &str) {
     teams.apply(&mut mcfg);
     mcfg.tracker.spawn_conf = { let (low, high) = thr_players(o); if low < high { high } else { 0.0 } };
     let mut numbers = numbers_setup(o, &mut mcfg);
-    let mut scenes = o.has("scenes").then(|| SceneDetector::new(profile.clone()));
+    let mut scenes = o.has("scenes").then(|| { let mut d = SceneDetector::new(profile.clone()); d.direction = direction_opt(o); d });
     let mut scene_log: Vec<SceneEvent> = Vec::new();
     let classifier = {
         let c = reco_minimap::team::TeamClassifier::new(home, away).with_keepers(if mcfg.keepers_enabled { teams.home_gk } else { None }, if mcfg.keepers_enabled { teams.away_gk } else { None });
@@ -1845,7 +1850,7 @@ fn cmd_replay(o: &Opts, path: &str) {
     mcfg.referee_rgb = o.s("ref-color").and_then(parse_hex);
     teams.apply(&mut mcfg);
     mcfg.tracker.spawn_conf = { let (low, high) = thr_players(o); if low < high { high } else { 0.0 } };
-    let mut scenes = o.has("scenes").then(|| SceneDetector::new(profile.clone()));
+    let mut scenes = o.has("scenes").then(|| { let mut d = SceneDetector::new(profile.clone()); d.direction = direction_opt(o); d });
     let mut mm = Minimap::new(mcfg, Box::new(projector));
     let mut jsonl = o.s("json").map(|p| std::io::BufWriter::new(std::fs::File::create(p).unwrap_or_else(|e| fail(format!("{p}: {e}")))));
     let theme = Theme { px_per_m: o.s("scale").and_then(|v| v.parse().ok()).unwrap_or_else(|| Renderer::default_px_per_m(&profile)), home: o.s("draw-home").and_then(parse_hex).unwrap_or(home), away: o.s("draw-away").and_then(parse_hex).unwrap_or(away), min_alpha: o.f("min-alpha", 0.8) as f32, keeper_stripes: !o.has("no-stripes"), home_keeper: o.s("draw-home-gk").and_then(parse_hex), away_keeper: o.s("draw-away-gk").and_then(parse_hex), ..Theme::default() };

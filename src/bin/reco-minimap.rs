@@ -354,6 +354,7 @@ fn main() {
         "selfcheck" => cmd_selfcheck(&o, &input),
         "scales" => cmd_scales(&o, &input),
         "stats" => cmd_stats(&o, &input),
+        "ticker" => cmd_ticker(&o, &input),
         "clip" => cmd_clip(&o, &input),
         "review-identities" => {
             let annotations = o.s("annotations").unwrap_or_else(|| fail(trs!("--annotations fehlt", "--annotations is missing", "--annotations manquant", "falta --annotations")));
@@ -1258,20 +1259,9 @@ fn cmd_live(o: &Opts, input: &str) {
 
     let draw_home = o.s("draw-home").and_then(parse_hex).unwrap_or(home);
     let draw_away = o.s("draw-away").and_then(parse_hex).unwrap_or(away);
-    // live ticker: what the public page may show (names only when the operator allows them)
-    let ticker_mode = match o.s("ticker-names") {
-        None => "numbers",
-        Some(m) => reco_minimap::tools::live::TickerCfg::parse_mode(m).unwrap_or_else(|| fail(tr!("--ticker-names: '{m}' ist unbekannt (numbers | names | both)", "--ticker-names: '{m}' is unknown (numbers | names | both)", "--ticker-names : « {m} » est inconnu (numbers | names | both)", "--ticker-names: '{m}' es desconocido (numbers | names | both)"))),
-    };
-    let ticker = reco_minimap::tools::live::TickerCfg {
-        names: ticker_mode.to_string(),
-        home_name: o.s("home-name").unwrap_or("").to_string(),
-        away_name: o.s("away-name").unwrap_or("").to_string(),
-        home_players: o.s("roster-home").map(reco_minimap::jersey::parse_roster_names).unwrap_or_default(),
-        away_players: o.s("roster-away").map(reco_minimap::jersey::parse_roster_names).unwrap_or_default(),
-        sport: profile.id.clone(),
-        approve: o.has("ticker-approve"),
-    };
+    let ticker = ticker_cfg(o, &profile.id);
+    let ticker_mode = ticker.names.clone();
+    let ticker_mode = ticker_mode.as_str();
     let hub = Hub::with_ticker(serde_json::json!({"home": hex(draw_home), "away": hex(draw_away), "referee": "#000000", "ball": "#ff8c00", "floor": "#262c34", "linecolor": "#e1e4e8",
         "sport": profile.id, "numbers": o.has("numbers"), "field": [profile.field.length, profile.field.width], "lines": profile.lines.iter().map(|pl| pl.iter().map(|p| [(p.x * 100.0).round() / 100.0, (p.y * 100.0).round() / 100.0]).collect::<Vec<_>>()).collect::<Vec<_>>()}).to_string(), Some(ticker));
     // copies of the public feed for a web site: a folder and/or an upload (static files only, no code on the receiving side)
@@ -1429,6 +1419,9 @@ fn cmd_live(o: &Opts, input: &str) {
         }
         if let Some(ev) = v["events"].as_array() {
             hub.push_events(ev);
+            if let (Some(p), false) = (o.s("ticker-json"), ev.is_empty()) {
+                let _ = std::fs::write(p, hub.ticker_json(0));
+            }
         }
         hub.publish(line);
         n += 1;
@@ -1522,6 +1515,35 @@ fn state_json_with(s: &FrameState, scenes: &[SceneEvent]) -> serde_json::Value {
         "events": s.events.iter().map(|e| serde_json::json!({"type": "sub", "kind": if e.kind == reco_minimap::SubKind::Confirmed { "confirmed" } else { "possible" }, "team": match e.team { Team::Home => "home", Team::Away => "away", Team::Unknown => "none" }, "slot": e.slot, "out": e.out_number, "in": e.in_number, "t": (e.t * 1000.0).round() / 1000.0})).chain(scenes.iter().map(scene_json)).collect::<Vec<_>>()})
 }
 
+/// What the live ticker may show and the team names (`live`, and `run --ticker-json` / `ticker` for a simulation).
+fn ticker_cfg(o: &Opts, sport: &str) -> reco_minimap::tools::live::TickerCfg {
+    // live ticker: what the public page may show (names only when the operator allows them)
+    let ticker_mode = match o.s("ticker-names") {
+        None => "numbers",
+        Some(m) => reco_minimap::tools::live::TickerCfg::parse_mode(m).unwrap_or_else(|| fail(tr!("--ticker-names: '{m}' ist unbekannt (numbers | names | both)", "--ticker-names: '{m}' is unknown (numbers | names | both)", "--ticker-names : « {m} » est inconnu (numbers | names | both)", "--ticker-names: '{m}' es desconocido (numbers | names | both)"))),
+    };
+    reco_minimap::tools::live::TickerCfg {
+        names: ticker_mode.to_string(),
+        home_name: o.s("home-name").unwrap_or("").to_string(),
+        away_name: o.s("away-name").unwrap_or("").to_string(),
+        home_players: o.s("roster-home").map(reco_minimap::jersey::parse_roster_names).unwrap_or_default(),
+        away_players: o.s("roster-away").map(reco_minimap::jersey::parse_roster_names).unwrap_or_default(),
+        sport: sport.to_string(),
+        approve: o.has("ticker-approve"),
+    }
+}
+
+/// `reco-minimap ticker out/game.jsonl [--out FILE] [--export DIR]`: the live ticker this result would have
+/// produced, as liveticker.json (format of the live hub's /ticker.json) with a summary of how it would have done.
+fn cmd_ticker(o: &Opts, input: &str) {
+    let sport = o.s("court").map(|c| load_court(c).1.id).unwrap_or_else(|| "basketball".into());
+    let sim = reco_minimap::tools::ticker_sim::from_jsonl(std::path::Path::new(input), ticker_cfg(o, &sport)).unwrap_or_else(|e| fail(e));
+    let out = o.s("out").map(std::path::PathBuf::from).unwrap_or_else(|| reco_minimap::tools::ticker_sim::default_path(std::path::Path::new(input)));
+    sim.write(&out, input, o.s("export").map(std::path::Path::new)).unwrap_or_else(|e| fail(e));
+    eprintln!("{}", sim.summary_line());
+    println!("{}", out.display());
+}
+
 fn cmd_run(o: &Opts, input: &str) {
     let info = open_info(o, input);
     progress::report(None, None, trs!("Modell wird geladen …", "Loading the model …", "Chargement du modèle …", "Cargando el modelo …"));
@@ -1596,7 +1618,9 @@ fn cmd_run(o: &Opts, input: &str) {
         jsonl = Some(std::io::BufWriter::new(std::fs::File::create(p).unwrap_or_else(|e| fail(format!("{p}: {e}")))));
     }
     let mut dets_out = o.s("dets").map(|p| std::io::BufWriter::new(std::fs::File::create(p).unwrap_or_else(|e| fail(format!("{p}: {e}")))));
-    if w_min.is_none() && w_alpha.is_none() && w_pip.is_none() && jsonl.is_none() && dets_out.is_none() {
+    // what a live ticker would have shown for this video (liveticker.json)
+    let mut tsim = o.s("ticker-json").map(|_| reco_minimap::tools::ticker_sim::TickerSim::new(ticker_cfg(o, &profile.id)));
+    if w_min.is_none() && w_alpha.is_none() && w_pip.is_none() && jsonl.is_none() && dets_out.is_none() && tsim.is_none() {
         fail::<()>(trs!("kein Ausgang gewählt: --minimap, --alpha, --pip, --json und/oder --dets", "no output chosen: --minimap, --alpha, --pip, --json and/or --dets", "aucune sortie choisie : --minimap, --alpha, --pip, --json et/ou --dets", "no se ha elegido ninguna salida: --minimap, --alpha, --pip, --json y/o --dets"));
     }
     if let Some(w) = dets_out.as_mut() {
@@ -1691,8 +1715,14 @@ fn cmd_run(o: &Opts, input: &str) {
             frame.blit(&c, ox, oy);
             w.write(&frame.rgb).unwrap_or_else(|e| fail(e));
         }
-        if let Some(j) = jsonl.as_mut() {
-            let _ = writeln!(j, "{}", state_json_with(&state, &sc));
+        if jsonl.is_some() || tsim.is_some() {
+            let fj = state_json_with(&state, &sc);
+            if let Some(ts) = tsim.as_mut() {
+                ts.add_frame(&fj);
+            }
+            if let Some(j) = jsonl.as_mut() {
+                let _ = writeln!(j, "{fj}");
+            }
         }
         prev_state = Some(state.clone());
         d_out += to.elapsed();
@@ -1752,6 +1782,11 @@ fn cmd_run(o: &Opts, input: &str) {
     }
     if let Some(mut w) = dets_out {
         let _ = w.flush();
+    }
+    if let (Some(ts), Some(p)) = (tsim, o.s("ticker-json")) {
+        ts.write(std::path::Path::new(p), input, o.s("ticker-export").map(std::path::Path::new)).unwrap_or_else(|e| fail(e));
+        eprintln!("{}
+  -> {p}", ts.summary_line());
     }
     let _ = Vec2::default();
 }

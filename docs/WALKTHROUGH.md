@@ -324,6 +324,10 @@ The *Team shape* card shows how wide and how deep each team stands. It only uses
 
 The list shows attempts, game situations and confirmed substitutions with time, team and zone. Tick moments (*All* selects all) and click *Cut clips*: each gets a short clip from the video in `out/clips/`, from 6 s before to 4 s after the moment. *Show clips* opens the folder. The video from step 2 must still be in the same place.
 
+### Live ticker simulation
+
+What would the live ticker have reported for this video? The card shows entries, entries per 10 minutes, confirmed and possible substitutions, game situations and the longest silence. *Simulate live ticker* creates `liveticker.json` (or tick the output *Live ticker file* in step 4), *View ticker* shows the page as viewers would have seen it. So you know before a game whether the ticker is worth it. Team names and display (numbers/names) come from step 5.
+
 ---
 
 ## Updating

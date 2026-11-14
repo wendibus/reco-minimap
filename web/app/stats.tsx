@@ -65,6 +65,39 @@ function heatCells(s: Stats, values: number[], nx: number, ny: number, color: st
   return values.map((v, i) => v > 0 && <rect key={i} x={(i % nx) * cw} y={Math.floor(i / nx) * ch} width={cw} height={ch} fill={color} fillOpacity={0.12 + 0.78 * (v / max)} {...tipHandlers(label(v))} />);
 }
 
+// ---------------------------------------------------------------- live ticker simulation of the chosen result
+function TickerSimCard({ file }: { file: string }) {
+  const { files, t, lang, project, runJob } = useApp();
+  const tx = t.tickerSim;
+  const path = file.replace(/\.jsonl$/, '.liveticker.json');
+  const exists = files.out.some((o) => o.path === path);
+  const [sim, setSim] = useState<Json | null>(null);
+  const feed = `/api/ticker-feed?file=${encodeURIComponent(path)}`;
+  useEffect(() => {
+    setSim(null);
+    if (!exists) return;
+    void fetch(feed, { cache: 'no-store' }).then((r) => r.ok ? r.json() : null).then((j) => setSim(j?.simulation ?? null)).catch(() => setSim(null));
+  }, [path, exists, files.out]); // eslint-disable-line react-hooks/exhaustive-deps
+  const make = () => void runJob('ticker', { file, ticker_names: project.live?.ticker_names, home_name: project.live?.home_name, away_name: project.live?.away_name });
+  const scenes = sim ? Object.values(sim.scenes ?? {}).reduce((a: number, b) => a + Number(b), 0) : 0;
+  return <Card title={tx.title} hint={tx.hint}>
+    {sim ? <>
+      <div className="mm-tiles">
+        <Tile label={tx.entries} value={sim.entries} sub={tx.per10(sim.per_10min)} />
+        <Tile label={tx.subs} value={sim.substitutions?.confirmed ?? 0} sub={tx.possible(sim.substitutions?.possible ?? 0)} />
+        <Tile label={tx.scenes} value={scenes} />
+        <Tile label={tx.gap} value={clock(sim.longest_gap)} sub={tx.gapAt(clock(sim.longest_gap_at))} />
+      </div>
+      {sim.entries === 0 && <p className="mm-hint">{tx.empty}</p>}
+      <div className="mm-row mm-wrap">
+        <a className="primary-button" data-hint={t.hints.tickerView} href={`/ticker?feed=${encodeURIComponent(feed)}&lang=${lang}`} target="_blank" rel="noreferrer">▷ {tx.view}</a>
+        <Btn hint={t.hints.tickerMake} onClick={make}>{tx.remake}</Btn>
+        <span className="mm-muted small">{path.split('/').pop()}</span>
+      </div>
+    </> : <div className="mm-row mm-wrap"><span className="mm-hint mm-grow">{exists ? tx.unreadable : tx.none}</span><Btn primary hint={t.hints.tickerMake} onClick={make}>{tx.make}</Btn></div>}
+  </Card>;
+}
+
 // ---------------------------------------------------------------- the panel
 export function StatsPanel() {
   const { files, dir, t, project, runJob, common, log } = useApp();
@@ -98,7 +131,7 @@ export function StatsPanel() {
     </div> : <p className="mm-muted">{ts.none}</p>}
     {error && <p className="bad small">{error}</p>}
   </Card>;
-  if (!stats) return picker;
+  if (!stats) return <>{picker}{file && <TickerSimCard file={file} />}</>;
 
   const sec = sections(stats.sport);
   const kindLabel = (k?: string) => (k && ts.kinds[k]) || k || '';
@@ -110,6 +143,7 @@ export function StatsPanel() {
   return <>
     <TipLayer />
     {picker}
+    <TickerSimCard file={file} />
     <div className="mm-tiles">
       {sec.shots && <><Tile label={`${ts.attempts} · ${ts.home}`} value={stats.totals.home} swatch={colors.home} /><Tile label={`${ts.attempts} · ${ts.away}`} value={stats.totals.away} swatch={colors.away} /></>}
       {sec.possession && <Tile label={`${ts.possession} · ${ts.home}`} value={`${Math.round(stats.possession.home * 100)} %`} sub={`${ts.away} ${Math.round(stats.possession.away * 100)} %`} />}

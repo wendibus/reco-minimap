@@ -324,6 +324,10 @@ Die Karte *Teamform* zeigt, wie breit und wie tief jedes Team steht. Sie rechnet
 
 Die Liste zeigt Versuche, Spielsituationen und bestätigte Wechsel mit Zeit, Team und Zone. Hake Momente an (*Alle* wählt alle) und klicke *Clips schneiden*: Für jeden entsteht in `out/clips/` ein kurzer Clip aus dem Video, 6 s vor bis 4 s nach dem Moment. *Clips zeigen* öffnet den Ordner. Dafür muss das Video aus Schritt 2 noch am selben Ort liegen.
 
+### Live-Ticker-Simulation
+
+Was hätte der Live-Ticker bei diesem Video gemeldet? Die Karte zeigt Einträge, Einträge pro 10 Minuten, bestätigte und mögliche Wechsel, Spielsituationen und die längste Pause. *Liveticker simulieren* erzeugt die Datei `liveticker.json` (oder du hakst in Schritt 4 gleich die Ausgabe *Liveticker-Datei* an), *Ticker ansehen* zeigt die Seite so, wie Zuschauer sie gesehen hätten. So weißt du vor einem Spiel, ob sich der Ticker lohnt. Teamnamen und Anzeige (Nummern/Namen) kommen aus Schritt 5.
+
 ---
 
 ## Aktualisieren

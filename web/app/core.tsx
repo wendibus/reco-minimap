@@ -54,7 +54,7 @@ const defaults = (): Json => ({
   lang: LANG, sport: 'basketball', custom: { length: 40, width: 20, team_size: 5, referees: 2 }, model_id: '', video: '', calib_time: 60,
   colors: { draw_home: '#ffffff', draw_away: '#2f6bff', ref_color: '#000000' }, segments: [{ name: T('run.segname') + '1', start: 0, duration: 0 }],
   figures: { torso_top: 0.18, torso_bottom: 0.5, shirt_match: false, no_referees: false },
-  run: { every: 5, outputs: { minimap: true, alpha: false, pip: false, json: true }, alpha_bg: 0.6, min_alpha: 1, ep: 'auto', units: 'all', scenes: false, workers: 1, numbers: { enabled: false, hires: '', roster_home: '', roster_away: '' } },
+  run: { ball_model_id: '', person_hz: 10, every: 5, outputs: { minimap: true, alpha: false, pip: false, json: true }, alpha_bg: 0.6, min_alpha: 1, ep: 'auto', units: 'all', scenes: false, workers: 1, numbers: { enabled: false, hires: '', roster_home: '', roster_away: '' } },
   live: { source: '', size: '1920x1080', fps: 25, port: 8765, realtime: false, adaptive: false, ticker_names: 'numbers', home_name: '', away_name: '', network: false, ticker_approve: false, ticker_export: false, ticker_push: '', ticker_key: '' },
 });
 
@@ -179,7 +179,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const isKeeperSport = () => !!state.init?.sports.find((s) => s.id === state.project.sport)?.keepers;
   const common = () => {
     const p = state.project;
-    return { ep: p.run?.ep || 'auto', units: p.run?.units, workers: Number(p.run?.workers) || 1, model_dir: activeModel()?.dir ?? '', video: p.video, numbers: p.run?.numbers, scenes: p.run?.scenes, figures: p.figures, direction: p.direction };
+    return { ball_model_dir: state.models.find((m) => m.id === p.run?.ball_model_id)?.dir ?? '', person_hz: Number(p.run?.person_hz) || 10, ep: p.run?.ep || 'auto', units: p.run?.units, workers: Number(p.run?.workers) || 1, model_dir: activeModel()?.dir ?? '', video: p.video, numbers: p.run?.numbers, scenes: p.run?.scenes, figures: p.figures, direction: p.direction };
   };
 
   const value: Ctx = { ...state, lang, setLanguage, t: TEXT[lang], hints, toggleHints, set, mutate, openProject, refresh, log, logLines, jobs, runJob, cancelJob, activeModel, sport, common, isKeeperSport };

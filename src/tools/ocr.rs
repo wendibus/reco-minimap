@@ -199,3 +199,22 @@ fn extract_member(zip_path: &Path, suffix: &str, out: &Path) -> Result<(), Strin
     }
     Err(trs!("Das Erkennungsmodell wurde im Paket nicht gefunden", "The recognition model was not found in the package", "Le modèle de reconnaissance est introuvable dans le paquet", "No se encontró el modelo de reconocimiento en el paquete").into())
 }
+
+/// Cheap crop ranking, not a calibrated readability probability. Flat or tiny
+/// crops cannot carry useful digit evidence. Spatial edges favour sharper crops.
+pub fn crop_quality(crop: &Crop) -> f32 {
+    if crop.w<6 || crop.h<6 || crop.rgb.len()!=crop.w*crop.h*3 { return 0.0; }
+    let step=(crop.w.max(crop.h)/48).max(1);
+    let luma=|x:usize,y:usize| { let i=(y*crop.w+x)*3; (crop.rgb[i] as f32*0.299+crop.rgb[i+1] as f32*0.587+crop.rgb[i+2] as f32*0.114)/255.0 };
+    let (mut sum,mut sum2,mut edges,mut count)=(0.0,0.0,0.0,0.0);
+    for y in (0..crop.h-step).step_by(step) {
+        for x in (0..crop.w-step).step_by(step) {
+            let a=luma(x,y);
+            sum+=a;sum2+=a*a;
+            edges+=(a-luma(x+step,y)).abs()+(a-luma(x,y+step)).abs();
+            count+=1.0;
+        }
+    }
+    let contrast=(sum2/count-(sum/count).powi(2)).max(0.0).sqrt();
+    if contrast<0.01 {0.0} else {(contrast+edges/count)*crop.h.min(128) as f32}
+}

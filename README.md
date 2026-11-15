@@ -635,3 +635,8 @@ updates JSONL without re-rendering videos. The **Review** link in the browser UI
 now opens a local video/map player, event navigation and roster/correction editor.
 It exports the same annotation document for the CLI; see the instructions above
 for browser limits, time alignment and saving your edits.
+
+
+Predictive adaptive search, optional two-rate ball detection, replayable OCR and
+paired timing/quality evaluation: [implementation and validation notes (German)](docs/PREDICTIVE_ANALYSIS.de.md).
+The fivefold time reduction is a validation target, not a measured guarantee.

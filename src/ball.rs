@@ -80,9 +80,11 @@ pub struct BallTracker {
     have_pos: bool,
     last_seen: f64,
     last_t: Option<f64>,
-    cand: Option<(u32, u32)>,
+    cand: Option<(u32, u32, f64)>,
     release_count: u32,
+    release_since: Option<f64>,
     fast_count: u32,
+    fast_since: Option<f64>,
     slow_since: Option<f64>,
     slow_count: u32,
     /// Where the free ball has been resting, and since when.
@@ -98,7 +100,7 @@ fn contains(b: &BBox, x: f32, y: f32, expand: f32) -> bool {
 
 impl BallTracker {
     pub fn new(cfg: BallCfg) -> Self {
-        Self { cfg, state: BallState::Unknown, pos: Vec2::default(), vel: Vec2::default(), have_pos: false, last_seen: f64::NEG_INFINITY, last_t: None, cand: None, release_count: 0, fast_count: 0, slow_since: None, slow_count: 0, anchor: None, parked: Vec::new() }
+        Self { cfg, state: BallState::Unknown, pos: Vec2::default(), vel: Vec2::default(), have_pos: false, last_seen: f64::NEG_INFINITY, last_t: None, cand: None, release_count: 0, release_since: None, fast_count: 0, fast_since: None, slow_since: None, slow_count: 0, anchor: None, parked: Vec::new() }
     }
 
     /// Where the ball should be now (for gating false positives); `None` if not seen recently.
@@ -128,6 +130,22 @@ impl BallTracker {
     }
 
     pub fn update(&mut self, t: f64, obs: Option<BallObs>, players: &[Track]) -> BallOut {
+        // Counts must describe a continuous sequence, not observations separated
+        // by a long blind interval. Missing evidence never implies a release.
+        if !t.is_finite() {
+            *self = Self::new(self.cfg.clone());
+            return BallOut { state: BallState::Unknown, pos: None, vel: None };
+        }
+        if self.last_t.is_some_and(|last| t < last || t-last > 3.0) {
+            *self = Self::new(self.cfg.clone());
+        }
+        if obs.is_none() || t-self.last_seen > 0.5 {
+            self.cand=None;
+            self.release_count=0;self.release_since=None;
+            self.fast_count=0;self.fast_since=None;
+            self.slow_count=0;
+            self.slow_since=None;
+        }
         let dt = match self.last_t {
             Some(p) => ((t - p) as f32).clamp(0.001, 0.5),
             None => 0.04,
@@ -180,19 +198,19 @@ impl BallTracker {
         match (self.state, obs.is_some(), cand) {
             // ---- ball seen inside somebody's box
             (BallState::Held { track }, true, Some(id)) if id == track => {
-                self.release_count = 0;
+                self.release_count = 0; self.release_since=None;
                 self.cand = None;
             }
             (_, true, Some(id)) => {
-                self.release_count = 0;
-                self.fast_count = 0;
+                self.release_count = 0; self.release_since=None;
+                self.fast_count = 0; self.fast_since=None;
                 match self.cand {
-                    Some((cid, n)) if cid == id => {
-                        if n + 1 >= self.cfg.hold_frames {
+                    Some((cid, n, since)) if cid == id => {
+                        if n + 1 >= self.cfg.hold_frames && t-since >= 0.02 {
                             self.state = BallState::Held { track: id };
                             self.cand = None;
                         } else {
-                            self.cand = Some((cid, n + 1));
+                            self.cand = Some((cid, n + 1, since));
                         }
                     }
                     _ => {
@@ -200,7 +218,7 @@ impl BallTracker {
                             self.state = BallState::Held { track: id };
                             self.cand = None;
                         } else {
-                            self.cand = Some((id, 1));
+                            self.cand = Some((id, 1, t));
                         }
                     }
                 }
@@ -209,7 +227,8 @@ impl BallTracker {
             (BallState::Held { track }, true, None) => {
                 self.cand = None;
                 self.release_count += 1;
-                if self.release_count >= self.cfg.release_frames {
+                let since=*self.release_since.get_or_insert(t);
+                if self.release_count >= self.cfg.release_frames && (self.cfg.release_frames<=1 || t-since>=0.02) {
                     let above = players
                         .iter()
                         .find(|p| p.id == track)
@@ -217,7 +236,7 @@ impl BallTracker {
                         .map(|b| obs.map(|o| o.bbox.cy < b.cy - b.h * 0.5).unwrap_or(false))
                         .unwrap_or(false);
                     self.state = if speed > self.cfg.flight_speed || above { BallState::InFlight } else { BallState::Loose };
-                    self.release_count = 0;
+                    self.release_count = 0; self.release_since=None;
                     self.slow_since = None;
                     self.slow_count = 0;
                 }
@@ -241,10 +260,11 @@ impl BallTracker {
                 self.cand = None;
                 if speed > self.cfg.flight_speed {
                     self.fast_count += 1;
+                    self.fast_since.get_or_insert(t);
                 } else {
-                    self.fast_count = 0;
+                    self.fast_count = 0; self.fast_since=None;
                 }
-                self.state = if self.fast_count >= self.cfg.flight_frames { BallState::InFlight } else { BallState::Loose };
+                self.state = if self.fast_count >= self.cfg.flight_frames && (self.cfg.flight_frames<=1 || self.fast_since.is_some_and(|since|t-since>=0.02)) { BallState::InFlight } else { BallState::Loose };
             }
             // ---- ball not seen
             (BallState::Held { .. }, false, _) => {
@@ -261,7 +281,7 @@ impl BallTracker {
             }
             (_, false, _) => {
                 self.cand = None;
-                self.fast_count = 0;
+                self.fast_count = 0; self.fast_since=None;
                 if (t - self.last_seen) as f32 > self.cfg.coast_secs {
                     self.state = BallState::Unknown;
                 }
@@ -282,7 +302,7 @@ impl BallTracker {
                         self.have_pos = false;
                         self.vel = Vec2::default();
                         self.anchor = None;
-                        self.fast_count = 0;
+                        self.fast_count = 0; self.fast_since=None;
                     }
                 }
                 _ => self.anchor = Some((self.pos, t)),

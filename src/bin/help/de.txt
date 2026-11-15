@@ -103,3 +103,9 @@ run-Optionen:
   --pip-width 0.28  Breite der Minimap im --pip-Video (Anteil der Panoramabreite)
   --no-backfill     run --json: Nummern nach dem Lauf nicht entlang der Spuren ergänzen
   --vcodec auto     (Standard) macOS: h264_videotoolbox bis 4096 px, sonst libx264; oder fest libx264, h264_videotoolbox …
+
+
+Erweiterte Analyse: --ball-model <Ordner|.onnx> --person-hz 10 (experimentell)
+  --ball-full-secs 1 --ball-recovery-tiles 2 --ball-workers 1 --ball-batch 4
+  --ball-model-threshold 0.2 --metrics zeit.json
+  Details: docs/PREDICTIVE_ANALYSIS.de.md

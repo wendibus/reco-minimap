@@ -4,6 +4,7 @@
 export type Lang = 'de' | 'en' | 'es' | 'fr';
 
 const de = {
+  analysis: {"title": "Erweiterte Analyse", "ballModel": "Separates Ballmodell (experimentell)", "none": "Gemeinsames Modell verwenden", "hz": "Spielererkennung: maximal pro Sekunde", "hint": "Ein separates, kleines Ballmodell kann schnelle Ballbewegungen häufiger untersuchen. Ein zweites großes Modell kann langsamer sein. Die gewählte Bildauswahl begrenzt beide Frequenzen.", "cache": "Erkennungsdaten für Neuauswertung speichern", "cacheHint": "Ermöglicht neue Auswertungen ohne erneute Erkennung und speichert die Laufzeitmessung."},
   hints: {
     toggle: 'Hinweise', toggleOn: 'Hinweise beim Überfahren der Tasten ausschalten.', toggleOff: 'Hinweise beim Überfahren der Tasten einschalten.',
     language: 'Stellt die Sprache der App um.', version: 'Die Version – ein Klick zeigt, was neu ist.',
@@ -117,6 +118,7 @@ const de = {
 type Text = typeof de;
 
 const en: Text = {
+  analysis: {"title": "Advanced analysis", "ballModel": "Separate ball model (experimental)", "none": "Use the shared model", "hz": "Player detection: maximum per second", "hint": "A separate small ball model can inspect fast ball motion more often. A second large model may be slower. Frame sampling limits both rates.", "cache": "Save detection evidence for reanalysis", "cacheHint": "Allows reanalysis without running detection again and saves timing measurements."},
   hints: {
     toggle: 'Hints', toggleOn: 'Turn off the hints shown when hovering over buttons.', toggleOff: 'Turn on the hints shown when hovering over buttons.',
     language: 'Changes the language of the app.', version: 'The version – click to see what is new.',
@@ -228,6 +230,7 @@ const en: Text = {
 };
 
 const fr: Text = {
+  analysis: {"title": "Analyse avancée", "ballModel": "Modèle de ballon séparé (expérimental)", "none": "Utiliser le modèle commun", "hz": "Détection des joueurs : maximum par seconde", "hint": "Un petit modèle séparé peut examiner plus souvent les mouvements rapides du ballon. Un second grand modèle peut ralentir le traitement. L’échantillonnage limite les deux fréquences.", "cache": "Conserver les détections pour réanalyse", "cacheHint": "Permet une nouvelle analyse sans relancer la détection et conserve les mesures de durée."},
   hints: {
     toggle: 'Astuces', toggleOn: 'Désactiver les astuces affichées au survol des boutons.', toggleOff: 'Activer les astuces affichées au survol des boutons.',
     language: 'Change la langue de l’application.', version: 'La version – un clic montre les nouveautés.',
@@ -339,6 +342,7 @@ const fr: Text = {
 };
 
 const es: Text = {
+  analysis: {"title": "Análisis avanzado", "ballModel": "Modelo de balón separado (experimental)", "none": "Usar el modelo compartido", "hz": "Detección de jugadores: máximo por segundo", "hint": "Un modelo pequeño separado puede revisar más a menudo los movimientos rápidos del balón. Un segundo modelo grande puede ser más lento. El muestreo limita ambas frecuencias.", "cache": "Guardar detecciones para volver a analizar", "cacheHint": "Permite volver a analizar sin repetir la detección y guarda las mediciones de tiempo."},
   hints: {
     toggle: 'Pistas', toggleOn: 'Desactiva las pistas al pasar sobre los botones.', toggleOff: 'Activa las pistas al pasar sobre los botones.',
     language: 'Cambia el idioma de la aplicación.', version: 'La versión: un clic muestra las novedades.',

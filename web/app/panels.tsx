@@ -173,6 +173,18 @@ function Workers() {
   return <Sel k="run.workers" label={T('run.workers')} numeric options={[1, 2, 3, 4].map((n) => [n, String(n)])} />;
 }
 
+function AdvancedAnalysis({ withCache = false }: { withCache?: boolean }) {
+  const { project, models, t } = useApp();
+  const a = t.analysis;
+  const eligible = models.filter((m) => m.classes.some((c) => c.toLowerCase().includes('ball')));
+  return <Card><details><summary>{a.title}</summary>
+    <Sel k="run.ball_model_id" label={a.ballModel} options={[["", a.none], ...eligible.map((m): [string, string] => [m.id, m.id])]} />
+    {project.run?.ball_model_id && <Num k="run.person_hz" label={a.hz} min={1} max={120} />}
+    <p className="mm-hint">{a.hint}</p>
+    {withCache && <><Check k="run.outputs.evidence" label={a.cache} /><p className="mm-hint">{a.cacheHint}</p></>}
+  </details></Card>;
+}
+
 function Numbers({ withHires }: { withHires: boolean }) {
   const { project, init, set, runJob, isKeeperSport, t } = useApp();
   const n = project.run.numbers;
@@ -234,6 +246,7 @@ export function RunPanel() {
       <div className="mm-row mm-gap"><Btn primary hint={t.hints.run} disabled={busy} onClick={() => void start()}>{T('run.start_btn')}</Btn>
         <span className="mm-muted small">{T('run.output_dir')}: <button type="button" className="mm-link" data-hint={t.hints.showFolder} onClick={() => void showFile(`${dir}/out`, false, log)}>{dir}/out</button></span></div>
     </Card>
+    <AdvancedAnalysis withCache />
     <Numbers withHires />
     {outs.length > 0 && <Card><table className="mm-table"><tbody>{outs.map((x) => <tr key={x.path}>
       <td><button type="button" className="mm-link" data-hint={t.hints.openFile} onClick={() => void showFile(x.path, true, log)}>{x.name}</button></td><td className="mm-muted">{x.mb} MB</td>
@@ -254,6 +267,7 @@ export function LivePanel() {
     void runJob('live', { ...common(), ticker_names: l.ticker_names, home_name: l.home_name, away_name: l.away_name, network: l.network === true, ticker_approve: l.ticker_approve === true, ticker_export: l.ticker_export === true, ticker_push: l.ticker_push, ticker_key: l.ticker_key, source: l.source, size: l.size, fps: l.fps, port: l.port, realtime: l.realtime, adaptive: l.adaptive === true, draw_home: c.draw_home, draw_away: c.draw_away, ref_color: c.ref_color });
   };
   return <>
+    <AdvancedAnalysis />
     <Card title={T('live.title')} hint={T('live.hint')}>
       <Labeled label={T('live.source')}><PathField value={l.source ?? ''} prompt={T('live.source')} onChange={(v) => set('live.source', v)} /></Labeled>
       <div className="mm-grid3"><Text k="live.size" label={T('live.size')} /><Num k="live.fps" label={T('live.fps')} /><Num k="live.port" label={T('live.port')} /></div>

@@ -249,11 +249,19 @@ impl Frame {
     /// mean colour) into `size`x`size`, ImageNet-normalise, CHW. Downscaling
     /// averages the source footprint (box filter) to avoid aliasing.
     pub fn tile_tensor(&self, tile: &Tile, size: usize, norm: Norm) -> Vec<f32> {
+        let mut out = Vec::new();
+        self.tile_tensor_into(tile, size, norm, &mut out);
+        out
+    }
+
+    /// Reuse the allocation while preserving exactly the existing preprocessing.
+    pub fn tile_tensor_into(&self, tile: &Tile, size: usize, norm: Norm, out: &mut Vec<f32>) {
         let (mean, std, pad) = match norm {
             Norm::ImageNet => ([0.485f32, 0.456, 0.406], [0.229f32, 0.224, 0.225], 0.0), // 0.0 == mean colour
             Norm::Unit => ([0.0; 3], [1.0; 3], 114.0 / 255.0),
         };
-        let mut out = vec![pad; 3 * size * size];
+        out.resize(3 * size * size, pad);
+        out.fill(pad);
         let (tw, th) = (tile.w as usize, tile.h as usize);
         let s = size as f32 / tw.max(th) as f32; // model px per source px
         let (cw, ch) = ((tw as f32 * s).round() as usize, (th as f32 * s).round() as usize);
@@ -292,7 +300,6 @@ impl Frame {
                 }
             }
         }
-        out
     }
 
     /// Median colour of the torso region of a player box (robust against skin/background).

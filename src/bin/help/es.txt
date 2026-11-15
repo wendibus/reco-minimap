@@ -105,3 +105,9 @@ Opciones de run:
   --pip-width 0.28  ancho del minimapa en el vídeo --pip (parte del ancho del panorama)
   --no-backfill     run --json: no propagar los dorsales a lo largo de las pistas tras el análisis
   --vcodec auto     (por defecto) macOS: h264_videotoolbox hasta 4096 px, si no libx264; o fijo libx264, h264_videotoolbox …
+
+
+Análisis avanzado: --ball-model <carpeta|.onnx> --person-hz 10 (experimental)
+  --ball-full-secs 1 --ball-recovery-tiles 2 --ball-workers 1 --ball-batch 4
+  --ball-model-threshold 0.2 --metrics tiempo.json
+  Detalles: docs/PREDICTIVE_ANALYSIS.de.md

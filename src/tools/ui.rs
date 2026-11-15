@@ -42,7 +42,7 @@ struct Job {
 /// Output files named in a job's arguments (relative ones are inside the project folder).
 fn job_outputs(dir: &Path, args: &[String]) -> Vec<PathBuf> {
     args.windows(2)
-        .filter(|w| matches!(w[0].as_str(), "--minimap" | "--alpha" | "--pip" | "--json" | "--dets" | "--ticker-json"))
+        .filter(|w| matches!(w[0].as_str(), "--minimap" | "--alpha" | "--pip" | "--json" | "--dets" | "--metrics" | "--ticker-json"))
         .map(|w| {
             let p = PathBuf::from(&w[1]);
             if p.is_absolute() { p } else { dir.join(p) }
@@ -429,6 +429,13 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
         _ => None,
     };
     let engine = |a: &mut Vec<String>| {
+        if matches!(kind,"run"|"live") && !get_s(p,"ball_model_dir").is_empty() {
+            pushs(a,&["--ball-model",&get_s(p,"ball_model_dir")]);
+            let hz=p["person_hz"].as_f64().unwrap_or(10.0);
+            if hz.is_finite() && (1.0..=120.0).contains(&hz) {
+                pushs(a,&["--person-hz",&hz.to_string()]);
+            }
+        }
         let workers=get_s(p,"workers").parse::<usize>().unwrap_or(1).clamp(1,4);
         pushs(a,&["--workers",&workers.to_string()]);
         a.push("--ep".into());
@@ -527,6 +534,10 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
                 if o["alpha"].as_bool() == Some(true) { paths.push(("--alpha", out(".mov"))); if !get_s(p, "alpha_bg").is_empty() { paths.push(("--alpha-bg", get_s(p, "alpha_bg"))); } }
                 if o["pip"].as_bool() == Some(true) { paths.push(("--pip", out("_pip.mp4"))); }
                 if o["json"].as_bool() == Some(true) { paths.push(("--json", out(".jsonl"))); }
+                if o["evidence"].as_bool()==Some(true) {
+                    paths.push(("--dets",out(".dets.jsonl")));
+                    paths.push(("--metrics",out(".metrics.json")));
+                }
                 // what a live ticker would have reported for this video
                 if o["ticker"].as_bool() == Some(true) {
                     paths.push(("--ticker-json", out(".liveticker.json")));
@@ -1052,6 +1063,24 @@ mod tests {
         assert!(pair(&build_args("update", Path::new("/x"), &json!({"lang": "xx"})).unwrap(), "--lang").is_none());
         let c = build_args("calibrate", Path::new("/x"), &json!({"video": "/v.mp4", "sport": "basketball", "time": 5, "lang": "es"})).unwrap();
         assert_eq!(c.iter().filter(|x| *x == "--lang").count(), 1);
+    }
+
+    #[test]
+    fn separate_ball_model_and_reusable_evidence_reach_analysis_jobs() {
+        let p=json!({"model_dir":"/main","video":"/video.mp4","source":"/video.mp4","ep":"cpu","every":1,"name":"trial","ball_model_dir":"/ball","person_hz":8,"outputs":{"evidence":true}});
+        for kind in ["run","live"] {
+            let a=build_args(kind,Path::new("/project"),&p).unwrap();
+            assert_eq!(pair(&a,"--ball-model").as_deref(),Some("/ball"));
+            assert_eq!(pair(&a,"--person-hz").as_deref(),Some("8"));
+            if kind=="run" {
+                assert!(pair(&a,"--dets").unwrap().ends_with("trial.dets.jsonl"));
+                assert!(pair(&a,"--metrics").unwrap().ends_with("trial.metrics.json"));
+                let outputs=job_outputs(Path::new("/project"),&a);
+                assert_eq!(outputs.len(),2);
+            }
+        }
+        let a=build_args("selfcheck",Path::new("/project"),&p).unwrap();
+        assert!(pair(&a,"--ball-model").is_none());
     }
 
     #[test]

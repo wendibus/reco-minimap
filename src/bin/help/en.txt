@@ -38,6 +38,11 @@ Common options:
   --tile auto       tiles per image row to suit the distance (needs scales.json, see `scales`; --scales <file>)
   --tile 512        tile size(s) in pixels, several are possible: --tile 512,1024 (multi-scale). Tiles > 512 are
                     scaled down, non-square ones are fitted with a border (letterbox).
+  --tile model      (default) one tile size = the model's input size; --tile auto adapts to it as well
+  --tile-for N      choose tiles as for a model with an input of N pixels (e.g. 512: smaller tiles, distant
+                    players larger, slower)
+  --batch N         tiles per model call if the model has a variable batch size (default 4; 1 = off)
+  --hwdec           decode the video on the GPU / media engine (default off: hardly pays, H.264 > 4096 px is not possible)
   --overlap 0.25    overlap of the tiles
   --roi x0,y0,x1,y1 search area as fractions of the panorama (e.g. 0,0.3,1,0.9 = only the band with the field)
   --workers N       parallel model sessions (e.g. 2-3 with CoreML; more throughput, more memory)
@@ -64,6 +69,8 @@ live options:
                       growing file (Reco is still writing):   live file:live.mkv --in-args '-follow 1' --size ...
                       OBS Virtual Camera / capture card (macOS): live 'OBS Virtual Camera' --in-args '-f avfoundation -framerate 25' --size ...
   --realtime        play a file in real time (to test without a live source), with --start S from second S
+  --adaptive        video (run): only tiles around the players and the ball of the last frame, plus rotating
+                    search tiles (--ball-search-tiles, default 2) and a full sweep every --full-every S seconds (default 1)
   --adaptive-live   live: targeted tiles between full searches (experimental)
   --ball-search-tiles N  adaptive live: N extra rotating search tiles, independent of players (default 4, 0 off)
   --sweep-secs S    full search at the latest after S seconds of input time (default 2)
@@ -94,4 +101,5 @@ run options:
   --draw-home #hex --draw-away #hex   drawing colours of the players in the minimap (the detected colours depend on the light)
   --scale 30        pixels per metre of the minimap (930x540 at 30)
   --pip-width 0.28  width of the minimap in the --pip video (share of the panorama width)
-  --vcodec libx264  (macOS: h264_videotoolbox)
+  --no-backfill     run --json: do not propagate numbers along the tracklets after the run
+  --vcodec auto     (default) macOS: h264_videotoolbox up to 4096 px, else libx264; or a fixed libx264, h264_videotoolbox …

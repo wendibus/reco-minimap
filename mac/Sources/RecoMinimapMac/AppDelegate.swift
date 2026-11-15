@@ -105,6 +105,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     // MARK: Updates
 
+    /// The standard About panel with what is new in the running version (from the program's own
+    /// notes, in the system language).
+    @objc private func showAbout() {
+        Task { @MainActor in
+            var options: [NSApplication.AboutPanelOptionKey: Any] = [:]
+            if worker.isRunning, let (version, lines) = await currentNotes() {
+                options[.applicationVersion] = version
+                let head = L("Neu in \(version):", "New in \(version):", "Nouveautés de la \(version) :", "Novedades de la \(version):")
+                let text = head + "\n" + lines.map { "• " + $0 }.joined(separator: "\n")
+                let style = NSMutableParagraphStyle()
+                style.paragraphSpacing = 4
+                options[.credits] = NSAttributedString(string: text, attributes: [
+                    .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                    .foregroundColor: NSColor.labelColor,
+                    .paragraphStyle: style,
+                ])
+            }
+            NSApp.orderFrontStandardAboutPanel(options: options)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    private func currentNotes() async -> (String, [String])? {
+        guard let url = URL(string: "\(worker.baseURL.absoluteString)/api/changelog"),
+              let (data, _) = try? await URLSession.shared.data(from: url),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let version = object["version"] as? String,
+              let notes = object["notes"] as? [String: Any],
+              let current = notes[version] as? [String: Any]
+        else { return nil }
+        let lang = String((Locale.preferredLanguages.first ?? "en").prefix(2))
+        let lines = (current[lang] as? [String]) ?? (current["en"] as? [String]) ?? []
+        return lines.isEmpty ? nil : (version, lines)
+    }
+
     @objc private func checkForUpdatesFromMenu() {
         Task { await checkForUpdates(userInitiated: true) }
     }
@@ -214,8 +249,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: L("Über Reco Minimap", "About Reco Minimap", "À propos de Reco Minimap", "Acerca de Reco Minimap"),
-                        action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        let about = appMenu.addItem(withTitle: L("Über Reco Minimap", "About Reco Minimap", "À propos de Reco Minimap", "Acerca de Reco Minimap"),
+                                    action: #selector(showAbout), keyEquivalent: "")
+        about.target = self
         let updates = appMenu.addItem(withTitle: L("Nach Updates suchen …", "Check for Updates…", "Rechercher des mises à jour…", "Buscar actualizaciones…"),
                                       action: #selector(checkForUpdatesFromMenu), keyEquivalent: "")
         updates.target = self

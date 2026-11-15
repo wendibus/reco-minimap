@@ -165,7 +165,7 @@ fn plan(o: &Opts, info: &VideoInfo) -> Vec<Tile> {
     let y = (y0 * h).floor() as u32;
     let roi = Tile { x, y, w: (x1 * w).ceil() as u32 - x, h: (y1 * h).ceil() as u32 - y };
     if o.s("tile") == Some("auto") {
-        let sc = Scales::load(o.s("scales").unwrap_or("scales.json")).unwrap_or_else(|e| fail(e));
+        let sc = Scales::load(o.s("scales").unwrap_or("scales.json")).unwrap_or_else(|e| fail(e)).for_input(tile_input(o));
         let overlap = o.f("overlap", 0.25) as f32;
         // with a calibration at hand, only tile where the field is (ball detections are used up to 3 m outside)
         let field = o.s("court").filter(|_| !o.has("no-field-mask")).and_then(|c| {
@@ -183,9 +183,10 @@ fn plan(o: &Opts, info: &VideoInfo) -> Vec<Tile> {
         }
         return tiles;
     }
-    let sizes: Vec<u32> = o.s("tile").unwrap_or("512").split(',').filter_map(|v| v.trim().parse().ok()).collect();
+    // without a size (or `--tile model`) the tiles are as large as the model's input: no scaling up
+    let sizes: Vec<u32> = o.s("tile").unwrap_or("model").split(',').filter_map(|v| if v.trim() == "model" { Some(tile_input(o) as u32) } else { v.trim().parse().ok() }).collect();
     let mut all = Vec::new();
-    for sz in if sizes.is_empty() { vec![512] } else { sizes } {
+    for sz in if sizes.is_empty() { vec![tile_input(o) as u32] } else { sizes } {
         all.extend(plan_tiles(roi, sz, o.f("overlap", 0.25) as f32));
     }
     all
@@ -204,6 +205,13 @@ fn load_model(o: &Opts) -> RfDetr {
     let mut m = RfDetr::load(path, ep, o.s("units").map(|u| Units::parse(u).unwrap_or_else(|| fail(trs!("--units: all | ane | gpu | cpu", "--units: all | ane | gpu | cpu", "--units : all | ane | gpu | cpu", "--units: all | ane | gpu | cpu")))).unwrap_or(Units::All), o.u("workers", 1)).unwrap_or_else(|e| fail(e));
     // a general COCO model (Reco camera) is less sure of players and balls: lower default thresholds
     GENERAL_MODEL.store(m.arch == reco_minimap::tools::infer::Arch::YoloE2e, std::sync::atomic::Ordering::Relaxed);
+    MODEL_INPUT.store(m.size, std::sync::atomic::Ordering::Relaxed);
+    // several tiles per call where the model allows it (variable batch dimension); `--batch 1` = off
+    match m.with_batch(o.u("batch", 4)) {
+        Ok(true) => eprintln!("{}", tr!("Inferenz: {} Kacheln pro Aufruf", "Inference: {} tiles per call", "Inférence : {} tuiles par appel", "Inferencia: {} teselas por llamada", m.batch)),
+        Ok(false) => {}
+        Err(e) => eprintln!("{}", tr!("Batch-Inferenz nicht möglich ({e}) – eine Kachel pro Aufruf", "Batched inference not possible ({e}) – one tile per call", "Inférence par lots impossible ({e}) – une tuile par appel", "Inferencia por lotes no posible ({e}) – una tesela por llamada")),
+    }
     m.cfg.thr_ball = o.f("thr-ball", thr_ball_default() as f64) as f32;
     m.cfg.thr_player = thr_players(o).1;
     m.cfg.thr_referee = o.f("thr-ref", 0.50) as f32;
@@ -221,6 +229,18 @@ fn thr_players(o: &Opts) -> (f32, f32) {
 
 /// Set once the model is loaded: true for the general model of Reco camera (end-to-end YOLO).
 static GENERAL_MODEL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Input side of the loaded model (tiles are planned for it); 512 until a model is loaded.
+static MODEL_INPUT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(512);
+
+fn model_input() -> usize {
+    MODEL_INPUT.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// The input size tiles are planned for: the model's, or `--tile-for N` (e.g. 512: smaller tiles,
+/// distant players appear larger to the model - slower, sometimes more accurate).
+fn tile_input(o: &Opts) -> usize {
+    o.s("tile-for").and_then(|v| v.parse().ok()).filter(|v: &usize| (128..=4096).contains(v)).unwrap_or_else(model_input)
+}
 
 fn thr_ball_default() -> f32 {
     if GENERAL_MODEL.load(std::sync::atomic::Ordering::Relaxed) { 0.20 } else { 0.30 }
@@ -317,6 +337,9 @@ fn main() {
     let o = Opts::parse(&args[1..]);
     // language of all messages: --lang, else RECO_MINIMAP_LANG / the system locale, else English
     i18n::set_lang(o.s("lang").and_then(i18n::Lang::parse).unwrap_or_else(i18n::from_env));
+    if o.has("hwdec") {
+        video::HW_DECODE.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     if args[0] == "fetch-ocr" {
         let dest = o.s("to").map(std::path::PathBuf::from).unwrap_or_else(ocr::default_model_path);
         match ocr::fetch_model(&dest) {
@@ -1127,10 +1150,15 @@ fn read_numbers(nm: &mut Numbers, mm: &mut Minimap, src: &Frame, t: f64) {
     cands.retain(|c| c.2 >= nm.min_h);
     // unknown numbers first, then the biggest (= best readable) boxes
     cands.sort_by(|a, b| a.3.cmp(&b.3).then(b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal)));
-    for (id, bb, _, known) in cands.into_iter().take(nm.max_reads) {
-        if known && (nm.tick + id as u64) % 12 != 0 {
-            continue; // known numbers are only re-checked now and then (this also notices a substitute)
-        }
+    // known numbers are only re-checked now and then (this also notices a substitute); a number with
+    // plenty of evidence even less often. Skipped players do not use up the reads of this frame.
+    let tick = nm.tick;
+    let due = |id: u32, known: bool| {
+        let settled = known && mm.tracker().tracks().iter().find(|x| x.id == id).is_some_and(|x| x.confirmed.is_some_and(|n| x.jersey.score_of(n) >= 8.0));
+        !known || (tick + id as u64) % if settled { 30 } else { 12 } == 0
+    };
+    cands.retain(|c| due(c.0, c.3));
+    for (id, bb, _, _) in cands.into_iter().take(nm.max_reads) {
         let (x0, y0, x1, y1) = ocr::torso_rect(src, &bb);
         let (w, h, rgb) = src.crop_rgb(x0, y0, x1, y1);
         if w < 6 || h < 6 {
@@ -1511,7 +1539,7 @@ fn ball_json(s: &FrameState) -> serde_json::Value {
 fn state_json_with(s: &FrameState, scenes: &[SceneEvent]) -> serde_json::Value {
     let agent = |a: &reco_minimap::AgentOut| {
         serde_json::json!({"id": a.id, "segment": a.segment,
-            "identity": {"status": a.identity.status.key(), "player": a.identity.player.map(|p| serde_json::json!({"team": match p.team { Team::Home => "home", Team::Away => "away", Team::Unknown => "none" }, "number": p.number}))},
+            "identity": {"status": a.identity.status.key(), "source": a.identity.source, "player": a.identity.player.map(|p| serde_json::json!({"team": match p.team { Team::Home => "home", Team::Away => "away", Team::Unknown => "none" }, "number": p.number}))},
             "team": match a.team { Team::Home => "home", Team::Away => "away", Team::Unknown => "none" },
             "x": (a.pos.x * 100.0).round() / 100.0, "y": (a.pos.y * 100.0).round() / 100.0, "vx": (a.vel.x * 100.0).round() / 100.0, "vy": (a.vel.y * 100.0).round() / 100.0, "state": format!("{:?}", a.state).to_lowercase(), "alpha": (a.alpha * 100.0).round() / 100.0, "jersey": a.jersey, "keeper": a.keeper})
     };
@@ -1598,7 +1626,7 @@ fn cmd_run(o: &Opts, input: &str) {
     let mut mm = Minimap::new(mcfg, Box::new(projector));
     let (mut n_player, mut n_ref, mut n_ball, mut n_unknown, mut n_refcolor) = (0usize, 0usize, 0usize, 0usize, 0usize);
 
-    let codec = Codec::H264(o.s("vcodec").unwrap_or("libx264").to_string());
+    let codec = Codec::H264(o.s("vcodec").unwrap_or("auto").to_string());
     let (mut w_min, mut w_alpha, mut w_pip, mut jsonl) = (None, None, None, None);
     let r_min = Renderer::with_profile(theme.clone(), profile.clone());
     if let Some(p) = o.s("minimap") {
@@ -1655,6 +1683,13 @@ fn cmd_run(o: &Opts, input: &str) {
     let end_t = t_duration(o).map(|d| t_start + d).or(info.duration);
     let mut prog = progress::Throttle::new(std::time::Duration::from_millis(500));
     let mut stopped = false;
+    // `--adaptive`: only the tiles around the people and the ball of the previous frame, plus a few
+    // rotating tiles for the rest of the picture and a full sweep every `--full-every` seconds
+    let adaptive = o.has("adaptive");
+    let mut scheduler = reco_minimap::scheduler::TileScheduler::new(o.f("full-every", 1.0));
+    let mut sweep = reco_minimap::scheduler::RecoverySweep::default();
+    let mut prev_boxes: Vec<reco_minimap::tracker::BBox> = Vec::new();
+    let mut tiles_run = 0usize;
     loop {
         if progress::stop_requested() {
             stopped = true;
@@ -1669,7 +1704,23 @@ fn cmd_run(o: &Opts, input: &str) {
         let this = idx * every as u64; // ffmpeg only delivers every Nth frame
         idx += 1;
         let t = t_start + this as f64 / info.fps;
-        let mut dets = model.detect(&frame, &tiles).unwrap_or_else(|e| fail(e));
+        let mut dets = if adaptive {
+            let (mut idxs, full) = scheduler.select(t, &tiles, info.w, info.h, &prev_boxes);
+            if !full {
+                idxs.extend(sweep.select(tiles.len(), o.u("ball-search-tiles", 2)));
+                idxs.sort_unstable();
+                idxs.dedup();
+            }
+            let chosen: Vec<_> = idxs.iter().map(|&i| tiles[i]).collect();
+            tiles_run += chosen.len();
+            model.detect(&frame, &chosen).unwrap_or_else(|e| fail(e))
+        } else {
+            tiles_run += tiles.len();
+            model.detect(&frame, &tiles).unwrap_or_else(|e| fail(e))
+        };
+        if adaptive {
+            prev_boxes = dets.iter().map(|d| reco_minimap::tracker::BBox { cx: d.cx, cy: d.cy, w: d.w, h: d.h }).collect();
+        }
         for d in dets.iter_mut().filter(|d| d.class == Class::Player) {
             d.color = if shirt_match { frame.torso_color_matching(d, torso, &shirts) } else { frame.torso_color_in(d, torso) };
             n_player += 1;
@@ -1756,6 +1807,9 @@ fn cmd_run(o: &Opts, input: &str) {
     }
     eprintln!("{}", tr!("\n{done} Bilder in {} ({:.2} Bilder/s).", "\n{done} frames in {} ({:.2} frames/s).", "\n{done} images en {} ({:.2} images/s).", "\n{done} imágenes en {} ({:.2} imágenes/s).", duration_hms(t0.elapsed().as_secs_f64()), done as f32 / t0.elapsed().as_secs_f32().max(0.001)));
     let per = |d: std::time::Duration| d.as_secs_f32() * 1000.0 / done.max(1) as f32;
+    if adaptive {
+        eprintln!("{}", tr!("Adaptive Kacheln: im Mittel {:.1} von {} Kacheln pro Bild", "Adaptive tiles: on average {:.1} of {} tiles per frame", "Tuiles adaptatives : en moyenne {:.1} sur {} tuiles par image", "Teselas adaptativas: de media {:.1} de {} teselas por imagen", tiles_run as f32 / done.max(1) as f32, tiles.len()));
+    }
     eprintln!("{}", tr!("Zeit pro Bild (ms): Decode {:.0}, Kachel-Vorverarbeitung {:.0}, Inferenz {:.0}, Tracking {:.0}, Rendern/Schreiben {:.0}", "Time per frame (ms): decode {:.0}, tile preprocessing {:.0}, inference {:.0}, tracking {:.0}, render/write {:.0}", "Temps par image (ms) : décodage {:.0}, prétraitement des tuiles {:.0}, inférence {:.0}, suivi {:.0}, rendu/écriture {:.0}", "Tiempo por imagen (ms): decodificación {:.0}, preprocesado de teselas {:.0}, inferencia {:.0}, seguimiento {:.0}, render/escritura {:.0}", per(d_decode), per(model.t_prep), per(model.t_infer), per(d_track), per(d_out)));
     let ts = mm.tracker().team_stats;
     eprintln!("{}", tr!("Team-Zuordnung: {} Erkennungen trotz anderer Trikotfarbe über die Position zugeordnet, {} Teamwechsel eines Tracks", "Team assignment: {} detections assigned by position despite another shirt colour, {} team changes of a track", "Attribution des équipes : {} détections attribuées par la position malgré une autre couleur de maillot, {} changements d'équipe d'une piste", "Asignación de equipo: {} detecciones asignadas por posición pese a otro color de camiseta, {} cambios de equipo de una pista", ts.cross_matches, ts.flips));
@@ -1788,6 +1842,17 @@ fn cmd_run(o: &Opts, input: &str) {
     }
     if let Some(mut j) = jsonl {
         let _ = j.flush();
+        drop(j);
+        // a video can look back: numbers along whole tracklets
+        if numbers.is_some() && !o.has("no-backfill") {
+            if let Some(p) = o.s("json") {
+                match reco_minimap::tools::backfill::backfill_file(std::path::Path::new(p)) {
+                    Ok(n) if n > 0 => eprintln!("{}", tr!("Nummern entlang der Spuren ergänzt: {n} Einträge", "Numbers propagated along tracklets: {n} entries", "Numéros propagés le long des pistes : {n} entrées", "Dorsales propagados a lo largo de las pistas: {n} entradas")),
+                    Ok(_) => {}
+                    Err(e) => eprintln!("{}", tr!("Nummern-Ergänzung übersprungen: {e}", "Number propagation skipped: {e}", "Propagation des numéros ignorée : {e}", "Propagación de dorsales omitida: {e}")),
+                }
+            }
+        }
     }
     if let Some(mut w) = dets_out {
         let _ = w.flush();
@@ -1861,7 +1926,7 @@ fn cmd_replay(o: &Opts, path: &str) {
     let renderer = Renderer::with_profile(theme, profile.clone());
     let mut w_min = o.s("minimap").map(|p| {
         let (w, h) = renderer.size();
-        FrameWriter::open(p, w, h, rate, true, &Codec::H264(o.s("vcodec").unwrap_or("libx264").to_string())).unwrap_or_else(|e| fail(e))
+        FrameWriter::open(p, w, h, rate, true, &Codec::H264(o.s("vcodec").unwrap_or("auto").to_string())).unwrap_or_else(|e| fail(e))
     });
     let (from, to) = (clock_opt(o, "start"), t_duration(o).map(|d| t_start(o) + d));
     let t0 = Instant::now();

@@ -95,6 +95,12 @@ pub struct FrameReader {
     pub h: usize,
 }
 
+/// Decode on the GPU / media engine where ffmpeg can (VideoToolbox, CUDA, D3D11, VAAPI …), with
+/// `--hwdec`; ffmpeg falls back to the processor by itself. Off by default: measured on an M-series
+/// Mac, software decoding of a 5760x1920 H.264 panorama runs at ~500 frames/s (far from the
+/// bottleneck), and VideoToolbox does not take H.264 wider than 4096 px at all.
+pub static HW_DECODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 impl FrameReader {
     pub fn open(input: &str, info: &VideoInfo, start: f64, duration: Option<f64>, every: u32) -> Result<Self, String> {
         Self::open_with(input, info, start, duration, every, false, false, &[])
@@ -113,6 +119,9 @@ impl FrameReader {
         }
         if realtime {
             c.arg("-re");
+        }
+        if !live && HW_DECODE.load(std::sync::atomic::Ordering::Relaxed) {
+            c.args(["-hwaccel", "auto"]);
         }
         c.args(in_args); // extra ffmpeg input options, e.g. -follow 1  or  -f avfoundation -framerate 25
         if start > 0.0 {
@@ -164,6 +173,30 @@ pub fn grab_png(input: &str, t: f64) -> Result<Vec<u8>, String> {
     Ok(out.stdout)
 }
 
+/// `--vcodec auto`: the Mac's media engine (VideoToolbox) where it can take the size – it handles
+/// H.264 up to 4096 px and leaves the processor to the detection (libx264 needs ~8 cores for a
+/// panorama) – otherwise libx264.
+pub fn auto_h264(w: usize, h: usize) -> &'static str {
+    static VT: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let fits = w <= 4096 && h <= 4096;
+    if cfg!(target_os = "macos") && fits && *VT.get_or_init(|| encoder_works("h264_videotoolbox")) {
+        "h264_videotoolbox"
+    } else {
+        "libx264"
+    }
+}
+
+/// Encode one tiny test frame with `codec` (some Macs / VMs have no hardware encoder).
+fn encoder_works(codec: &str) -> bool {
+    Command::new("ffmpeg")
+        .args(["-v", "quiet", "-f", "lavfi", "-i", "color=size=256x256:rate=25", "-frames:v", "2", "-pix_fmt", "yuv420p", "-c:v", codec, "-f", "null", "-"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
 pub enum Codec {
     /// H.264 mp4 (`vcodec` e.g. libx264, h264_videotoolbox).
     H264(String),
@@ -182,9 +215,12 @@ impl FrameWriter {
         c.args(["-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", if rgba { "rgba" } else { "rgb24" }, "-s", &format!("{w}x{h}"), "-framerate", &format!("{fps}"), "-i", "-"]);
         match codec {
             Codec::H264(v) => {
+                let v = if v == "auto" { auto_h264(w, h) } else { v.as_str() };
                 c.args(["-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", "-c:v", v, "-pix_fmt", "yuv420p"]);
                 if v == "libx264" {
                     c.args(["-crf", "18", "-preset", "veryfast"]);
+                } else if v.ends_with("_videotoolbox") {
+                    c.args(["-q:v", "65"]);
                 }
             }
             Codec::ProRes4444 => {

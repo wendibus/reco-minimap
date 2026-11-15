@@ -204,7 +204,7 @@ export function RunPanel() {
     for (let i = 0; i < list.length; i++) {
       const s = list[i];
       log(T('run.queue', { i: i + 1, n: list.length, name: s.name }));
-      const st = await runJob('run', { ...common(), name: s.name, start: s.start, duration: s.duration, every: r.every, outputs: r.outputs, ticker_names: project.live?.ticker_names, home_name: project.live?.home_name, away_name: project.live?.away_name, alpha_bg: r.alpha_bg, min_alpha: r.min_alpha, draw_home: c.draw_home, draw_away: c.draw_away, ref_color: c.ref_color }, { index: i + 1, count: list.length, label: s.name });
+      const st = await runJob('run', { ...common(), name: s.name, start: s.start, duration: s.duration, every: r.every, adaptive: r.adaptive === true, distant: r.distant === true, outputs: r.outputs, ticker_names: project.live?.ticker_names, home_name: project.live?.home_name, away_name: project.live?.away_name, alpha_bg: r.alpha_bg, min_alpha: r.min_alpha, draw_home: c.draw_home, draw_away: c.draw_away, ref_color: c.ref_color }, { index: i + 1, count: list.length, label: s.name });
       if (st !== 'done') break;
     }
     setBusy(false);
@@ -229,6 +229,7 @@ export function RunPanel() {
       <Check k="run.scenes" label={T('run.scenes')} /><p className="mm-hint">{T('run.scenes_hint')}</p>
       <div className="mm-grid3"><Num k="run.every" label={T('run.every')} min={1} /><Num k="run.alpha_bg" label={T('run.alpha_bg')} step={0.1} /><Num k="run.min_alpha" label={T('run.min_alpha')} step={0.1} /></div>
       <p className="mm-hint">{T('run.every_hint')}</p>
+      <Check k="run.adaptive" label={T('run.adaptive')} /><Check k="run.distant" label={T('run.distant')} /><p className="mm-hint">{T('run.speed_hint')}</p>
       <div className="mm-grid3"><Sel k="run.ep" label={T('run.ep')} options={ep} /><Sel k="run.units" label="CoreML" options={['all', 'gpu', 'ane', 'cpu'].map((u) => [u, u])} /><Workers /></div>
       <div className="mm-row mm-gap"><Btn primary hint={t.hints.run} disabled={busy} onClick={() => void start()}>{T('run.start_btn')}</Btn>
         <span className="mm-muted small">{T('run.output_dir')}: <button type="button" className="mm-link" data-hint={t.hints.showFolder} onClick={() => void showFile(`${dir}/out`, false, log)}>{dir}/out</button></span></div>

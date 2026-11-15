@@ -22,6 +22,9 @@ pub struct Scales {
     pub y_max: f32,
     pub target_px: f32,
     pub n: usize,
+    /// Input side of the model in pixels (not stored: set it to the model in use). Every tile is
+    /// scaled to this size, so a model with a larger input gets correspondingly larger tiles.
+    pub input: f32,
 }
 
 fn median(v: &mut Vec<f32>) -> f32 {
@@ -48,7 +51,14 @@ impl Scales {
 
     /// Tile side (source px) that makes a player at foot-y `y` ~`target_px` tall in the input.
     pub fn tile_at(&self, y: f32) -> f32 {
-        (512.0 * self.height_at(y) / self.target_px).clamp(384.0, 1536.0)
+        let k = self.input.max(64.0) / 512.0;
+        (self.input.max(64.0) * self.height_at(y) / self.target_px).clamp(384.0 * k, 1536.0 * k)
+    }
+
+    /// The same scales for a model with input side `input` px.
+    pub fn for_input(mut self, input: usize) -> Self {
+        self.input = input as f32;
+        self
     }
 
     /// Robust-ish fit of (foot_y, height) points: LS, trim residuals > 2.5 sigma, refit.
@@ -76,7 +86,7 @@ impl Scales {
             a = median(&mut h);
             b = 0.0;
         }
-        Some(Self { a, b, y_min, y_max, target_px, n: kept.len() })
+        Some(Self { a, b, y_min, y_max, target_px, n: kept.len(), input: 512.0 })
     }
 
     pub fn to_json(&self) -> Value {
@@ -84,7 +94,7 @@ impl Scales {
     }
 
     pub fn from_json(v: &Value) -> Option<Self> {
-        Some(Self { a: v["a"].as_f64()? as f32, b: v["b"].as_f64()? as f32, y_min: v["y_min"].as_f64()? as f32, y_max: v["y_max"].as_f64()? as f32, target_px: v["target_px"].as_f64()? as f32, n: v["n"].as_u64().unwrap_or(0) as usize })
+        Some(Self { a: v["a"].as_f64()? as f32, b: v["b"].as_f64()? as f32, y_min: v["y_min"].as_f64()? as f32, y_max: v["y_max"].as_f64()? as f32, target_px: v["target_px"].as_f64()? as f32, n: v["n"].as_u64().unwrap_or(0) as usize, input: 512.0 })
     }
 
     pub fn load(path: &str) -> Result<Self, String> {

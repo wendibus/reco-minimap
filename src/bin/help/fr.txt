@@ -38,6 +38,11 @@ Options communes :
   --tile auto       tuiles par ligne d'image adaptées à la distance (nécessite scales.json, voir `scales` ; --scales <fichier>)
   --tile 512        taille(s) de tuile en pixels, plusieurs possibles : --tile 512,1024 (multi-échelle). Les tuiles > 512
                     sont réduites, les non carrées sont ajustées avec une marge (letterbox).
+  --tile model      (par défaut) une taille de tuile = la taille d'entrée du modèle ; --tile auto s'y adapte aussi
+  --tile-for N      choisir les tuiles comme pour un modèle de N pixels en entrée (p. ex. 512 : tuiles plus petites,
+                    joueurs éloignés plus grands, plus lent)
+  --batch N         tuiles par appel du modèle si sa taille de lot est variable (4 par défaut ; 1 = désactivé)
+  --hwdec           décoder la vidéo sur le GPU / moteur multimédia (désactivé par défaut : peu utile, H.264 > 4096 px impossible)
   --overlap 0.25    recouvrement des tuiles
   --roi x0,y0,x1,y1 zone de recherche en fractions du panorama (p. ex. 0,0.3,1,0.9 = seulement la bande du terrain)
   --workers N       sessions de modèle en parallèle (p. ex. 2-3 avec CoreML ; plus de débit, plus de mémoire)
@@ -65,6 +70,9 @@ Options de live :
                       fichier en cours d'écriture (Reco écrit encore) :   live file:live.mkv --in-args '-follow 1' --size ...
                       OBS Virtual Camera / carte de capture (macOS) : live 'OBS Virtual Camera' --in-args '-f avfoundation -framerate 25' --size ...
   --realtime        lire un fichier en temps réel (pour tester sans source en direct), avec --start S à partir de la seconde S
+  --adaptive        vidéo (run) : seulement les tuiles autour des joueurs et du ballon de l'image précédente, plus des
+                    tuiles de recherche tournantes (--ball-search-tiles, 2 par défaut) et un balayage complet toutes les
+                    --full-every S secondes (1 par défaut)
   --adaptive-live   live : tuiles ciblées entre les recherches complètes (expérimental)
   --ball-search-tiles N  live adaptatif : N tuiles de recherche tournantes supplémentaires, indépendantes des joueurs (4 par défaut, 0 = désactivé)
   --sweep-secs S    recherche complète au plus tard après S secondes de temps d'entrée (2 par défaut)
@@ -95,4 +103,5 @@ Options de run :
   --draw-home #hex --draw-away #hex   couleurs de dessin des joueurs dans la minimap (les couleurs détectées dépendent de l'éclairage)
   --scale 30        pixels par mètre de la minimap (930x540 à 30)
   --pip-width 0.28  largeur de la minimap dans la vidéo --pip (part de la largeur du panorama)
-  --vcodec libx264  (macOS : h264_videotoolbox)
+  --no-backfill     run --json : ne pas propager les numéros le long des pistes après l'analyse
+  --vcodec auto     (par défaut) macOS : h264_videotoolbox jusqu'à 4096 px, sinon libx264 ; ou fixe libx264, h264_videotoolbox …

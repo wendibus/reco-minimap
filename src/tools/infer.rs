@@ -212,6 +212,11 @@ pub struct RfDetr {
     pub size: usize,
     pub cfg: DecodeCfg,
     pub arch: Arch,
+    /// Tiles per inference call (1 = one tile per call). Only above 1 for a model whose batch
+    /// dimension is variable or fixed above 1; a short last batch is padded with empty tiles.
+    pub batch: usize,
+    ep: Ep,
+    units: Units,
 }
 
 fn class_from_name(n: &str) -> Option<Class> {
@@ -233,7 +238,7 @@ impl RfDetr {
         let workers = workers.clamp(1, 8);
         let mut sessions = Vec::new();
         for i in 0..workers {
-            sessions.push(build_session(&info, ep, units, i == 0)?);
+            sessions.push(build_session(&info, ep, units, i == 0, None)?);
         }
         let mut info = info;
         // the model itself says what it is: one [1,Q,6] output = end-to-end YOLO
@@ -256,7 +261,37 @@ impl RfDetr {
             cfg.thr_player = 0.35;
             cfg.thr_ball = 0.20;
         }
-        Ok(Self { sessions, t_prep: Default::default(), t_infer: Default::default(), size: info.input_size, info, cfg, arch })
+        // a model exported with a fixed batch above 1 always takes that many tiles per call
+        let batch = match sessions[0].inputs().first().and_then(|i| i.dtype().tensor_shape()).and_then(|s| s.first().copied()) {
+            Some(b) if b > 1 => b as usize,
+            _ => 1,
+        };
+        Ok(Self { sessions, t_prep: Default::default(), t_infer: Default::default(), size: info.input_size, info, cfg, arch, batch, ep, units })
+    }
+
+    /// Several tiles per inference call (`--batch N`), if the model's batch dimension is variable:
+    /// the sessions are rebuilt with the batch fixed to `n` (the GPU / Neural Engine providers need a
+    /// fixed shape). Returns whether batching is on; a model with batch 1 stays as it is.
+    pub fn with_batch(&mut self, n: usize) -> Result<bool, String> {
+        let n = n.clamp(1, 32);
+        if n <= 1 || self.batch > 1 {
+            return Ok(self.batch > 1);
+        }
+        let symbol = match self.sessions[0].inputs().first().map(|i| i.dtype()) {
+            Some(ort::value::ValueType::Tensor { shape, dimension_symbols, .. }) if shape.first().is_some_and(|&d| d < 0) => dimension_symbols.first().cloned().unwrap_or_default(),
+            _ => return Ok(false),
+        };
+        if symbol.is_empty() {
+            return Ok(false);
+        }
+        let workers = self.sessions.len();
+        let mut sessions = Vec::new();
+        for _ in 0..workers {
+            sessions.push(build_session(&self.info, self.ep, self.units, false, Some((&symbol, n as i64)))?);
+        }
+        self.sessions = sessions;
+        self.batch = n;
+        Ok(true)
     }
 
     /// How tile pixels are normalised for this model.
@@ -302,6 +337,7 @@ impl RfDetr {
         let n = self.sessions.len().min(tiles.len()).max(1);
         let cfg = &self.cfg;
         let tensors_ref = &tensors;
+        let batch = self.batch.max(1);
         let results: Vec<Result<Vec<(usize, Vec<Det>)>, String>> = std::thread::scope(|sc| {
             let hs: Vec<_> = self
                 .sessions
@@ -311,14 +347,16 @@ impl RfDetr {
                 .map(|(w, sess)| {
                     sc.spawn(move || {
                         let mut out = Vec::new();
-                        let mut i = w;
-                        while i < tiles.len() {
-                            let (b, l, _nq, nc) = run_session(sess, size, &tensors_ref[i], arch, cfg.n_classes)?;
-                            if nc != cfg.n_classes {
-                                return Err(tr!("Modell hat {nc} Klassen-Logits, runtime.json nennt {}", "model has {nc} class logits, runtime.json lists {}", "le modèle a {nc} logits de classe, runtime.json en indique {}", "el modelo tiene {nc} logits de clase, runtime.json indica {}", cfg.n_classes));
+                        // this worker's tiles, `batch` per inference call
+                        let mine: Vec<usize> = (w..tiles.len()).step_by(n).collect();
+                        for group in mine.chunks(batch) {
+                            let chws: Vec<&[f32]> = group.iter().map(|&i| tensors_ref[i].as_slice()).collect();
+                            for (&i, (b, l, _nq, nc)) in group.iter().zip(run_batch(sess, size, &chws, batch, arch, cfg.n_classes)?) {
+                                if nc != cfg.n_classes {
+                                    return Err(tr!("Modell hat {nc} Klassen-Logits, runtime.json nennt {}", "model has {nc} class logits, runtime.json lists {}", "le modèle a {nc} logits de classe, runtime.json en indique {}", "el modelo tiene {nc} logits de clase, runtime.json indica {}", cfg.n_classes));
+                                }
+                                out.push((i, decode_rfdetr(&b, &l, cfg).map_err(|e| format!("{e:?}"))?));
                             }
-                            out.push((i, decode_rfdetr(&b, &l, cfg).map_err(|e| format!("{e:?}"))?));
-                            i += n;
                         }
                         Ok(out)
                     })
@@ -408,10 +446,13 @@ fn unavailable(ep: Ep) -> String {
 }
 
 #[allow(unused_variables)]
-fn build_session(info: &ModelInfo, ep: Ep, units: Units, announce: bool) -> Result<Session, String> {
+fn build_session(info: &ModelInfo, ep: Ep, units: Units, announce: bool, fix_dim: Option<(&str, i64)>) -> Result<Session, String> {
     let builder = Session::builder().map_err(|e| e.to_string())?;
     #[allow(unused_mut)]
     let mut builder = builder.with_optimization_level(GraphOptimizationLevel::Level3).map_err(|e| e.to_string())?;
+    if let Some((name, size)) = fix_dim {
+        builder = builder.with_dimension_override(name, size).map_err(|e| e.to_string())?;
+    }
     let mut ep = ep;
     if matches!(ep, Ep::Cuda | Ep::TensorRt | Ep::DirectMl) && !try_provider(&mut builder, ep, announce)? {
         return Err(unavailable(ep));
@@ -486,13 +527,42 @@ pub fn yolo_rows_to_detr(rows: &[f32], size: usize, nc: usize) -> (Vec<f32>, Vec
     (boxes, logits, nq)
 }
 
-fn run_session(session: &mut Session, sz: usize, chw: &[f32], arch: Arch, nc: usize) -> Result<(Vec<f32>, Vec<f32>, usize, usize), String> {
-    let input = TensorRef::from_array_view(([1usize, 3, sz, sz], chw)).map_err(|e| format!("tensor: {e}"))?;
+type RawOut = (Vec<f32>, Vec<f32>, usize, usize);
+
+fn run_session(session: &mut Session, sz: usize, chw: &[f32], arch: Arch, nc: usize) -> Result<RawOut, String> {
+    Ok(run_batch(session, sz, &[chw], 1, arch, nc)?.remove(0))
+}
+
+/// One inference over up to `batch` tiles (padded with empty tiles to exactly `batch`); one result
+/// per given tile.
+fn run_batch(session: &mut Session, sz: usize, chws: &[&[f32]], batch: usize, arch: Arch, nc: usize) -> Result<Vec<RawOut>, String> {
+    let per = 3 * sz * sz;
+    let batch = batch.max(chws.len()).max(1);
+    let joined;
+    let data: &[f32] = if batch == 1 {
+        chws[0]
+    } else {
+        let mut v = vec![0f32; batch * per];
+        for (k, c) in chws.iter().enumerate() {
+            v[k * per..(k + 1) * per].copy_from_slice(c);
+        }
+        joined = v;
+        &joined
+    };
+    let input = TensorRef::from_array_view(([batch, 3, sz, sz], data)).map_err(|e| format!("tensor: {e}"))?;
     let outputs = session.run(ort::inputs![input]).map_err(|e| format!("ort run: {e}"))?;
+    let split = |v: &[f32], k: usize| -> Vec<f32> {
+        let n = v.len() / batch;
+        v[k * n..(k + 1) * n].to_vec()
+    };
     if arch == Arch::YoloE2e {
         let (_, rows) = outputs[0].try_extract_tensor::<f32>().map_err(|e| format!("extract output0: {e}"))?;
-        let (boxes, logits, nq) = yolo_rows_to_detr(rows, sz, nc);
-        return Ok((boxes, logits, nq, nc));
+        return Ok((0..chws.len())
+            .map(|k| {
+                let (boxes, logits, nq) = yolo_rows_to_detr(&split(rows, k), sz, nc);
+                (boxes, logits, nq, nc)
+            })
+            .collect());
     }
     let pick = |name: &str, idx: usize| -> Result<(Vec<i64>, Vec<f32>), String> {
         let v = outputs.get(name).unwrap_or(&outputs[idx]);
@@ -503,7 +573,7 @@ fn run_session(session: &mut Session, sz: usize, chw: &[f32], arch: Arch, nc: us
     let (ls, logits) = pick("labels", 1)?;
     let nq = *bs.get(1).ok_or("dets shape")? as usize;
     let nc = *ls.get(2).ok_or("labels shape")? as usize;
-    Ok((boxes, logits, nq, nc))
+    Ok((0..chws.len()).map(|k| (split(&boxes, k), split(&logits, k), nq, nc)).collect())
 }
 
 #[cfg(test)]

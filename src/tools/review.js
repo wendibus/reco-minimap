@@ -157,11 +157,13 @@ if (typeof document !== 'undefined') (async function boot() {
     if(dirty&&!confirm(tt('review.replace')))return;
     const next=JSON.parse(await f.text());ReviewCore.validate(next,hash,rows);doc=next;dirty=false;controls();status(tt('review.review_loaded'));
   }catch(e){status(e.message);}};
+  // "read" / "deduced (line-up)" … instead of the raw status key
+  const statusText=id=>{const st=id?.status||'unknown';const s=tt('review.st_'+st);const src=st==='inferred'&&id?.source?' ('+tt('review.src_'+id.source)+')':'';return s+src;};
   canvas.onclick=e=>{
     const rect=canvas.getBoundingClientRect(), x=(e.clientX-rect.left)*canvas.width/rect.width,y=(e.clientY-rect.top)*canvas.height/rect.height;
     const hit=hits.map(h=>({...h,d:Math.hypot(h.x-x,h.y-y)})).sort((a,b)=>a.d-b.d)[0];if(!hit||hit.d>hit.r*2)return;
     video.pause();selected={id:hit.a.id,segment:hit.a.segment};
-    $('selected').textContent=`Slot ${selected.id} · ${tt('review.segment')} ${selected.segment} · ${hit.a.team} · ${hit.a.identity?.status || 'unknown'}`;
+    $('selected').textContent=`Slot ${selected.id} · ${tt('review.segment')} ${selected.segment} · ${hit.a.team} · ${statusText(hit.a.identity)}`;
     const t=video.currentTime+offset();$('start').value=Math.max(0,hit.t).toFixed(2);$('end').value=(Math.max(t,hit.t)+5).toFixed(2);$('assign').disabled=false;
   };
   function draw() {

@@ -38,6 +38,11 @@ Gemeinsame Optionen:
   --tile auto       Kacheln je Bildzeile passend zur Entfernung (braucht scales.json, siehe `scales`; --scales <datei>)
   --tile 512        Kachelgröße(n) in Pixeln, auch mehrere: --tile 512,1024 (Mehrmaßstab). Kacheln > 512 werden
                     verkleinert, nicht-quadratische mit Rand (Letterbox) eingepasst.
+  --tile model      (Standard) eine Kachelgröße = Eingabegröße des Modells; auch bei --tile auto passt sich die Größe an
+  --tile-for N      Kacheln wie für ein Modell mit N Pixeln Eingabe wählen (z.B. 512: kleinere Kacheln, entfernte
+                    Spieler größer, langsamer)
+  --batch N         Kacheln pro Modellaufruf, wenn das Modell eine variable Batch-Größe hat (Standard 4; 1 = aus)
+  --hwdec           Video auf der GPU / dem Media-Encoder decodieren (Standard aus: lohnt kaum, H.264 > 4096 px geht nicht)
   --overlap 0.25    Überlappung der Kacheln
   --roi x0,y0,x1,y1 Suchbereich als Bruchteile des Panoramas (z.B. 0,0.3,1,0.9 = nur das Spielfeld-Band)
   --workers N       parallele Modell-Sitzungen (z.B. 2-3 mit CoreML; mehr Durchsatz, mehr Speicher)
@@ -64,6 +69,8 @@ live-Optionen:
                       wachsende Datei (Reco schreibt noch):   live file:live.mkv --in-args '-follow 1' --size ...
                       OBS Virtual Camera / Capture-Karte (macOS): live 'OBS Virtual Camera' --in-args '-f avfoundation -framerate 25' --size ...
   --realtime        Datei in Echtzeit abspielen (zum Testen ohne Live-Quelle), mit --start S ab Sekunde S
+  --adaptive        Video (run): nur Kacheln um Spieler und Ball des letzten Bildes, dazu rotierende Suchkacheln
+                    (--ball-search-tiles, Standard 2) und alle --full-every S Sekunden ein voller Durchlauf (Standard 1)
   --adaptive-live   Live: gezielte Kacheln zwischen vollständigen Suchläufen (experimentell)
   --ball-search-tiles N  Live adaptiv: N zusätzliche rotierende Suchkacheln, unabhängig von Spielern (Standard 4, 0 aus)
   --sweep-secs S    Vollsuche spätestens nach S Sekunden Eingangszeit (Standard 2)
@@ -94,4 +101,5 @@ run-Optionen:
   --draw-home #hex --draw-away #hex   Zeichenfarben der Spieler in der Minimap (die erkannten Farben sind lichtabhängig)
   --scale 30        Pixel pro Meter der Minimap (930x540 bei 30)
   --pip-width 0.28  Breite der Minimap im --pip-Video (Anteil der Panoramabreite)
-  --vcodec libx264  (macOS: h264_videotoolbox)
+  --no-backfill     run --json: Nummern nach dem Lauf nicht entlang der Spuren ergänzen
+  --vcodec auto     (Standard) macOS: h264_videotoolbox bis 4096 px, sonst libx264; oder fest libx264, h264_videotoolbox …

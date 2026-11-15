@@ -38,6 +38,11 @@ Opciones comunes:
   --tile auto       teselas por fila de imagen según la distancia (necesita scales.json, ver `scales`; --scales <archivo>)
   --tile 512        tamaño(s) de tesela en píxeles, se admiten varios: --tile 512,1024 (multiescala). Las teselas > 512 se
                     reducen, las no cuadradas se ajustan con margen (letterbox).
+  --tile model      (por defecto) un tamaño de tesela = tamaño de entrada del modelo; --tile auto también se adapta
+  --tile-for N      elegir las teselas como para un modelo con N píxeles de entrada (p. ej. 512: teselas más pequeñas,
+                    jugadores lejanos más grandes, más lento)
+  --batch N         teselas por llamada al modelo si su tamaño de lote es variable (por defecto 4; 1 = desactivado)
+  --hwdec           decodificar el vídeo en la GPU / motor multimedia (desactivado por defecto: apenas compensa, H.264 > 4096 px no es posible)
   --overlap 0.25    solapamiento de las teselas
   --roi x0,y0,x1,y1 zona de búsqueda en fracciones del panorama (p. ej. 0,0.3,1,0.9 = solo la franja del campo)
   --workers N       sesiones de modelo en paralelo (p. ej. 2-3 con CoreML; más rendimiento, más memoria)
@@ -65,6 +70,9 @@ Opciones de live:
                       archivo que sigue creciendo (Reco aún escribe):   live file:live.mkv --in-args '-follow 1' --size ...
                       OBS Virtual Camera / capturadora (macOS): live 'OBS Virtual Camera' --in-args '-f avfoundation -framerate 25' --size ...
   --realtime        reproducir un archivo en tiempo real (para probar sin fuente en directo), con --start S desde el segundo S
+  --adaptive        vídeo (run): solo teselas alrededor de los jugadores y el balón de la imagen anterior, más teselas
+                    de búsqueda rotatorias (--ball-search-tiles, por defecto 2) y un barrido completo cada --full-every S
+                    segundos (por defecto 1)
   --adaptive-live   live: teselas dirigidas entre búsquedas completas (experimental)
   --ball-search-tiles N  live adaptativo: N teselas de búsqueda rotatorias adicionales, independientes de los jugadores (por defecto 4, 0 = desactivado)
   --sweep-secs S    búsqueda completa como máximo tras S segundos de tiempo de entrada (por defecto 2)
@@ -95,4 +103,5 @@ Opciones de run:
   --draw-home #hex --draw-away #hex   colores de dibujo de los jugadores en el minimapa (los colores detectados dependen de la luz)
   --scale 30        píxeles por metro del minimapa (930x540 a 30)
   --pip-width 0.28  ancho del minimapa en el vídeo --pip (parte del ancho del panorama)
-  --vcodec libx264  (macOS: h264_videotoolbox)
+  --no-backfill     run --json: no propagar los dorsales a lo largo de las pistas tras el análisis
+  --vcodec auto     (por defecto) macOS: h264_videotoolbox hasta 4096 px, si no libx264; o fijo libx264, h264_videotoolbox …

@@ -129,7 +129,8 @@ export function CalibPanel() {
   const c = files.court, sc = files.scales;
   const home = tm.home ?? '#cccccc', away = tm.away ?? '#2f354e', hgk = tm.home_gk || '#22aa44', agk = tm.away_gk || '#ffcc00';
   const saveTeams = async (h: string, a: string, hg: string, ag: string, on = gkOn) => {
-    await api('/api/teams/save', { dir, home: h, away: a, home_gk: on ? hg : '', away_gk: on ? ag : '' });
+    const gk = on && isKeeperSport(); // goalkeeper colours only exist in sports with goalkeepers
+    await api('/api/teams/save', { dir, home: h, away: a, home_gk: gk ? hg : '', away_gk: gk ? ag : '' });
     await refresh();
   };
   return <>

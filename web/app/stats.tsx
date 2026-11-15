@@ -39,6 +39,9 @@ function rosterNames(s: string | undefined): Record<number, string> {
   return out;
 }
 
+/** Sports with a goalkeeper (same list as `sport::has_keepers`). */
+const KEEPER_SPORTS = ['football', 'futsal', 'handball', 'hockey', 'lacrosse'];
+
 /** Which charts a sport gets (attempts only where the tracking can see them). */
 function sections(sport: string) {
   const goalSport = ['football', 'futsal', 'handball', 'hockey', 'lacrosse'].includes(sport);
@@ -328,7 +331,7 @@ function ShapeCard({ s, shape, colors, names }: { s: Stats; shape: Shape; colors
     </div>
     <h3>{ts.overTime}</h3>
     <div className="segmented" role="group">{(['w', 'd'] as const).map((k) => <button key={k} type="button" data-hint={t.hints.shapeMetric} className={metric === k ? 'active' : ''} onClick={() => setMetric(k)}>{k === 'w' ? ts.width : ts.depth}</button>)}</div>
-    <p className="mm-muted small">{metric === 'w' ? ts.widthHint : ts.depthHint}. {ts.smoothed}</p>
+    <p className="mm-muted small">{metric === 'w' ? ts.widthHint : KEEPER_SPORTS.includes(s.sport) ? ts.depthHint : ts.depthHint.replace(/\s*\([^)]*\)\s*$/, '')}. {ts.smoothed}</p>
     <ShapeLines shape={shape} metric={metric} colors={colors} names={names} />
     <div className="mm-legend">{sides.map((k) => <span key={k}><i className="mm-sw" style={{ background: colors[k] }} />{names[k]}</span>)}</div>
     <h3>{ts.formation}</h3>

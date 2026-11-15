@@ -42,7 +42,7 @@ struct Job {
 /// Output files named in a job's arguments (relative ones are inside the project folder).
 fn job_outputs(dir: &Path, args: &[String]) -> Vec<PathBuf> {
     args.windows(2)
-        .filter(|w| matches!(w[0].as_str(), "--minimap" | "--alpha" | "--pip" | "--json" | "--dets" | "--ticker-json"))
+        .filter(|w| matches!(w[0].as_str(), "--minimap" | "--alpha" | "--pip" | "--json" | "--dets" | "--metrics" | "--ticker-json"))
         .map(|w| {
             let p = PathBuf::from(&w[1]);
             if p.is_absolute() { p } else { dir.join(p) }
@@ -527,6 +527,11 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
                 if o["alpha"].as_bool() == Some(true) { paths.push(("--alpha", out(".mov"))); if !get_s(p, "alpha_bg").is_empty() { paths.push(("--alpha-bg", get_s(p, "alpha_bg"))); } }
                 if o["pip"].as_bool() == Some(true) { paths.push(("--pip", out("_pip.mp4"))); }
                 if o["json"].as_bool() == Some(true) { paths.push(("--json", out(".jsonl"))); }
+                // detections + number readings for `replay` (re-evaluate without the models), and timings
+                if o["evidence"].as_bool() == Some(true) {
+                    paths.push(("--dets", out(".dets.jsonl")));
+                    paths.push(("--metrics", out(".metrics.json")));
+                }
                 // what a live ticker would have reported for this video
                 if o["ticker"].as_bool() == Some(true) {
                     paths.push(("--ticker-json", out(".liveticker.json")));
@@ -1052,6 +1057,15 @@ mod tests {
         assert!(pair(&build_args("update", Path::new("/x"), &json!({"lang": "xx"})).unwrap(), "--lang").is_none());
         let c = build_args("calibrate", Path::new("/x"), &json!({"video": "/v.mp4", "sport": "basketball", "time": 5, "lang": "es"})).unwrap();
         assert_eq!(c.iter().filter(|x| *x == "--lang").count(), 1);
+    }
+
+    #[test]
+    fn reusable_evidence_reaches_run_jobs() {
+        let p = json!({"model_dir":"/main","video":"/video.mp4","ep":"cpu","every":1,"name":"trial","outputs":{"evidence":true}});
+        let a = build_args("run", Path::new("/project"), &p).unwrap();
+        assert!(pair(&a, "--dets").unwrap().ends_with("trial.dets.jsonl"));
+        assert!(pair(&a, "--metrics").unwrap().ends_with("trial.metrics.json"));
+        assert_eq!(job_outputs(Path::new("/project"), &a).len(), 2);
     }
 
     #[test]

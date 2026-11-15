@@ -548,9 +548,10 @@ Lower cost with `--every N` and by keeping the calibration current, so that only
 Since 0.15:
 
 * **Tiles match the model.** The tile size follows the model's input (`--tile model`, also inside `--tile auto`). Before, the 1280-pixel camera model received tiles planned for a 512-pixel input – upscaled, with about six times the work per frame. `--tile-for 512` (in the interface: *More accurate for distant players*) brings back the smaller tiles for distant players, at that cost.
-* **Adaptive tiles for videos:** `--adaptive` searches only around the players and the ball of the previous frame, plus two rotating search tiles and a full sweep every `--full-every` seconds (default 1). It pays when the players occupy few of the tiles.
+* **Adaptive tiles for videos:** `--adaptive` searches only where the players and the ball are about to be (their image motion is predicted; briefly hidden ones are kept for up to a second, the ball for 0.4 s), plus two rotating search tiles and a full sweep every `--full-every` seconds (default 1). It pays when the players occupy few of the tiles.
 * **Batches:** a model exported with a variable (or fixed > 1) batch dimension gets several tiles per call (`--batch N`, default 4). The camera model has a fixed batch of 1 and runs as before.
 * **Output videos** are encoded by VideoToolbox on a Mac where the size allows (up to 4096 px); libx264 needs about eight cores for a panorama-sized video, which the detection can use instead. `--vcodec libx264` keeps the old encoder.
+* **Re-evaluation without the model (0.16):** `run --dets file.dets.jsonl` stores the detections and, with `--numbers`, the raw number readings (probabilities, so a different squad still works). `replay` applies them only to the same track, segment, team and box – if tracking turned out differently, the reading is rejected rather than given to someone else. The recording's thresholds and squads apply unless given otherwise. `--metrics file.json` writes the timings of a run.
 * **Hardware decoding** (`--hwdec`) is off by default: software decoding of a 5760×1920 panorama runs at about 500 frames/s, far from being the bottleneck, and VideoToolbox does not decode H.264 wider than 4096 px. `replay` re-runs everything after the detector from recorded detections in well under a second per minute of video.
 
 ## Known limitations

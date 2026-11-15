@@ -175,6 +175,7 @@ For sports with goals or baskets (basketball, football, futsal, handball, hockey
    * *Overlay with transparency (.mov)* – the minimap with a transparent background, to place over a video in an editor or OBS. *Dark backing in the overlay* (0–1) adds a semi-transparent dark box so it stays readable on a bright picture; 0.6 is a good start.
    * *Panorama with boxes and minimap* – your panorama with detection boxes and the minimap in the corner. Use this to **check quality** on your first segment.
    * *Data (.jsonl)* – one record per frame with all positions ([format](../README.md#output-formats)).
+   * *Detection data for re-evaluation (.dets.jsonl)* – stores detections and number readings; `reco-minimap replay` re-evaluates the game with other colours, thresholds or squads in seconds, without the model. Also writes a timing report (`.metrics.json`).
 3. **Detect on every Nth frame.** 5 is a good default: detection runs on every 5th frame and the minimap video is interpolated to the full frame rate, so it still looks smooth. Higher is faster, lower is more exact.
    **Faster or more accurate:** *Adaptive tiles* searches only around the players of the previous frame and does a full sweep every second – faster when the players are spread over few tiles. *More accurate for distant players* uses smaller tiles, so the model sees players far away larger; the run takes longer. By default the tiles match the model's input size.
 4. **Opacity of undetected players.** 1 keeps a hidden player fully visible at his estimated position; lower values fade him.

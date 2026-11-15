@@ -15,3 +15,8 @@ dist/
 web/node_modules/
 mac/.build/
 mac/dist/
+
+# Local analysis measurements and Python bytecode
+__pycache__/
+*.pyc
+analysis-benchmarks/

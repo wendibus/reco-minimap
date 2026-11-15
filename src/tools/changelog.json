@@ -1,4 +1,38 @@
 {
+  "0.16.0": {
+    "de": [
+      "Adaptive Kacheln mit Bewegungsvorhersage: gesucht wird dort, wo Spieler und Ball gleich sein werden; kurz verdeckte Spieler werden weiter mitgesucht.",
+      "Neue Ausgabe „Erkennungsdaten für Neuauswertung“: speichert Erkennungen und Nummern-Lesungen. `replay` wertet damit in Sekunden neu aus – auch mit anderem Kader, ohne Modell.",
+      "Nummern werden nach Videozeit nachgelesen und die schärfsten Ausschnitte zuerst gelesen.",
+      "Ballzustand (gehalten, frei, Flug) robuster nach Lücken in der Erkennung.",
+      "Vorverarbeitung der Kacheln mit wiederverwendetem Speicher und höchstens acht Threads.",
+      "Zeitmessung eines Laufs als Datei (--metrics)."
+    ],
+    "en": [
+      "Adaptive tiles with motion prediction: the search goes where players and ball are about to be; briefly hidden players are still searched for.",
+      "New output \"Detection data for re-evaluation\": stores detections and number readings. `replay` re-evaluates with it in seconds – also with another squad, without the model.",
+      "Numbers are re-read by video time, the sharpest crops first.",
+      "Ball state (held, loose, in flight) more robust after gaps in detection.",
+      "Tile preprocessing reuses its memory and uses at most eight threads.",
+      "Timings of a run as a file (--metrics)."
+    ],
+    "fr": [
+      "Tuiles adaptatives avec prédiction du mouvement : la recherche va là où joueurs et ballon vont être ; les joueurs brièvement cachés restent recherchés.",
+      "Nouvelle sortie « Données de détection pour réévaluation » : enregistre détections et lectures de numéros. `replay` réévalue en quelques secondes – aussi avec un autre effectif, sans modèle.",
+      "Les numéros sont relus selon le temps de la vidéo, les découpes les plus nettes d'abord.",
+      "État du ballon (tenu, libre, en vol) plus robuste après des trous de détection.",
+      "Le prétraitement des tuiles réutilise sa mémoire et utilise au plus huit threads.",
+      "Mesure des temps d'un traitement dans un fichier (--metrics)."
+    ],
+    "es": [
+      "Teselas adaptativas con predicción de movimiento: se busca donde van a estar jugadores y balón; los jugadores ocultos brevemente se siguen buscando.",
+      "Nueva salida «Datos de detección para reevaluar»: guarda detecciones y lecturas de dorsales. `replay` reevalúa con ellos en segundos, también con otra plantilla y sin modelo.",
+      "Los dorsales se releen según el tiempo del vídeo, primero los recortes más nítidos.",
+      "Estado del balón (controlado, suelto, en vuelo) más robusto tras huecos en la detección.",
+      "El preprocesado de teselas reutiliza su memoria y usa como máximo ocho hilos.",
+      "Tiempos de un proceso en un archivo (--metrics)."
+    ]
+  },
   "0.15.0": {
     "de": [
       "Schnellere Analyse: Kacheln passend zur Eingabegröße des Modells (das Kamera-Modell rechnet nicht mehr unnötig hochskalierte Kacheln).",
@@ -46,33 +80,81 @@
     ]
   },
   "0.14.0": {
-    "de": ["Statistik je Team: Spielminuten pro Spieler und geschätzter Spielstand (Punkte im Basketball, Tore in Torsportarten).", "Alle Menüpunkte in vier Sprachen, Spielsituationen mit den Namen der jeweiligen Sportart.", "Torwart-Trikot-Kalibrierung nur bei Sportarten mit Torwart."],
-    "en": ["Statistics per team: playing minutes per player and the estimated score (points in basketball, goals in goal sports).", "All menu items in four languages, game situations named as in each sport.", "Goalkeeper kit calibration only for sports with goalkeepers."],
-    "fr": ["Statistiques par équipe : minutes jouées par joueur et score estimé (points au basket, buts dans les sports de but).", "Tous les menus en quatre langues, situations de jeu nommées selon chaque sport.", "Calibrage du maillot de gardien uniquement pour les sports avec gardien."],
-    "es": ["Estadísticas por equipo: minutos jugados por jugador y marcador estimado (puntos en baloncesto, goles en deportes de portería).", "Todos los menús en cuatro idiomas, situaciones de juego con el nombre de cada deporte.", "Calibración de la camiseta de portero solo en deportes con portero."]
+    "de": [
+      "Statistik je Team: Spielminuten pro Spieler und geschätzter Spielstand (Punkte im Basketball, Tore in Torsportarten).",
+      "Alle Menüpunkte in vier Sprachen, Spielsituationen mit den Namen der jeweiligen Sportart.",
+      "Torwart-Trikot-Kalibrierung nur bei Sportarten mit Torwart."
+    ],
+    "en": [
+      "Statistics per team: playing minutes per player and the estimated score (points in basketball, goals in goal sports).",
+      "All menu items in four languages, game situations named as in each sport.",
+      "Goalkeeper kit calibration only for sports with goalkeepers."
+    ],
+    "fr": [
+      "Statistiques par équipe : minutes jouées par joueur et score estimé (points au basket, buts dans les sports de but).",
+      "Tous les menus en quatre langues, situations de jeu nommées selon chaque sport.",
+      "Calibrage du maillot de gardien uniquement pour les sports avec gardien."
+    ],
+    "es": [
+      "Estadísticas por equipo: minutos jugados por jugador y marcador estimado (puntos en baloncesto, goles en deportes de portería).",
+      "Todos los menús en cuatro idiomas, situaciones de juego con el nombre de cada deporte.",
+      "Calibración de la camiseta de portero solo en deportes con portero."
+    ]
   },
   "0.13.0": {
-    "de": ["Spielrichtung: welches Team auf welchen Korb / welches Tor spielt und wann die Seiten wechseln – angegeben oder geschätzt. Würfe und Standards zählen für das angreifende Team."],
-    "en": ["Playing direction: which basket / goal each team attacks and when they change ends – given or estimated. Attempts and set pieces count for the attacking team."],
-    "fr": ["Sens du jeu : quel panier / but chaque équipe attaque et quand elles changent de côté – indiqué ou estimé. Tirs et coups de pied arrêtés comptent pour l'équipe qui attaque."],
-    "es": ["Dirección de juego: a qué canasta / portería ataca cada equipo y cuándo cambian de campo – indicada o estimada. Tiros y jugadas a balón parado cuentan para el equipo atacante."]
+    "de": [
+      "Spielrichtung: welches Team auf welchen Korb / welches Tor spielt und wann die Seiten wechseln – angegeben oder geschätzt. Würfe und Standards zählen für das angreifende Team."
+    ],
+    "en": [
+      "Playing direction: which basket / goal each team attacks and when they change ends – given or estimated. Attempts and set pieces count for the attacking team."
+    ],
+    "fr": [
+      "Sens du jeu : quel panier / but chaque équipe attaque et quand elles changent de côté – indiqué ou estimé. Tirs et coups de pied arrêtés comptent pour l'équipe qui attaque."
+    ],
+    "es": [
+      "Dirección de juego: a qué canasta / portería ataca cada equipo y cuándo cambian de campo – indicada o estimada. Tiros y jugadas a balón parado cuentan para el equipo atacante."
+    ]
   },
   "0.12.0": {
-    "de": ["Live-Ticker-Simulation aus einem Video (liveticker.json), die Ticker-Seite zeigt „Simulation“ und funktioniert in allen vier Sprachen."],
-    "en": ["Live ticker simulation from a video (liveticker.json); the ticker page shows \"Simulation\" and works in all four languages."],
-    "fr": ["Simulation du fil en direct à partir d'une vidéo (liveticker.json) ; la page du fil affiche « Simulation » et fonctionne dans les quatre langues."],
-    "es": ["Simulación del resumen en directo a partir de un vídeo (liveticker.json); la página muestra «Simulación» y funciona en los cuatro idiomas."]
+    "de": [
+      "Live-Ticker-Simulation aus einem Video (liveticker.json), die Ticker-Seite zeigt „Simulation“ und funktioniert in allen vier Sprachen."
+    ],
+    "en": [
+      "Live ticker simulation from a video (liveticker.json); the ticker page shows \"Simulation\" and works in all four languages."
+    ],
+    "fr": [
+      "Simulation du fil en direct à partir d'une vidéo (liveticker.json) ; la page du fil affiche « Simulation » et fonctionne dans les quatre langues."
+    ],
+    "es": [
+      "Simulación del resumen en directo a partir de un vídeo (liveticker.json); la página muestra «Simulación» y funciona en los cuatro idiomas."
+    ]
   },
   "0.11.0": {
-    "de": ["Mannschaftsform: Breite, Tiefe und mittlere Aufstellung je Team."],
-    "en": ["Team shape: width, depth and average line-up per team."],
-    "fr": ["Forme d'équipe : largeur, profondeur et placement moyen par équipe."],
-    "es": ["Forma del equipo: anchura, profundidad y alineación media por equipo."]
+    "de": [
+      "Mannschaftsform: Breite, Tiefe und mittlere Aufstellung je Team."
+    ],
+    "en": [
+      "Team shape: width, depth and average line-up per team."
+    ],
+    "fr": [
+      "Forme d'équipe : largeur, profondeur et placement moyen par équipe."
+    ],
+    "es": [
+      "Forma del equipo: anchura, profundidad y alineación media por equipo."
+    ]
   },
   "0.10.1": {
-    "de": ["Das Modell der Reco-Kamera als Standard, Reco-Trainer-Modelle je Sportart, Mac-App mit signierten Updates."],
-    "en": ["The Reco camera model as the default, Reco Trainer models per sport, Mac app with signed updates."],
-    "fr": ["Le modèle de la caméra Reco par défaut, modèles Reco Trainer par sport, app Mac avec mises à jour signées."],
-    "es": ["El modelo de la cámara Reco por defecto, modelos de Reco Trainer por deporte, app de Mac con actualizaciones firmadas."]
+    "de": [
+      "Das Modell der Reco-Kamera als Standard, Reco-Trainer-Modelle je Sportart, Mac-App mit signierten Updates."
+    ],
+    "en": [
+      "The Reco camera model as the default, Reco Trainer models per sport, Mac app with signed updates."
+    ],
+    "fr": [
+      "Le modèle de la caméra Reco par défaut, modèles Reco Trainer par sport, app Mac avec mises à jour signées."
+    ],
+    "es": [
+      "El modelo de la cámara Reco por defecto, modelos de Reco Trainer por deporte, app de Mac con actualizaciones firmadas."
+    ]
   }
 }

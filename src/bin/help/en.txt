@@ -18,6 +18,8 @@ reco-minimap – minimap (court, players, referees, ball) from a Reco panorama
   reco-minimap replay    <detections.jsonl> --court court.json --teams teams.json [--json out.jsonl] [--minimap out.mp4]
                          send recorded detections (run … --dets <file>) through tracking, ball and situations again
                          without the video: seconds instead of minutes, e.g. to compare --thr-player or colours
+                         number readings stored with --numbers are applied too (also with another squad);
+                         the recording's thresholds and squads apply unless given otherwise
   reco-minimap stats     <states.jsonl>            report with numbers about a run (slots, jumps, ball)
   reco-minimap ticker    <states.jsonl> [--out f] [--export folder]   the live ticker this result would have produced (liveticker.json + summary); also: run/live --ticker-json <file>
   reco-minimap review-identities <states.jsonl> --annotations review.json --out reviewed.jsonl   apply roster and manual corrections
@@ -69,7 +71,8 @@ live options:
                       growing file (Reco is still writing):   live file:live.mkv --in-args '-follow 1' --size ...
                       OBS Virtual Camera / capture card (macOS): live 'OBS Virtual Camera' --in-args '-f avfoundation -framerate 25' --size ...
   --realtime        play a file in real time (to test without a live source), with --start S from second S
-  --adaptive        video (run): only tiles around the players and the ball of the last frame, plus rotating
+  --adaptive        video (run): only tiles where players and ball will be according to their motion (briefly hidden ones
+                    included), plus rotating
                     search tiles (--ball-search-tiles, default 2) and a full sweep every --full-every S seconds (default 1)
   --adaptive-live   live: targeted tiles between full searches (experimental)
   --ball-search-tiles N  adaptive live: N extra rotating search tiles, independent of players (default 4, 0 off)
@@ -102,4 +105,5 @@ run options:
   --scale 30        pixels per metre of the minimap (930x540 at 30)
   --pip-width 0.28  width of the minimap in the --pip video (share of the panorama width)
   --no-backfill     run --json: do not propagate numbers along the tracklets after the run
+  --metrics <file>  run: timings as JSON (decode, preprocessing, inference, tracking, numbers, output)
   --vcodec auto     (default) macOS: h264_videotoolbox up to 4096 px, else libx264; or a fixed libx264, h264_videotoolbox …

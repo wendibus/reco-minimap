@@ -1,6 +1,7 @@
 //! Support code for the `reco-minimap` command-line program (feature `tools`).
 
 pub mod calib;
+pub mod cache;
 pub mod async_ocr;
 pub mod board_io;
 pub mod board_srv;

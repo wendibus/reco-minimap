@@ -66,7 +66,9 @@ fn key(p: &Value, team: &str) -> (u64, u64, String) {
 /// Rewrite a result file (`run --json`) with the propagated identities.
 pub fn backfill_file(path: &Path) -> Result<usize, String> {
     let txt = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let mut frames: Vec<Value> = txt.lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
+    let mut frames: Vec<Value> = txt.lines().enumerate().filter(|(_,l)|!l.trim().is_empty())
+        .map(|(i,l)|serde_json::from_str(l).map_err(|e|format!("{}:{}: {e}",path.display(),i+1)))
+        .collect::<Result<_,_>>()?;
     let n = backfill(&mut frames);
     if n > 0 {
         let mut out = String::with_capacity(txt.len() + n * 64);
@@ -104,6 +106,16 @@ mod tests {
         assert_eq!(f[0]["players"][0]["identity"]["source"], "tracklet");
         assert_eq!(f[9]["players"][0]["jersey"], 34);
         assert_eq!(f[0]["players"][1]["jersey"], Value::Null); // other tracklet untouched
+    }
+
+    #[test]
+    fn malformed_input_is_never_silently_rewritten() {
+        let path=std::env::temp_dir().join(format!("reco-backfill-invalid-{}.jsonl",std::process::id()));
+        let original="{\"t\":0}\ninvalid JSON\n";
+        std::fs::write(&path,original).unwrap();
+        assert!(backfill_file(&path).is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(),original);
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]

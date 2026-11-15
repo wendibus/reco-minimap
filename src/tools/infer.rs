@@ -206,6 +206,7 @@ pub fn ensure_ort_runtime() -> Result<(), String> {
 pub struct RfDetr {
     sessions: Vec<Session>,
     /// Accumulated time in tile preprocessing / model inference (for the run summary).
+    tensors: Vec<Vec<f32>>,
     pub t_prep: std::time::Duration,
     pub t_infer: std::time::Duration,
     pub info: ModelInfo,
@@ -266,7 +267,7 @@ impl RfDetr {
             Some(b) if b > 1 => b as usize,
             _ => 1,
         };
-        Ok(Self { sessions, t_prep: Default::default(), t_infer: Default::default(), size: info.input_size, info, cfg, arch, batch, ep, units })
+        Ok(Self { sessions, tensors: Vec::new(), t_prep: Default::default(), t_infer: Default::default(), size: info.input_size, info, cfg, arch, batch, ep, units })
     }
 
     /// Several tiles per inference call (`--batch N`), if the model's batch dimension is variable:
@@ -327,16 +328,27 @@ impl RfDetr {
     pub fn detect(&mut self, frame: &Frame, tiles: &[Tile]) -> Result<Vec<Det>, String> {
         let (size, arch, norm) = (self.size, self.arch, self.norm());
         let t0 = std::time::Instant::now();
-        let tensors: Vec<Vec<f32>> = std::thread::scope(|sc| {
-            let hs: Vec<_> = tiles.iter().map(|t| sc.spawn(move || frame.tile_tensor(t, size, norm))).collect();
-            hs.into_iter().map(|h| h.join().expect("tile thread")).collect()
+        // Keep tensor allocations between frames and cap CPU concurrency. One
+        // OS thread per tile oversubscribes the CPU on large panorama plans.
+        if self.tensors.len()<tiles.len() {self.tensors.resize_with(tiles.len(),Vec::new);}
+        let buffers=&mut self.tensors[..tiles.len()];
+        let threads = std::thread::available_parallelism().map(|n|n.get()).unwrap_or(1).min(8).min(tiles.len()).max(1);
+        let chunk = tiles.len().div_ceil(threads).max(1);
+        std::thread::scope(|sc| {
+            for (tile_chunk, buffers) in tiles.chunks(chunk).zip(buffers.chunks_mut(chunk)) {
+                sc.spawn(move || {
+                    for (tile, buffer) in tile_chunk.iter().zip(buffers) {
+                        frame.tile_tensor_into(tile, size, norm, buffer);
+                    }
+                });
+            }
         });
         self.t_prep += t0.elapsed();
 
         let t1 = std::time::Instant::now();
         let n = self.sessions.len().min(tiles.len()).max(1);
         let cfg = &self.cfg;
-        let tensors_ref = &tensors;
+        let tensors_ref = &self.tensors;
         let batch = self.batch.max(1);
         let results: Vec<Result<Vec<(usize, Vec<Det>)>, String>> = std::thread::scope(|sc| {
             let hs: Vec<_> = self

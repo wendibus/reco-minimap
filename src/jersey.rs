@@ -28,6 +28,13 @@ impl JerseyVotes {
         self.score.retain(|_, v| *v > 0.02);
     }
 
+    /// All numbers with evidence.
+    pub fn scores(&self) -> Vec<(u8, f32)> {
+        let mut v: Vec<(u8, f32)> = self.score.iter().map(|(n, s)| (*n, *s)).collect();
+        v.sort_by_key(|x| x.0);
+        v
+    }
+
     pub fn score_of(&self, number: u8) -> f32 {
         self.score.get(&number).copied().unwrap_or(0.0)
     }
@@ -139,6 +146,34 @@ pub fn ctc_roster(probs: &[f32], t: usize, roster: &[u8]) -> Option<(u8, f32)> {
     let sum: f64 = ll.iter().map(|l| (l - mx).exp()).sum();
     let (i, _) = ll.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))?;
     Some((roster[i], ((ll[i] - mx).exp() / sum) as f32))
+}
+
+/// Evidence of one reading for **every** roster number: posterior among the roster, and whether
+/// the number is only explained in part (one digit of a two-digit number visible, the other
+/// hidden – a "4" fits the 34 if the roster has no 4). A partial explanation costs a fixed
+/// penalty, so a full match always wins over it. Sorted best first.
+pub fn roster_evidence(probs: &[f32], t: usize, roster: &[u8]) -> Vec<(u8, f32, bool)> {
+    if roster.is_empty() || t == 0 {
+        return Vec::new();
+    }
+    const PARTIAL: f64 = -1.4; // ln(0.25)
+    let ll: Vec<(f64, bool)> = roster
+        .iter()
+        .map(|n| {
+            let digits: Vec<u8> = n.to_string().bytes().map(|b| b - b'0').collect();
+            let full = ctc_loglik(probs, t, &digits);
+            if digits.len() < 2 {
+                return (full, false);
+            }
+            let part = digits.iter().map(|d| ctc_loglik(probs, t, &[*d])).fold(f64::NEG_INFINITY, f64::max) + PARTIAL;
+            if part > full { (part, true) } else { (full, false) }
+        })
+        .collect();
+    let mx = ll.iter().map(|x| x.0).fold(f64::NEG_INFINITY, f64::max);
+    let sum: f64 = ll.iter().map(|x| (x.0 - mx).exp()).sum();
+    let mut v: Vec<(u8, f32, bool)> = roster.iter().zip(&ll).map(|(n, (l, p))| (*n, ((l - mx).exp() / sum) as f32, *p)).collect();
+    v.sort_by(|a, b| b.1.total_cmp(&a.1));
+    v
 }
 
 /// Goalkeeper numbers in a roster string: a number followed directly by `g`, `gk`, `tw`, `t`, `k`, `p` or `*`

@@ -176,6 +176,7 @@ Bei Sportarten mit Toren oder Körben (Basketball, Fußball, Futsal, Handball, H
    * *Panorama mit Boxen und Minimap (zur Kontrolle)* – dein Panorama mit Erkennungsboxen und der Minimap in der Ecke. Nutze das, um beim ersten Abschnitt die **Qualität zu prüfen**.
    * *Daten (.jsonl)* – ein Eintrag pro Bild mit allen Positionen ([Format](../README.md#output-formats)).
 3. **Erkennung bei jedem N-ten Bild.** 5 ist ein guter Anfang: Die Erkennung läuft bei jedem 5. Bild, das Minimap-Video wird auf volle Bildrate interpoliert und wirkt trotzdem flüssig. Höher ist schneller, niedriger genauer.
+   **Schneller oder genauer:** *Adaptive Kacheln* sucht nur um die Spieler des vorigen Bildes und macht jede Sekunde einen vollen Durchlauf – schneller, wenn die Spieler auf wenige Kacheln verteilt sind. *Genauer für weit entfernte Spieler* nimmt kleinere Kacheln, das Modell sieht entfernte Spieler dadurch größer; der Lauf dauert länger. Standard sind Kacheln passend zur Eingabegröße des Modells.
 4. **Deckkraft nicht erkannter Spieler.** 1 lässt einen verdeckten Spieler voll sichtbar an seiner geschätzten Position; kleinere Werte lassen ihn verblassen.
 5. **Rechner.** *automatisch* wählt auf einem Mac CoreML. Lass *CoreML* auf `all`.
 6. Klicke **Starten**. Ein Fenster zeigt den Fortschritt (bei mehreren Abschnitten auch, welcher gerade läuft) und am Ende die erzeugten Dateien. *Abbrechen* fragt, ob du das bisher Verarbeitete behalten oder löschen willst.
@@ -205,6 +206,7 @@ In Schritt 4 gibt es den Abschnitt *Trikotnummern lesen und anzeigen*.
 3. Setze das Häkchen bei *Trikotnummern lesen und anzeigen* und lass einen Abschnitt laufen.
 4. **Die Größe entscheidet.** Eine Nummer ist ab etwa 10 px Ziffernhöhe lesbar, das heißt Spieler mit etwa **80 px Höhe**. Am Ende des Laufs steht im Protokoll, wie groß Spieler in deinem Video sind und ob das reicht. Wenn nicht, exportiere mit Reco eine größere Version desselben Panoramas (gleiche Zeitachse, gleiche Bildrate) und trage sie bei *Höher aufgelöstes Panorama für die Nummern* ein. Die Erkennung läuft weiter im kleineren Video.
 5. Nummern erscheinen auf den Scheiben, sobald sie bestätigt sind. Spieler, deren Rücken nie sichtbar ist, bleiben ohne Nummer.
+6. **Gelesen oder erschlossen.** Wie ein Mensch schließt das Programm auch: Ist nur eine „4“ zu sehen und gibt es im Kader eine 34, aber keine 4, ist es die 34. Eine Nummer gehört zur selben Zeit nur einem Spieler – ist ein Mitspieler eindeutig die 4, wird der halb gelesene die nächstwahrscheinliche Nummer. Und sind von fünf Spielern auf dem Feld vier bekannt und die Aufstellung bekannt, ist der fünfte die übrige Nummer. Nach dem Lauf werden Nummern entlang jeder durchgehend verfolgten Spur ergänzt – auch für die Zeit vor dem ersten Lesen. Erschlossene Nummern sind in den Daten (`"status": "inferred"`), im Review und in der Spielzeit-Statistik als *erschlossen* markiert.
 
 **Wechsel** erscheinen im Protokoll (`WECHSEL Heim bei 12:34: #7 -> #12` für einen bestätigten Wechsel, „möglicher Wechsel“, wenn jemand das Feld verließ und jemand am Rand hereinkam, die Nummern aber unbekannt sind), in `events` der Datendatei und in Schritt 6.
 
@@ -343,6 +345,8 @@ Was hätte der Live-Ticker bei diesem Video gemeldet? Die Karte zeigt Einträge,
 ---
 
 ## Aktualisieren
+
+**Was ist neu:** Nach einem Update zeigt die Oberfläche einmal, was sich geändert hat; später zeigt ein Klick auf die Versionsnummer neben dem Namen es wieder. In der Mac-App steht unter *Reco Minimap → Über Reco Minimap*, was die installierte Version Neues bringt.
 
 **Mac-App:** Beim Start fragt die App, wenn eine neue Version erschienen ist: *Version … ist verfügbar. Jetzt installieren?* Sie lädt das Update, prüft dessen Signatur, wechselt und startet sich neu; deine Projekte bleiben, wie sie sind. Läuft gerade ein Vorgang, wartet das Update. Von Hand: Menü *Reco Minimap → Nach Updates suchen …*.
 

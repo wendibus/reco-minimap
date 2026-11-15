@@ -1,0 +1,78 @@
+{
+  "0.15.0": {
+    "de": [
+      "Schnellere Analyse: Kacheln passend zur Eingabegröße des Modells (das Kamera-Modell rechnet nicht mehr unnötig hochskalierte Kacheln).",
+      "Videos: wahlweise adaptive Kacheln wie im Live-Modus – nur um die Spieler herum, mit regelmäßigem Komplett-Durchlauf.",
+      "Mehrere Kacheln pro Modellaufruf bei Modellen mit variabler Batch-Größe.",
+      "Ausgabevideos werden auf dem Mac mit dem Media-Encoder (VideoToolbox) geschrieben, wo die Größe es erlaubt – der Prozessor bleibt für die Erkennung frei.",
+      "Nummernlesen gezielter: bereits sicher erkannte Spieler werden seltener nachgelesen, die Lesungen gehen an die noch unbekannten.",
+      "Spieler-Zuordnung mit Deduktion: Teilziffern (eine sichtbare „4“, im Kader nur die 34), Ausschluss (eine Nummer pro Spieler), Aufstellung (vier bekannt, der fünfte ist der Rest) und gemeinsame Zuordnung pro Team.",
+      "Bei Videos werden Nummern nach dem Lauf entlang der ganzen Spur ergänzt – auch rückwirkend.",
+      "Ergebnisse unterscheiden „gelesen“ und „erschlossen“.",
+      "„Was ist neu“ nach jedem Update und unter „Über Reco Minimap“."
+    ],
+    "en": [
+      "Faster analysis: tiles sized to the model's input (the camera model no longer works on needlessly upscaled tiles).",
+      "Videos: optional adaptive tiles as in live mode – only around the players, with a regular full sweep.",
+      "Several tiles per model call for models with a variable batch size.",
+      "On the Mac, output videos are written with the media encoder (VideoToolbox) where the size allows – the processor stays free for detection.",
+      "More targeted number reading: players already identified with confidence are re-read less often, the reads go to the unknown ones.",
+      "Player identification with deduction: partial digits (a visible \"4\", only 34 in the roster), exclusion (one number per player), line-up (four known, the fifth is the rest) and joint assignment per team.",
+      "For videos, numbers are propagated along the whole tracklet after the run – backwards as well.",
+      "Results tell \"read\" from \"deduced\".",
+      "\"What's new\" after every update and under \"About Reco Minimap\"."
+    ],
+    "fr": [
+      "Analyse plus rapide : tuiles adaptées à la taille d'entrée du modèle (le modèle caméra ne traite plus de tuiles agrandies inutilement).",
+      "Vidéos : tuiles adaptatives en option comme en direct – seulement autour des joueurs, avec un balayage complet régulier.",
+      "Plusieurs tuiles par appel du modèle pour les modèles à taille de lot variable.",
+      "Sur Mac, les vidéos de sortie sont encodées par le moteur multimédia (VideoToolbox) quand la taille le permet – le processeur reste libre pour la détection.",
+      "Lecture des numéros plus ciblée : les joueurs déjà identifiés avec certitude sont relus moins souvent, les lectures vont aux inconnus.",
+      "Identification des joueurs par déduction : chiffres partiels (un « 4 » visible, seul le 34 dans l'effectif), exclusion (un numéro par joueur), composition (quatre connus, le cinquième est le reste) et attribution conjointe par équipe.",
+      "Pour les vidéos, les numéros sont propagés sur toute la piste après l'analyse – aussi en arrière.",
+      "Les résultats distinguent « lu » et « déduit ».",
+      "« Quoi de neuf » après chaque mise à jour et dans « À propos de Reco Minimap »."
+    ],
+    "es": [
+      "Análisis más rápido: teselas del tamaño de entrada del modelo (el modelo de cámara ya no procesa teselas ampliadas sin necesidad).",
+      "Vídeos: teselas adaptativas opcionales como en directo – solo alrededor de los jugadores, con un barrido completo periódico.",
+      "Varias teselas por llamada al modelo en modelos con tamaño de lote variable.",
+      "En el Mac, los vídeos de salida se codifican con el motor multimedia (VideoToolbox) cuando el tamaño lo permite – el procesador queda libre para la detección.",
+      "Lectura de dorsales más dirigida: los jugadores ya identificados con seguridad se releen menos, las lecturas van a los desconocidos.",
+      "Identificación de jugadores por deducción: dígitos parciales (un «4» visible, solo el 34 en la plantilla), exclusión (un dorsal por jugador), alineación (cuatro conocidos, el quinto es el resto) y asignación conjunta por equipo.",
+      "En vídeos, los dorsales se propagan por toda la pista tras el análisis, también hacia atrás.",
+      "Los resultados distinguen «leído» y «deducido».",
+      "«Qué hay de nuevo» tras cada actualización y en «Acerca de Reco Minimap»."
+    ]
+  },
+  "0.14.0": {
+    "de": ["Statistik je Team: Spielminuten pro Spieler und geschätzter Spielstand (Punkte im Basketball, Tore in Torsportarten).", "Alle Menüpunkte in vier Sprachen, Spielsituationen mit den Namen der jeweiligen Sportart.", "Torwart-Trikot-Kalibrierung nur bei Sportarten mit Torwart."],
+    "en": ["Statistics per team: playing minutes per player and the estimated score (points in basketball, goals in goal sports).", "All menu items in four languages, game situations named as in each sport.", "Goalkeeper kit calibration only for sports with goalkeepers."],
+    "fr": ["Statistiques par équipe : minutes jouées par joueur et score estimé (points au basket, buts dans les sports de but).", "Tous les menus en quatre langues, situations de jeu nommées selon chaque sport.", "Calibrage du maillot de gardien uniquement pour les sports avec gardien."],
+    "es": ["Estadísticas por equipo: minutos jugados por jugador y marcador estimado (puntos en baloncesto, goles en deportes de portería).", "Todos los menús en cuatro idiomas, situaciones de juego con el nombre de cada deporte.", "Calibración de la camiseta de portero solo en deportes con portero."]
+  },
+  "0.13.0": {
+    "de": ["Spielrichtung: welches Team auf welchen Korb / welches Tor spielt und wann die Seiten wechseln – angegeben oder geschätzt. Würfe und Standards zählen für das angreifende Team."],
+    "en": ["Playing direction: which basket / goal each team attacks and when they change ends – given or estimated. Attempts and set pieces count for the attacking team."],
+    "fr": ["Sens du jeu : quel panier / but chaque équipe attaque et quand elles changent de côté – indiqué ou estimé. Tirs et coups de pied arrêtés comptent pour l'équipe qui attaque."],
+    "es": ["Dirección de juego: a qué canasta / portería ataca cada equipo y cuándo cambian de campo – indicada o estimada. Tiros y jugadas a balón parado cuentan para el equipo atacante."]
+  },
+  "0.12.0": {
+    "de": ["Live-Ticker-Simulation aus einem Video (liveticker.json), die Ticker-Seite zeigt „Simulation“ und funktioniert in allen vier Sprachen."],
+    "en": ["Live ticker simulation from a video (liveticker.json); the ticker page shows \"Simulation\" and works in all four languages."],
+    "fr": ["Simulation du fil en direct à partir d'une vidéo (liveticker.json) ; la page du fil affiche « Simulation » et fonctionne dans les quatre langues."],
+    "es": ["Simulación del resumen en directo a partir de un vídeo (liveticker.json); la página muestra «Simulación» y funciona en los cuatro idiomas."]
+  },
+  "0.11.0": {
+    "de": ["Mannschaftsform: Breite, Tiefe und mittlere Aufstellung je Team."],
+    "en": ["Team shape: width, depth and average line-up per team."],
+    "fr": ["Forme d'équipe : largeur, profondeur et placement moyen par équipe."],
+    "es": ["Forma del equipo: anchura, profundidad y alineación media por equipo."]
+  },
+  "0.10.1": {
+    "de": ["Das Modell der Reco-Kamera als Standard, Reco-Trainer-Modelle je Sportart, Mac-App mit signierten Updates."],
+    "en": ["The Reco camera model as the default, Reco Trainer models per sport, Mac app with signed updates."],
+    "fr": ["Le modèle de la caméra Reco par défaut, modèles Reco Trainer par sport, app Mac avec mises à jour signées."],
+    "es": ["El modelo de la cámara Reco por defecto, modelos de Reco Trainer por deporte, app de Mac con actualizaciones firmadas."]
+  }
+}

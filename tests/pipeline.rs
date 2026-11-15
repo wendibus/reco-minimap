@@ -681,7 +681,7 @@ fn merge_tiles_drops_boxes_cut_by_a_tile_edge() {
 fn auto_plan_reaches_the_near_sideline_and_follows_the_field() {
     use reco_minimap::tools::scales::{floor_points, plan_auto, plan_auto_field, Scales};
     // a steep fit from a real 2560x1440 panorama: player height grows 4.9x from the far to the near sideline
-    let sc = Scales { a: -201.33, b: 0.3489, y_min: 665.4, y_max: 1007.0, target_px: 28.0, n: 98 };
+    let sc = Scales { a: -201.33, b: 0.3489, y_min: 665.4, y_max: 1007.0, target_px: 28.0, n: 98, input: 512.0 };
     let full = plan_auto(&sc, 2560, 1440, 0.25);
     assert!(full.iter().map(|t| t.y + t.h).max().unwrap() >= 1007, "the bands must not stop before y_max");
 
@@ -882,4 +882,23 @@ fn correcting_ocr_on_a_continuous_track_is_not_a_substitution() {
     let track = mm.tracker().tracks().iter().find(|p| p.team == Team::Home).unwrap();
     assert_eq!(track.segment, 0);
     assert_eq!(track.confirmed, Some(12));
+}
+
+#[test]
+fn partial_number_points_to_the_only_roster_match() {
+    use reco_minimap::jersey::*;
+    // only a "4" is visible (the first digit hidden)
+    let (p, t) = ctc_probs(&[4], 0.9);
+    // roster with a 4: the full match wins
+    let ev = roster_evidence(&p, t, &[4, 7, 12, 34]);
+    assert_eq!(ev[0].0, 4);
+    assert!(!ev[0].2);
+    // roster without a 4 but with 34: the 34 explains it, marked as partial
+    let ev = roster_evidence(&p, t, &[7, 12, 34, 55]);
+    assert_eq!(ev[0].0, 34);
+    assert!(ev[0].2 && ev[0].1 > 0.9, "{ev:?}");
+    // a full "34" reading is not partial
+    let (p, t) = ctc_probs(&[3, 4], 0.9);
+    let ev = roster_evidence(&p, t, &[3, 4, 34]);
+    assert_eq!((ev[0].0, ev[0].2), (34, false));
 }

@@ -6,7 +6,7 @@ export type Lang = 'de' | 'en' | 'es' | 'fr';
 const de = {
   hints: {
     toggle: 'Hinweise', toggleOn: 'Hinweise beim Überfahren der Tasten ausschalten.', toggleOff: 'Hinweise beim Überfahren der Tasten einschalten.',
-    language: 'Stellt die Sprache der App um.', version: 'Zeigt die Version; „Anleitung“ erklärt den Ablauf.',
+    language: 'Stellt die Sprache der App um.', version: 'Die Version – ein Klick zeigt, was neu ist.',
     guide: 'Öffnet die Schritt-für-Schritt-Anleitung mit Bildern und Filmen.', review: 'Öffnet die Prüfseite für erkannte Spieler und Situationen.',
     chooseFolder: 'Wählt den Projektordner: dort liegen Modelle, Kalibrierung, Farben und Ergebnisse.', showFolder: 'Öffnet den Ordner im Dateimanager.', openFolder: 'Öffnet den eingetippten Ordner als Projekt.',
     sport: 'Wählt die Sportart: Spielfeld, Teamgröße und die Statistik richten sich danach.',
@@ -109,7 +109,7 @@ const de = {
     scoreEmpty: 'Keine Treffer erkannt. Dafür braucht es erkannte Versuche und die Situationserkennung (Schritt 4).',
     likely: 'wahrscheinlich', possible: 'möglich', points: (n: number) => n === 1 ? '1 Punkt' : `${n} Punkte`, restartAt: (c: string) => `Fortsetzung ${c}`,
     playersTitle: 'Spielzeit je Spieler', playersHint: 'Zeit auf dem Feld je Rückennummer. Jede durchgehend verfolgte Spur zählt für die Nummer, die auf ihr am häufigsten gelesen wurde.',
-    noNumbers: 'Im Ergebnis stehen keine Rückennummern – in Schritt 4 „Trikotnummern lesen und anzeigen“ einschalten.', minutes: 'Minuten', share: 'Anteil', withoutNumber: 'ohne erkannte Nummer', player: 'Spieler',
+    noNumbers: 'Im Ergebnis stehen keine Rückennummern – in Schritt 4 „Trikotnummern lesen und anzeigen“ einschalten.', minutes: 'Minuten', share: 'Anteil', withoutNumber: 'ohne erkannte Nummer', player: 'Spieler', inferred: 'erschlossen', inferredHint: 'Anteil der Zeit, in dem die Nummer nicht gelesen, sondern erschlossen wurde (Ausschluss, Aufstellung oder entlang der Spur).',
     at: (clock: string) => `bei ${clock}`, sub: (out: string, inn: string) => `${out} → ${inn}`,
   },
 };
@@ -119,7 +119,7 @@ type Text = typeof de;
 const en: Text = {
   hints: {
     toggle: 'Hints', toggleOn: 'Turn off the hints shown when hovering over buttons.', toggleOff: 'Turn on the hints shown when hovering over buttons.',
-    language: 'Changes the language of the app.', version: 'Shows the version; “Guide” explains the workflow.',
+    language: 'Changes the language of the app.', version: 'The version – click to see what is new.',
     guide: 'Opens the step-by-step guide with pictures and films.', review: 'Opens the review page for detected players and situations.',
     chooseFolder: 'Selects the project folder: models, calibration, colours and results live there.', showFolder: 'Opens the folder in the file manager.', openFolder: 'Opens the typed folder as the project.',
     sport: 'Selects the sport: field, team size and the statistics follow from it.',
@@ -222,7 +222,7 @@ const en: Text = {
     scoreEmpty: 'No scores detected. This needs detected attempts and game situation detection (step 4).',
     likely: 'likely', possible: 'possible', points: (n: number) => n === 1 ? '1 point' : `${n} points`, restartAt: (c: string) => `restart ${c}`,
     playersTitle: 'Playing time per player', playersHint: 'Time on the field per jersey number. Every continuously tracked trail counts for the number read most often on it.',
-    noNumbers: 'The result has no jersey numbers – turn on “Read and show jersey numbers” in step 4.', minutes: 'Minutes', share: 'Share', withoutNumber: 'no number read', player: 'Player',
+    noNumbers: 'The result has no jersey numbers – turn on “Read and show jersey numbers” in step 4.', minutes: 'Minutes', share: 'Share', withoutNumber: 'no number read', player: 'Player', inferred: 'deduced', inferredHint: 'Share of the time in which the number was not read but deduced (exclusion, line-up or along the tracklet).',
     at: (clock) => `at ${clock}`, sub: (out, inn) => `${out} → ${inn}`,
   },
 };
@@ -230,7 +230,7 @@ const en: Text = {
 const fr: Text = {
   hints: {
     toggle: 'Astuces', toggleOn: 'Désactiver les astuces affichées au survol des boutons.', toggleOff: 'Activer les astuces affichées au survol des boutons.',
-    language: 'Change la langue de l’application.', version: 'Affiche la version ; « Guide » explique le déroulement.',
+    language: 'Change la langue de l’application.', version: 'La version – un clic montre les nouveautés.',
     guide: 'Ouvre le guide pas à pas avec images et films.', review: 'Ouvre la page de vérification des joueurs et situations détectés.',
     chooseFolder: 'Choisit le dossier du projet : modèles, calibrage, couleurs et résultats s’y trouvent.', showFolder: 'Ouvre le dossier dans le gestionnaire de fichiers.', openFolder: 'Ouvre le dossier saisi comme projet.',
     sport: 'Choisit le sport : terrain, taille des équipes et statistiques en dépendent.',
@@ -333,7 +333,7 @@ const fr: Text = {
     scoreEmpty: 'Aucun point détecté. Il faut des tentatives détectées et la détection des situations de jeu (étape 4).',
     likely: 'probable', possible: 'possible', points: (n: number) => n === 1 ? '1 point' : `${n} points`, restartAt: (c: string) => `reprise ${c}`,
     playersTitle: 'Temps de jeu par joueur', playersHint: 'Temps sur le terrain par numéro de maillot. Chaque trace suivie sans interruption compte pour le numéro le plus souvent lu sur elle.',
-    noNumbers: 'Le résultat ne contient pas de numéros – activer « Lire et afficher les numéros de maillot » à l’étape 4.', minutes: 'Minutes', share: 'Part', withoutNumber: 'sans numéro lu', player: 'Joueur',
+    noNumbers: 'Le résultat ne contient pas de numéros – activer « Lire et afficher les numéros de maillot » à l’étape 4.', minutes: 'Minutes', share: 'Part', withoutNumber: 'sans numéro lu', player: 'Joueur', inferred: 'déduit', inferredHint: 'Part du temps où le numéro n’a pas été lu mais déduit (exclusion, composition ou le long de la piste).',
     at: (clock) => `à ${clock}`, sub: (out, inn) => `${out} → ${inn}`,
   },
 };
@@ -341,7 +341,7 @@ const fr: Text = {
 const es: Text = {
   hints: {
     toggle: 'Pistas', toggleOn: 'Desactiva las pistas al pasar sobre los botones.', toggleOff: 'Activa las pistas al pasar sobre los botones.',
-    language: 'Cambia el idioma de la aplicación.', version: 'Muestra la versión; «Guía» explica el proceso.',
+    language: 'Cambia el idioma de la aplicación.', version: 'La versión: un clic muestra las novedades.',
     guide: 'Abre la guía paso a paso con imágenes y vídeos.', review: 'Abre la página de revisión de jugadores y situaciones detectados.',
     chooseFolder: 'Elige la carpeta del proyecto: allí están modelos, calibración, colores y resultados.', showFolder: 'Abre la carpeta en el gestor de archivos.', openFolder: 'Abre como proyecto la carpeta escrita.',
     sport: 'Elige el deporte: campo, tamaño de los equipos y estadísticas dependen de él.',
@@ -444,7 +444,7 @@ const es: Text = {
     scoreEmpty: 'No se detectaron tantos. Hace falta que se detecten intentos y las situaciones de juego (paso 4).',
     likely: 'probable', possible: 'posible', points: (n: number) => n === 1 ? '1 punto' : `${n} puntos`, restartAt: (c: string) => `reanudación ${c}`,
     playersTitle: 'Tiempo de juego por jugador', playersHint: 'Tiempo en el campo por dorsal. Cada rastro seguido sin interrupción cuenta para el dorsal que más se leyó en él.',
-    noNumbers: 'El resultado no tiene dorsales: activa «Leer y mostrar los dorsales» en el paso 4.', minutes: 'Minutos', share: 'Parte', withoutNumber: 'sin dorsal leído', player: 'Jugador',
+    noNumbers: 'El resultado no tiene dorsales: activa «Leer y mostrar los dorsales» en el paso 4.', minutes: 'Minutos', share: 'Parte', withoutNumber: 'sin dorsal leído', player: 'Jugador', inferred: 'deducido', inferredHint: 'Parte del tiempo en que el dorsal no se leyó sino que se dedujo (exclusión, alineación o a lo largo de la pista).',
     at: (clock) => `en ${clock}`, sub: (out, inn) => `${out} → ${inn}`,
   },
 };

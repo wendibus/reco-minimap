@@ -306,6 +306,8 @@ reco-minimap run pano.mp4 --model … --court court.json --teams teams.json \
 * **Goalkeepers:** in sports with a keeper kit (football, futsal, handball, hockey, lacrosse) mark them in the squad with `g`, `gk` or `tw` behind the number: `--roster-home 1g,4,7,10,12gk`. Once the keeper colour is set (see *Shirt colours and goalkeepers*), a keeper's number is chosen only among the keepers and everyone else's only among the outfield players. That removes the commonest mix-up (keeper vs. outfield) and makes the keepers' numbers almost certain. Without a keeper colour the marks have no effect. The JSON output carries `"keeper": true` for these players.
 * The number is searched in the upper torso crop (the region that differs most from the shirt colour) and read by the PP-OCRv4 recognition network. **With a squad list the reader only chooses among those numbers**, which is far more reliable than free reading.
 * Readings are collected as votes per player slot. A number is shown only after several consistent reads and stays until someone else's evidence wins; uncertain reads stay empty instead of guessing.
+* **Deduction.** The numbers of a team are assigned jointly every frame (Hungarian method over players × squad numbers), so the inferences a person would make come out of the same step: a partly visible number counts for every squad number it fits (a lone "4" with a 34 but no 4 in the squad is the 34); one number belongs to one player at a time (if a teammate is clearly the 4, the half-read one gets the runner-up); and with all players of a team on the field, a known line-up and all but one identified, the last one is the remaining number. Deduced numbers carry `"status": "inferred"`. After a video run (`--json`), numbers are propagated along each continuous trail, backwards too (`--no-backfill` turns it off).
+* Players with a well-established number are re-read less often; the reads go to the players still unknown.
 * `--hires` reads numbers from a higher-resolution export of the same panorama (same timeline); detection keeps using the smaller video.
 
 **Resolution decides.** Measured on synthetic digits with rotation, blur, fabric folds and heavy compression:
@@ -512,7 +514,7 @@ Common options (see `reco-minimap --help` for all):
 }
 ```
 
-* `id` is a **slot**, not a person. Pair it with `segment` to identify a continuous tracking section. `identity.status` is `unknown`, `candidate` or `conflict`; `identity.player` contains a provisional `{team, number}` key or `null`. `state` is `visible`, `occluded` or `lost` (position then is an estimate).
+* `id` is a **slot**, not a person. Pair it with `segment` to identify a continuous tracking section. `identity.status` is `unknown`, `candidate` (read), `inferred` (deduced) or `conflict`; `identity.source` says how: `read`, `exclusion`, `lineup` or `tracklet` (filled in along the trail after the run); `identity.player` contains a provisional `{team, number}` key or `null`. `state` is `visible`, `occluded` or `lost` (position then is an estimate).
 * `ball.state`: `held` (with `holder`), `flight`, `loose`, `unknown`.
 * `events.kind`: `confirmed` (fresh number differs after re-entry; still a heuristic) or `possible` (leave and re-enter at a sideline). An OCR correction without re-entry no longer emits a substitution.
 * Live records additionally carry `age_ms` (time from camera frame to result).
@@ -541,7 +543,15 @@ Measured on a Mac with an M4 Pro, 2560×1440 panorama, RF-DETR small, one minute
 | Throughput | ≈ 3.2 processed frames per second → a 10-minute quarter at 60 fps and `--every 10` takes about 19 minutes |
 | Parallel model sessions | no gain (the accelerator works one tile at a time) |
 
-Lower cost with `--every N` and by keeping the calibration current, so that only the field is searched. `replay` re-runs everything after the detector from recorded detections in well under a second per minute of video.
+Lower cost with `--every N` and by keeping the calibration current, so that only the field is searched.
+
+Since 0.15:
+
+* **Tiles match the model.** The tile size follows the model's input (`--tile model`, also inside `--tile auto`). Before, the 1280-pixel camera model received tiles planned for a 512-pixel input – upscaled, with about six times the work per frame. `--tile-for 512` (in the interface: *More accurate for distant players*) brings back the smaller tiles for distant players, at that cost.
+* **Adaptive tiles for videos:** `--adaptive` searches only around the players and the ball of the previous frame, plus two rotating search tiles and a full sweep every `--full-every` seconds (default 1). It pays when the players occupy few of the tiles.
+* **Batches:** a model exported with a variable (or fixed > 1) batch dimension gets several tiles per call (`--batch N`, default 4). The camera model has a fixed batch of 1 and runs as before.
+* **Output videos** are encoded by VideoToolbox on a Mac where the size allows (up to 4096 px); libx264 needs about eight cores for a panorama-sized video, which the detection can use instead. `--vcodec libx264` keeps the old encoder.
+* **Hardware decoding** (`--hwdec`) is off by default: software decoding of a 5760×1920 panorama runs at about 500 frames/s, far from being the bottleneck, and VideoToolbox does not decode H.264 wider than 4096 px. `replay` re-runs everything after the detector from recorded detections in well under a second per minute of video.
 
 ## Known limitations
 

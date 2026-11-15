@@ -176,6 +176,7 @@ En deportes con porterías o canastas (baloncesto, fútbol, fútbol sala, balonm
    * *Panorama con recuadros y minimapa (para comprobar)* – tu panorama con los recuadros de detección y el minimapa en una esquina. Úsalo para **comprobar la calidad** en el primer segmento.
    * *Datos (.jsonl)* – una entrada por imagen con todas las posiciones.
 3. **Detectar cada N fotogramas.** 5 es un buen comienzo: la detección se ejecuta en uno de cada 5, el vídeo del minimapa se interpola a la cadencia completa y sigue viéndose fluido. Más alto es más rápido; más bajo, más preciso.
+   **Más rápido o más preciso:** *Teselas adaptativas* busca solo alrededor de los jugadores del fotograma anterior y hace un barrido completo cada segundo – más rápido cuando los jugadores ocupan pocas teselas. *Más preciso para jugadores lejanos* usa teselas más pequeñas: el modelo ve más grandes a los jugadores lejanos; el análisis tarda más. Por defecto, las teselas se ajustan al tamaño de entrada del modelo.
 4. **Opacidad de jugadores no detectados.** 1 deja a un jugador oculto totalmente visible en su posición estimada; valores menores lo atenúan.
 5. **Cálculo.** *automático* elige CoreML en un Mac. Deja *CoreML* en `all`.
 6. Haz clic en **Iniciar**. Una ventana muestra el progreso (con varios tramos, también cuál está en curso) y, al final, los archivos escritos. *Cancelar* pregunta si quieres conservar o borrar lo procesado hasta ahora.
@@ -205,6 +206,7 @@ En el paso 4 está la sección *Leer y mostrar los dorsales*.
 3. Marca *Leer y mostrar los dorsales* y ejecuta un segmento.
 4. **El tamaño decide.** Un dorsal se lee a partir de unos 10 px de altura de cifra, es decir, jugadores de unos **80 px de alto**. Al final del proceso, el registro indica qué tamaño tienen los jugadores en tu vídeo y si basta. Si no, exporta con Reco una versión mayor del mismo panorama (misma línea de tiempo, misma cadencia) e indícala en *Panorama de mayor resolución para los dorsales*. La detección sigue en el vídeo pequeño.
 5. Los dorsales aparecen sobre los puntos cuando están confirmados. Los jugadores cuya espalda nunca se ve se quedan sin número.
+6. **Leído o deducido.** Como una persona, el programa también deduce: si solo se ve un «4» y la plantilla tiene un 34 pero ningún 4, es el 34; un dorsal pertenece a un solo jugador a la vez – si un compañero es claramente el 4, el leído a medias recibe el siguiente dorsal más probable; y si se conocen cuatro de los cinco jugadores en pista y la alineación, el quinto es el dorsal restante. Tras el análisis, los dorsales se completan a lo largo de cada pista seguida sin interrupción, también antes de la primera lectura. Los dorsales deducidos aparecen como *deducido* en los datos (`"status": "inferred"`), en la revisión y en la estadística de tiempo de juego.
 
 **Los cambios** aparecen en el registro (`CAMBIO local en 12:34: #7 -> #12` para un cambio confirmado, «posible cambio» cuando alguien salió del campo por una línea de banda y alguien entró, sin conocerse los dorsales), en `events` del archivo de datos y en el paso 6.
 
@@ -344,7 +346,9 @@ La lista muestra intentos, situaciones de juego y cambios confirmados con hora, 
 
 ## Actualizar
 
-**App de Mac:** cuando sale una versión nueva, la app pregunta al arrancar (en inglés): *Version … is available. Install now?* Descarga la actualización, comprueba su firma, cambia a ella y se reinicia; tus proyectos quedan como están. Si hay una tarea en curso, la actualización espera. A mano: menú *Reco Minimap → Check for Updates…*.
+**Novedades:** tras una actualización, la interfaz muestra una vez qué ha cambiado; después, un clic en el número de versión junto al nombre lo vuelve a mostrar. En la app de Mac, *Reco Minimap → Acerca de Reco Minimap* muestra las novedades de la versión instalada.
+
+**App de Mac:** cuando sale una versión nueva, la app pregunta al arrancar: *La versión … está disponible. ¿Instalarla ahora?* Descarga la actualización, comprueba su firma, cambia a ella y se reinicia; tus proyectos quedan como están. Si hay una tarea en curso, la actualización espera. A mano: menú *Reco Minimap → Check for Updates…*.
 
 **Zip de Windows y Linux:** descarga el zip nuevo de la página de versiones y descomprímelo.
 

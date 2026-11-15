@@ -472,7 +472,7 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
             need(&model, trs!("Modell", "model", "modèle", "modelo"))?;
             let src = if kind == "run" { video.clone() } else { get_s(p, "source") };
             need(&src, trs!("Quelle/Video", "source/video", "source/vidéo", "fuente/vídeo"))?;
-            pushs(&mut a, &[kind, &src, "--model", &model, "--court", "court.json", "--teams", "teams.json", "--tile", if has_scales { "auto" } else { "512" }]);
+            pushs(&mut a, &[kind, &src, "--model", &model, "--court", "court.json", "--teams", "teams.json", "--tile", if has_scales { "auto" } else { "model" }]);
             engine(&mut a);
             for (flag, key) in [("--draw-home", "draw_home"), ("--draw-away", "draw_away"), ("--ref-color", "ref_color"), ("--min-alpha", "min_alpha")] {
                 if !get_s(p, key).is_empty() {
@@ -513,6 +513,13 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
                     pushs(&mut a, &["--duration", &get_s(p, "duration")]);
                 }
                 pushs(&mut a, &["--every", &get_s(p, "every")]);
+                if p["adaptive"].as_bool() == Some(true) {
+                    pushs(&mut a, &["--adaptive"]);
+                }
+                if p["distant"].as_bool() == Some(true) {
+                    // smaller tiles: distant players larger in the model's view, at the cost of speed
+                    pushs(&mut a, &["--tile-for", "512"]);
+                }
                 let out = |ext: &str| dir.join("out").join(format!("{name}{ext}")).to_string_lossy().into_owned();
                 let o = &p["outputs"];
                 let (mut any, mut paths) = (false, Vec::new());
@@ -756,6 +763,11 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
             let ort = super::infer::ensure_ort_runtime().err();
             jres(&mut s, json!({"ok": true, "home": home_dir().to_string_lossy(), "default_dir": default_project_dir().to_string_lossy(), "sports": sports,
                                 "coreml": cfg!(feature = "coreml"), "camera": {"id": models::CAMERA_ID, "mb": (models::CAMERA_MB as f64 * 10.0).round() / 10.0, "exists": models::camera_model().is_some()}, "ocr": {"path": super::ocr::default_model_path().to_string_lossy(), "exists": super::ocr::default_model_path().exists()}, "ort_error": ort, "version": env!("CARGO_PKG_VERSION"), "lan_ip": super::board_srv::lan_address(), "dialogs": cfg!(target_os = "macos") || cfg!(target_os = "windows") || Command::new("zenity").arg("--version").output().is_ok()}));
+        }
+        ("GET", "/api/changelog") => {
+            // notes per version and language (shown after an update and in "About Reco Minimap")
+            let notes: Value = serde_json::from_str(include_str!("changelog.json")).unwrap_or_else(|_| json!({}));
+            jres(&mut s, json!({"ok": true, "version": env!("CARGO_PKG_VERSION"), "notes": notes}));
         }
         ("GET", "/api/update") => {
             let u = ui.update.lock().unwrap().clone();

@@ -118,3 +118,9 @@
 .mm-score td:last-child { width: auto; }
 .mm-score .mm-sw { margin-right: 6px; }
 .mm-scroll { max-height: 280px; overflow: auto; }
+
+/* What's new */
+.mm-news-dialog { max-width: 620px; max-height: 80vh; overflow-y: auto; }
+.mm-news { margin: 8px 0 12px; padding-left: 20px; line-height: 1.45; }
+.mm-news li { margin: 4px 0; }
+.mm-news-version { margin: 10px 0 0; font-size: 13px; }

@@ -34,6 +34,8 @@ struct Tracklet {
     secs: f64,
     team: HashMap<String, f64>,
     numbers: HashMap<u64, f64>,
+    /// Seconds whose number was deduced rather than read.
+    inferred: f64,
 }
 
 /// Playing time per team and jersey number.
@@ -55,18 +57,26 @@ pub fn players(frames: &[Value]) -> Value {
             if let Some(team) = p["team"].as_str() {
                 *e.team.entry(team.to_string()).or_default() += dt;
             }
-            let number = p["identity"]["player"]["number"].as_u64().filter(|_| p["identity"]["status"] == "candidate").or_else(|| p["jersey"].as_u64());
+            let status = p["identity"]["status"].as_str().unwrap_or("");
+            let number = p["identity"]["player"]["number"].as_u64().filter(|_| matches!(status, "candidate" | "inferred" | "manual")).or_else(|| p["jersey"].as_u64());
             if let Some(n) = number {
                 *e.numbers.entry(n).or_default() += dt;
+                if status == "inferred" {
+                    e.inferred += dt;
+                }
             }
         }
     }
     let mut per: HashMap<(String, u64), f64> = HashMap::new();
+    let mut deduced: HashMap<(String, u64), f64> = HashMap::new();
     let mut without: HashMap<String, f64> = HashMap::new();
     for e in tl.values() {
         let Some(team) = e.team.iter().max_by(|a, b| a.1.total_cmp(b.1)).map(|x| x.0.clone()).filter(|t| t == "home" || t == "away") else { continue };
         match e.numbers.iter().max_by(|a, b| a.1.total_cmp(b.1).then(b.0.cmp(a.0))) {
-            Some((n, _)) => *per.entry((team, *n)).or_default() += e.secs,
+            Some((n, _)) => {
+                *per.entry((team.clone(), *n)).or_default() += e.secs;
+                *deduced.entry((team, *n)).or_default() += e.inferred;
+            }
             None => *without.entry(team).or_default() += e.secs,
         }
     }
@@ -76,7 +86,12 @@ pub fn players(frames: &[Value]) -> Value {
     let list = |team: &str| {
         let mut v: Vec<(u64, f64)> = per.iter().filter(|((tm, _), _)| tm == team).map(|((_, n), s)| (*n, *s)).collect();
         v.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
-        v.into_iter().map(|(n, s)| json!({"number": n, "seconds": r1(s), "share": r1(s / span * 100.0) / 100.0})).collect::<Vec<_>>()
+        v.into_iter()
+            .map(|(n, s)| {
+                let inf = deduced.get(&(team.to_string(), n)).copied().unwrap_or(0.0);
+                json!({"number": n, "seconds": r1(s), "share": r1(s / span * 100.0) / 100.0, "inferred_share": (inf / s.max(1e-6) * 100.0).round() / 100.0})
+            })
+            .collect::<Vec<_>>()
     };
     json!({
         "home": list("home"), "away": list("away"),

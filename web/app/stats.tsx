@@ -18,7 +18,7 @@ type Stats = Json & {
   moments: { t: number; type: 'attempt' | 'scene' | 'sub'; kind?: string; team: Team; zone?: string; out?: number | null; in?: number | null }[];
 };
 
-type PlayerTime = { number: number; seconds: number; share: number };
+type PlayerTime = { number: number; seconds: number; share: number; inferred_share?: number };
 type ScoreEvent = { t: number; team: Team; points: number; kind: string; evidence: string[]; restart_t: number; confidence: 'likely' | 'possible' };
 
 /** The name of a restart differs per sport (same table as the ticker and the live view). */
@@ -440,7 +440,7 @@ function PlayersCard({ p, span, colors, names, roster }: { p: NonNullable<Stats[
           {p[k].map((pl) => <div key={pl.number} className="mm-bar-row" title={`${pl.seconds.toFixed(0)} s`}>
             <span className="mm-bar-label">#{pl.number}{roster[k][pl.number] ? ' ' + roster[k][pl.number] : ''}</span>
             <span className="mm-bar-track"><span className="mm-bar-fill" style={{ width: `${Math.min(100, (pl.seconds / Math.max(1, span)) * 100)}%`, background: colors[k] }} /></span>
-            <span className="mm-bar-value">{mm(pl.seconds)} · {Math.round(pl.share * 100)} %</span>
+            <span className="mm-bar-value">{mm(pl.seconds)} · {Math.round(pl.share * 100)} %{(pl.inferred_share ?? 0) >= 0.05 && <span className="mm-muted" title={ts.inferredHint}> · {Math.round((pl.inferred_share ?? 0) * 100)} % {ts.inferred}</span>}</span>
           </div>)}
           {p.without_number[k] > 0 && <div className="mm-bar-row mm-weak"><span className="mm-bar-label">{ts.withoutNumber}</span><span className="mm-bar-track" /><span className="mm-bar-value">{mm(p.without_number[k])}</span></div>}
         </div>

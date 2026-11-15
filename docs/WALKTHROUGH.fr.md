@@ -176,6 +176,7 @@ Pour les sports avec buts ou paniers (basketball, football, futsal, handball, ho
    * *Panorama avec cadres et minimap (contrôle)* – votre panorama avec les boîtes de détection et la minimap dans un coin. Utilisez-le pour **vérifier la qualité** sur le premier segment.
    * *Données (.jsonl)* – une entrée par image avec toutes les positions.
 3. **Détecter toutes les N images.** 5 est un bon début : la détection tourne une image sur 5, la vidéo de la minimap est interpolée à la cadence complète et reste fluide. Plus grand, c'est plus rapide ; plus petit, plus précis.
+   **Plus rapide ou plus précis :** *Tuiles adaptatives* ne cherche qu'autour des joueurs de l'image précédente et fait un balayage complet chaque seconde – plus rapide quand les joueurs se répartissent sur peu de tuiles. *Plus précis pour les joueurs éloignés* utilise des tuiles plus petites : le modèle voit les joueurs éloignés plus grands ; l'analyse dure plus longtemps. Par défaut, les tuiles correspondent à la taille d'entrée du modèle.
 4. **Opacité des joueurs non détectés.** 1 laisse un joueur masqué entièrement visible à sa position estimée ; des valeurs plus faibles l'estompent.
 5. **Calcul.** *automatique* choisit CoreML sur un Mac. Laissez *CoreML* sur `all`.
 6. Cliquez **Démarrer**. Une fenêtre montre la progression (avec plusieurs sections, aussi celle en cours) et, à la fin, les fichiers écrits. *Annuler* demande s'il faut garder ou supprimer ce qui est déjà traité.
@@ -205,6 +206,7 @@ Traitez ensuite le match entier.
 3. Cochez *Lire et afficher les numéros de maillot* et lancez un segment.
 4. **La taille décide.** Un numéro est lisible à partir d'environ 10 px de hauteur de chiffre, soit des joueurs d'environ **80 px de haut**. À la fin du traitement, le journal indique la taille des joueurs dans votre vidéo et si cela suffit. Sinon, exportez avec Reco une version plus grande du même panorama (même ligne de temps, même cadence) et indiquez-la dans *Panorama en plus haute résolution pour les numéros*. La détection continue sur la petite vidéo.
 5. Les numéros apparaissent sur les points une fois confirmés. Les joueurs dont le dos n'est jamais visible restent sans numéro.
+6. **Lu ou déduit.** Comme une personne, le programme déduit aussi : si seul un « 4 » est visible et que l'effectif a un 34 mais pas de 4, c'est le 34 ; un numéro n'appartient qu'à un joueur à la fois – si un coéquipier est clairement le 4, celui à moitié lu prend le numéro suivant le plus probable ; et si quatre des cinq joueurs sur le terrain sont connus ainsi que la composition, le cinquième est le numéro restant. Après l'analyse, les numéros sont complétés le long de chaque piste suivie sans interruption – y compris avant la première lecture. Les numéros déduits sont marqués *déduit* dans les données (`"status": "inferred"`), dans la revue et dans les statistiques de temps de jeu.
 
 **Les changements** apparaissent dans le journal (`CHANGEMENT domicile à 12:34 : #7 -> #12` pour un changement confirmé, « changement possible » lorsqu'un joueur a quitté le terrain par une ligne de touche et que quelqu'un est entré, sans que les numéros soient connus), dans `events` du fichier de données et à l'étape 6.
 
@@ -344,7 +346,9 @@ Qu'aurait annoncé le fil en direct pour cette vidéo ? La carte montre les entr
 
 ## Mise à jour
 
-**App Mac :** quand une nouvelle version est sortie, l'app demande au démarrage (en anglais) : *Version … is available. Install now?* Elle télécharge la mise à jour, vérifie sa signature, bascule et redémarre ; vos projets restent tels quels. Si une tâche est en cours, la mise à jour attend. À la main : menu *Reco Minimap → Check for Updates…*.
+**Quoi de neuf :** après une mise à jour, l'interface montre une fois ce qui a changé ; ensuite, un clic sur le numéro de version à côté du nom l'affiche de nouveau. Dans l'app Mac, *Reco Minimap → À propos de Reco Minimap* liste les nouveautés de la version installée.
+
+**App Mac :** quand une nouvelle version est sortie, l'app demande au démarrage : *La version … est disponible. L'installer maintenant ?* Elle télécharge la mise à jour, vérifie sa signature, bascule et redémarre ; vos projets restent tels quels. Si une tâche est en cours, la mise à jour attend. À la main : menu *Reco Minimap → Check for Updates…*.
 
 **Zip Windows et Linux :** télécharger le nouveau zip depuis la page des versions et le décompresser.
 

@@ -176,6 +176,7 @@ For sports with goals or baskets (basketball, football, futsal, handball, hockey
    * *Panorama with boxes and minimap* – your panorama with detection boxes and the minimap in the corner. Use this to **check quality** on your first segment.
    * *Data (.jsonl)* – one record per frame with all positions ([format](../README.md#output-formats)).
 3. **Detect on every Nth frame.** 5 is a good default: detection runs on every 5th frame and the minimap video is interpolated to the full frame rate, so it still looks smooth. Higher is faster, lower is more exact.
+   **Faster or more accurate:** *Adaptive tiles* searches only around the players of the previous frame and does a full sweep every second – faster when the players are spread over few tiles. *More accurate for distant players* uses smaller tiles, so the model sees players far away larger; the run takes longer. By default the tiles match the model's input size.
 4. **Opacity of undetected players.** 1 keeps a hidden player fully visible at his estimated position; lower values fade him.
 5. **Compute.** *automatic* picks CoreML on a Mac. Leave *CoreML* on `all`.
 6. Click **Start**. A window shows the progress (with several sections also which one is running) and, at the end, the files it wrote. *Cancel* asks whether to keep or delete what has been processed so far.
@@ -205,6 +206,7 @@ In step 4 there is a section *Read and show jersey numbers*.
 3. Tick *Read and show jersey numbers* and run a segment.
 4. **Size matters.** A number is readable from roughly 10 px digit height, which means players about **80 px tall**. At the end of the run the log says how tall players are in your video and whether that is enough. If not, export a larger version of the same panorama with Reco (same timeline, same frame rate) and enter it as *Higher-resolution panorama for the numbers*. Detection keeps using the smaller video.
 5. Numbers appear on the dots as soon as they are confirmed. Players whose back is never visible stay without a number.
+6. **Read or deduced.** Like a person, the program also deduces numbers: if only a "4" is visible and the squad has a 34 but no 4, it is the 34; one number belongs to one player at a time, so if a teammate is clearly the 4, the half-read one becomes the next likely number; and if four of five players on the court are known and the line-up is known, the fifth is the remaining number. After the run, numbers are filled in along each continuously tracked trail – also for the time before the first reading. Deduced numbers are marked as *deduced* in the data (`"status": "inferred"`), in the review and in the playing-time statistics.
 
 **Substitutions** show up in the log (`SUBSTITUTION home at 12:34: #7 -> #12` for a confirmed change, "possible substitution" when someone left and someone entered at the sideline but numbers are unknown), in `events` of the data file and in step 6.
 
@@ -343,6 +345,8 @@ What would the live ticker have reported for this video? The card shows entries,
 ---
 
 ## Updating
+
+**What's new:** after an update the interface shows once what has changed; later a click on the version number next to the name shows it again. In the Mac app, *Reco Minimap → About Reco Minimap* lists the changes of the installed version.
 
 **Mac app:** when a new version is out, the app asks at start: *Version … is available. Install now?* It downloads the update, checks its signature, switches over and restarts; your projects stay as they are. While a task is running, the update waits. By hand: menu *Reco Minimap → Check for Updates…*.
 

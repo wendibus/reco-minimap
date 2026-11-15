@@ -225,6 +225,8 @@ pub struct Minimap {
     retakes: Vec<f64>,
     /// When each slot last raised a possible substitution.
     sub_raised: Vec<(u32, f64)>,
+    /// Numbers read on the field recently, per team (for line-up deductions).
+    lineup: identity::Lineup,
 }
 
 impl Minimap {
@@ -238,7 +240,7 @@ impl Minimap {
         }
         let tracker = Tracker::new(cfg.tracker.clone());
         let ball = BallTracker::new(cfg.ball.clone());
-        Self { cfg, projector, classifier, tracker, ball, last: None, events_log: Vec::new(), retakes: Vec::new(), sub_raised: Vec::new() }
+        Self { cfg, projector, classifier, tracker, ball, last: None, events_log: Vec::new(), retakes: Vec::new(), sub_raised: Vec::new(), lineup: identity::Lineup::default() }
     }
 
     pub fn tracker(&self) -> &Tracker {
@@ -320,8 +322,40 @@ impl Minimap {
             let out = self.agent_out(tr, t);
             if tr.referee { referees.push(out) } else { players.push(out) }
         }
+        self.solve_identities(t, &mut players);
         identity::assign(&mut players);
         FrameState { t, players, referees, ball, events }
+    }
+
+    /// Joint number assignment per team (reading, exclusion, line-up); see [`identity`].
+    fn solve_identities(&mut self, t: f64, players: &mut [AgentOut]) {
+        for e in self.events_log.iter().rev().take_while(|e| e.t >= t - 1e-9) {
+            if let (SubKind::Confirmed, Some(out)) = (e.kind, e.out_number) {
+                self.lineup.left(e.team, out);
+            }
+        }
+        let active: Vec<usize> = (0..players.len()).filter(|&i| players[i].team != Team::Unknown && players[i].state != TrackState::Lost).collect();
+        let claims: Vec<identity::Claim> = active
+            .iter()
+            .map(|&i| {
+                let a = &players[i];
+                let tr = self.tracker.tracks().iter().find(|x| x.id == a.id);
+                identity::Claim { team: a.team, confirmed: tr.and_then(|x| x.confirmed), votes: tr.map(|x| x.jersey.scores()).unwrap_or_default(), allowed: self.roster_for_track(a.team, a.keeper) }
+            })
+            .collect();
+        let cfg = identity::SolveCfg { team_size: self.cfg.tracker.max_per_team, min_score: self.cfg.num_min_score, min_lead: self.cfg.num_min_lead };
+        let lineup = self.lineup.clone();
+        let res = identity::solve(&claims, &|team| lineup.get(team, t, cfg.team_size), cfg);
+        for (k, &i) in active.iter().enumerate() {
+            let r = res[k];
+            if r.status == identity::IdentityStatus::Candidate {
+                if let Some(p) = r.player {
+                    self.lineup.saw(p.team, p.number, t);
+                }
+            }
+            players[i].identity = r;
+            players[i].jersey = r.player.filter(|_| r.status.known()).map(|p| p.number);
+        }
     }
 
     /// Numbers a track may carry: the team roster, narrowed to the keepers (for a keeper kit) or without them
@@ -438,22 +472,33 @@ impl Minimap {
     /// reading is decoded constrained to roster numbers; without one it is read freely.
     /// Returns the accepted (number, confidence), if any.
     pub fn add_number_probs(&mut self, track: u32, probs: &[f32], t: usize) -> Option<(u8, f32)> {
-        use jersey::{ctc_greedy, ctc_roster, parse_number};
+        use jersey::{ctc_greedy, parse_number};
         let (team, keeper) = self.tracker.tracks().iter().find(|x| x.id == track).map(|x| (x.team, x.is_keeper()))?;
         let roster = self.roster_for_track(team, keeper);
-        let (n, conf) = if roster.is_empty() {
+        if roster.is_empty() {
             let (s, c) = ctc_greedy(probs, t);
-            (parse_number(&s)?, c)
-        } else {
-            let (n, post) = ctc_roster(probs, t, &roster)?;
-            (n, post)
-        };
-        let min = if roster.is_empty() { 0.6 } else { 0.5 };
-        if conf < min {
+            let n = parse_number(&s)?;
+            if c < 0.6 {
+                return None;
+            }
+            self.add_jersey_reading(track, n, c);
+            return Some((n, c));
+        }
+        // the crop must show some digit at all, else every roster number is equally (un)likely
+        if ctc_greedy(probs, t).0.is_empty() {
             return None;
         }
-        self.add_jersey_reading(track, n, conf);
-        Some((n, conf))
+        let ev = jersey::roster_evidence(probs, t, &roster);
+        let (n, post, _) = *ev.first()?;
+        if post < 0.5 {
+            return None;
+        }
+        // evidence for every plausible roster number (the runner-up matters when the best one is
+        // already taken by a teammate); a partial match counts less than a full one
+        for (m, p, partial) in ev.into_iter().filter(|e| e.1 >= 0.05) {
+            self.add_jersey_reading(track, m, if partial { p * 0.6 } else { p });
+        }
+        Some((n, post))
     }
 
     /// Feed an OCR reading for a track.

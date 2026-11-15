@@ -3,7 +3,7 @@ use reco_minimap::{detect::Tile, tools::scales::{Scales, plan_auto, plan_auto_ro
 
 fn steep() -> Scales {
     // Regression: the original six-band cap stopped around row 781, not 1006.
-    Scales { a: -245.61208, b: 0.4043302, y_min: 651.54584, y_max: 1006.09106, target_px: 28.0, n: 151 }
+    Scales { a: -245.61208, b: 0.4043302, y_min: 651.54584, y_max: 1006.09106, target_px: 28.0, n: 151, input: 512.0 }
 }
 
 #[test]

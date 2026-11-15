@@ -4,6 +4,7 @@ import { JobDialog } from './JobDialog';
 import { api, Btn, LANGS, useApp } from './core';
 import { CalibPanel, EvalPanel, LivePanel, RunPanel, SetupPanel, VideoPanel } from './panels';
 import { StatsPanel } from './stats';
+import { unseen, WhatsNew } from './WhatsNew';
 
 const STEPS = ['setup', 'video', 'calib', 'run', 'live', 'eval', 'stats'] as const;
 type Step = (typeof STEPS)[number];
@@ -22,6 +23,17 @@ export function App() {
   const [logOpen, setLogOpen] = useState(false);
   const [update, setUpdate] = useState<{ version: string; url: string; installed?: boolean } | null>(null);
   const logRef = useRef<HTMLPreElement>(null);
+  const [newsOpen, setNewsOpen] = useState(false);
+  // "What's new" once per new version, on #whats-new and when the Mac app asks for it (About)
+  useEffect(() => {
+    if (!init) return undefined;
+    if (unseen(init.version) || location.hash === '#whats-new') setNewsOpen(true);
+    const w = window as unknown as { recoShowWhatsNew?: () => void };
+    w.recoShowWhatsNew = () => setNewsOpen(true);
+    const onHash = () => { if (location.hash === '#whats-new') setNewsOpen(true); };
+    window.addEventListener('hashchange', onHash);
+    return () => { window.removeEventListener('hashchange', onHash); delete w.recoShowWhatsNew; };
+  }, [init?.version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => setDirInput(dir), [dir]);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -51,9 +63,9 @@ export function App() {
   const Panel = PANELS[step];
   const stepLabel = (s: Step) => s === 'stats' ? t.ui.stepStats : T('step.' + s);
 
-  return <main className="preview-page"><HintLayer enabled={hints} /><JobDialog />
+  return <main className="preview-page"><HintLayer enabled={hints} /><JobDialog /><WhatsNew open={newsOpen} onClose={() => { setNewsOpen(false); if (location.hash === '#whats-new') history.replaceState(null, '', location.pathname + location.search); }} />
     <header className="preview-header">
-      <div className="brand-block"><div className="brand-mark" aria-hidden="true">M</div><div><h1>Reco Minimap <span className="version-button" data-hint={h.version}>{init.version}</span></h1><p>{t.ui.tagline}</p></div></div>
+      <div className="brand-block"><div className="brand-mark" aria-hidden="true">M</div><div><h1>Reco Minimap <button type="button" className="version-button" data-hint={h.version} onClick={() => setNewsOpen(true)}>{init.version}</button></h1><p>{t.ui.tagline}</p></div></div>
       <div className="switches">
         <button type="button" data-hint={hints ? h.toggleOn : h.toggleOff} className={hints ? 'hints-toggle active' : 'hints-toggle'} aria-pressed={hints} onClick={toggleHints}>💬 {h.toggle}</button>
         <div className="segmented language-switch" role="group" aria-label={T('lang.label')}>{LANGS.map((l) => <button data-hint={h.language} type="button" key={l} className={lang === l ? 'active' : ''} onClick={() => setLanguage(l)}>{l.toUpperCase()}</button>)}</div>

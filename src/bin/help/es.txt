@@ -18,6 +18,8 @@ reco-minimap – minimapa (campo, jugadores, árbitros, balón) a partir de un p
   reco-minimap replay    <detecciones.jsonl> --court court.json --teams teams.json [--json out.jsonl] [--minimap out.mp4]
                          volver a pasar detecciones grabadas (run … --dets <archivo>) por el seguimiento, el balón y las
                          situaciones sin el vídeo: segundos en vez de minutos, p. ej. para comparar --thr-player o los colores
+                         las lecturas de dorsales guardadas con --numbers también se aplican (incluso con otra plantilla);
+                         rigen los umbrales y plantillas de la grabación salvo que se indique otra cosa
   reco-minimap stats     <states.jsonl>            informe con cifras de un proceso (puestos, saltos, balón)
   reco-minimap ticker    <states.jsonl> [--out f] [--export carpeta]  el resumen en directo que habría dado este resultado (liveticker.json + resumen); también: run/live --ticker-json <archivo>
   reco-minimap review-identities <states.jsonl> --annotations review.json --out reviewed.jsonl   aplicar la plantilla y las correcciones manuales
@@ -70,7 +72,8 @@ Opciones de live:
                       archivo que sigue creciendo (Reco aún escribe):   live file:live.mkv --in-args '-follow 1' --size ...
                       OBS Virtual Camera / capturadora (macOS): live 'OBS Virtual Camera' --in-args '-f avfoundation -framerate 25' --size ...
   --realtime        reproducir un archivo en tiempo real (para probar sin fuente en directo), con --start S desde el segundo S
-  --adaptive        vídeo (run): solo teselas alrededor de los jugadores y el balón de la imagen anterior, más teselas
+  --adaptive        vídeo (run): solo teselas donde estarán jugadores y balón según su movimiento (incluidos los ocultos
+                    brevemente), más teselas
                     de búsqueda rotatorias (--ball-search-tiles, por defecto 2) y un barrido completo cada --full-every S
                     segundos (por defecto 1)
   --adaptive-live   live: teselas dirigidas entre búsquedas completas (experimental)
@@ -104,4 +107,5 @@ Opciones de run:
   --scale 30        píxeles por metro del minimapa (930x540 a 30)
   --pip-width 0.28  ancho del minimapa en el vídeo --pip (parte del ancho del panorama)
   --no-backfill     run --json: no propagar los dorsales a lo largo de las pistas tras el análisis
+  --metrics <arch.> run: tiempos en JSON (decodificación, preprocesado, inferencia, seguimiento, dorsales, salida)
   --vcodec auto     (por defecto) macOS: h264_videotoolbox hasta 4096 px, si no libx264; o fijo libx264, h264_videotoolbox …

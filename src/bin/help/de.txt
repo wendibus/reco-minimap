@@ -18,6 +18,8 @@ reco-minimap – Minimap (Court, Spieler, Schiris, Ball) aus einem Reco-Panorama
   reco-minimap replay    <erkennungen.jsonl> --court court.json --teams teams.json [--json out.jsonl] [--minimap out.mp4]
                          Aufgezeichnete Erkennungen (run … --dets <datei>) ohne Video erneut durch Tracking, Ball und
                          Situationen schicken: Sekunden statt Minuten, z.B. um --thr-player oder Farben zu vergleichen
+                         Mit --numbers gespeicherte Nummern-Lesungen werden mit übernommen (auch mit anderem Kader),
+                         Schwellen und Kader der Aufnahme gelten, solange nichts anderes angegeben ist
   reco-minimap stats     <states.jsonl>            Zahlen-Report zu einem run-Ergebnis (Slots, Sprünge, Ball)
   reco-minimap ticker    <states.jsonl> [--out f] [--export ordner]   Live-Ticker, den dieses Ergebnis ergeben hätte (liveticker.json + Zusammenfassung); auch: run/live --ticker-json <datei>
   reco-minimap review-identities <states.jsonl> --annotations review.json --out reviewed.jsonl   Kader und manuelle Korrekturen anwenden
@@ -69,7 +71,8 @@ live-Optionen:
                       wachsende Datei (Reco schreibt noch):   live file:live.mkv --in-args '-follow 1' --size ...
                       OBS Virtual Camera / Capture-Karte (macOS): live 'OBS Virtual Camera' --in-args '-f avfoundation -framerate 25' --size ...
   --realtime        Datei in Echtzeit abspielen (zum Testen ohne Live-Quelle), mit --start S ab Sekunde S
-  --adaptive        Video (run): nur Kacheln um Spieler und Ball des letzten Bildes, dazu rotierende Suchkacheln
+  --adaptive        Video (run): nur Kacheln dort, wo Spieler und Ball nach ihrer Bewegung gleich sein werden (kurz Verdeckte
+                    eingeschlossen), dazu rotierende Suchkacheln
                     (--ball-search-tiles, Standard 2) und alle --full-every S Sekunden ein voller Durchlauf (Standard 1)
   --adaptive-live   Live: gezielte Kacheln zwischen vollständigen Suchläufen (experimentell)
   --ball-search-tiles N  Live adaptiv: N zusätzliche rotierende Suchkacheln, unabhängig von Spielern (Standard 4, 0 aus)
@@ -102,4 +105,5 @@ run-Optionen:
   --scale 30        Pixel pro Meter der Minimap (930x540 bei 30)
   --pip-width 0.28  Breite der Minimap im --pip-Video (Anteil der Panoramabreite)
   --no-backfill     run --json: Nummern nach dem Lauf nicht entlang der Spuren ergänzen
+  --metrics <datei> run: Zeitmessung als JSON (Decode, Vorverarbeitung, Inferenz, Tracking, Nummern, Ausgabe)
   --vcodec auto     (Standard) macOS: h264_videotoolbox bis 4096 px, sonst libx264; oder fest libx264, h264_videotoolbox …

@@ -18,6 +18,8 @@ reco-minimap – minimap (terrain, joueurs, arbitres, ballon) à partir d'un pan
   reco-minimap replay    <détections.jsonl> --court court.json --teams teams.json [--json out.jsonl] [--minimap out.mp4]
                          repasser des détections enregistrées (run … --dets <fichier>) dans le suivi, le ballon et les
                          situations, sans la vidéo : des secondes au lieu de minutes, p. ex. pour comparer --thr-player ou les couleurs
+                         les lectures de numéros enregistrées avec --numbers sont reprises (aussi avec un autre effectif) ;
+                         les seuils et effectifs de l'enregistrement s'appliquent sauf indication contraire
   reco-minimap stats     <states.jsonl>            rapport chiffré d'un traitement (places, sauts, ballon)
   reco-minimap ticker    <states.jsonl> [--out f] [--export dossier]  le fil en direct qu'aurait donné ce résultat (liveticker.json + résumé) ; aussi : run/live --ticker-json <fichier>
   reco-minimap review-identities <states.jsonl> --annotations review.json --out reviewed.jsonl   appliquer l'effectif et les corrections manuelles
@@ -70,7 +72,8 @@ Options de live :
                       fichier en cours d'écriture (Reco écrit encore) :   live file:live.mkv --in-args '-follow 1' --size ...
                       OBS Virtual Camera / carte de capture (macOS) : live 'OBS Virtual Camera' --in-args '-f avfoundation -framerate 25' --size ...
   --realtime        lire un fichier en temps réel (pour tester sans source en direct), avec --start S à partir de la seconde S
-  --adaptive        vidéo (run) : seulement les tuiles autour des joueurs et du ballon de l'image précédente, plus des
+  --adaptive        vidéo (run) : seulement les tuiles où joueurs et ballon seront d'après leur mouvement (y compris ceux
+                    brièvement cachés), plus des
                     tuiles de recherche tournantes (--ball-search-tiles, 2 par défaut) et un balayage complet toutes les
                     --full-every S secondes (1 par défaut)
   --adaptive-live   live : tuiles ciblées entre les recherches complètes (expérimental)
@@ -104,4 +107,5 @@ Options de run :
   --scale 30        pixels par mètre de la minimap (930x540 à 30)
   --pip-width 0.28  largeur de la minimap dans la vidéo --pip (part de la largeur du panorama)
   --no-backfill     run --json : ne pas propager les numéros le long des pistes après l'analyse
+  --metrics <fich.> run : mesure des temps en JSON (décodage, prétraitement, inférence, suivi, numéros, sortie)
   --vcodec auto     (par défaut) macOS : h264_videotoolbox jusqu'à 4096 px, sinon libx264 ; ou fixe libx264, h264_videotoolbox …

@@ -1110,7 +1110,7 @@ struct Numbers {
     reader: NumberReader,
     min_h: f32,
     max_reads: usize,
-    tick: u64,
+    last_reads: HashMap<(u32,u32),f64>,
     tries: usize,
     accepted: usize,
     /// Heights (px in the OCR source) of the players seen, to judge whether the source is big enough.
@@ -1130,47 +1130,40 @@ fn numbers_setup(o: &Opts, mcfg: &mut Config) -> Option<Numbers> {
     let path = o.s("ocr-model").map(std::path::PathBuf::from).unwrap_or_else(ocr::default_model_path);
     let reader = NumberReader::load(&path).unwrap_or_else(|e| fail(e));
     eprintln!("{}", tr!("Trikotnummern: an (Kader Heim {:?}, Gast {:?}; leer = freie Erkennung)", "Jersey numbers: on (roster home {:?}, away {:?}; empty = free reading)", "Numéros de maillot : activés (effectif domicile {:?}, visiteurs {:?} ; vide = lecture libre)", "Dorsales: activados (plantilla local {:?}, visitante {:?}; vacío = lectura libre)", mcfg.roster_home, mcfg.roster_away));
-    Some(Numbers { reader, min_h: o.f("ocr-min-h", 45.0) as f32, max_reads: o.u("ocr-max", 4), tick: 0, tries: 0, accepted: 0, heights: Vec::new() })
+    Some(Numbers { reader, min_h: o.f("ocr-min-h", 45.0) as f32, max_reads: o.u("ocr-max", 4), last_reads: HashMap::new(), tries: 0, accepted: 0, heights: Vec::new() })
 }
 
 /// Try to read numbers of the players seen in this frame. `src` is the frame to crop from (a higher-resolution
 /// version of the panorama if available; bbox coordinates are normalized, so resolution does not matter).
-fn read_numbers(nm: &mut Numbers, mm: &mut Minimap, src: &Frame, t: f64) {
-    nm.tick += 1;
-    let mut cands: Vec<(u32, reco_minimap::tracker::BBox, f32, bool)> = mm
-        .tracker()
-        .tracks()
-        .iter()
-        .filter(|x| !x.referee && x.state == reco_minimap::tracker::TrackState::Visible && (x.last_seen - t).abs() < 1e-6 && x.bbox.is_some())
-        .map(|x| (x.id, x.bbox.unwrap(), x.bbox.unwrap().h * src.h as f32, x.confirmed.is_some()))
-        .collect();
-    if nm.heights.len() < 5000 {
-        nm.heights.extend(cands.iter().map(|c| c.2));
+fn read_numbers(nm: &mut Numbers, mm: &mut Minimap, src: &Frame, t: f64) -> Vec<serde_json::Value> {
+    let mut cands=Vec::new();
+    nm.last_reads.retain(|_,at|t>=*at && t-*at<30.0);
+    for tr in mm.tracker().tracks().iter().filter(|x|!x.referee && x.state==reco_minimap::tracker::TrackState::Visible && (x.last_seen-t).abs()<1e-6) {
+        let Some(bb)=tr.bbox else {continue};
+        let height=bb.h*src.h as f32;
+        if nm.heights.len()<5000 {nm.heights.push(height);}
+        if height<nm.min_h {continue;}
+        let interval=if tr.confirmed.is_some_and(|n|tr.jersey.score_of(n)>=8.0) {2.0} else if tr.confirmed.is_some() {0.8} else {0.25};
+        if nm.last_reads.get(&(tr.id,tr.segment)).is_some_and(|at|t-*at<interval) {continue;}
+        let (x0,y0,x1,y1)=ocr::torso_rect(src,&bb);
+        let (w,h,rgb)=src.crop_rgb(x0,y0,x1,y1);
+        let crop=ocr::Crop{w,h,rgb};
+        let quality=ocr::crop_quality(&crop);
+        if quality>0.0 {cands.push((tr.id,tr.segment,tr.confirmed.is_some(),quality,crop));}
     }
-    cands.retain(|c| c.2 >= nm.min_h);
-    // unknown numbers first, then the biggest (= best readable) boxes
-    cands.sort_by(|a, b| a.3.cmp(&b.3).then(b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal)));
-    // known numbers are only re-checked now and then (this also notices a substitute); a number with
-    // plenty of evidence even less often. Skipped players do not use up the reads of this frame.
-    let tick = nm.tick;
-    let due = |id: u32, known: bool| {
-        let settled = known && mm.tracker().tracks().iter().find(|x| x.id == id).is_some_and(|x| x.confirmed.is_some_and(|n| x.jersey.score_of(n) >= 8.0));
-        !known || (tick + id as u64) % if settled { 30 } else { 12 } == 0
-    };
-    cands.retain(|c| due(c.0, c.3));
-    for (id, bb, _, _) in cands.into_iter().take(nm.max_reads) {
-        let (x0, y0, x1, y1) = ocr::torso_rect(src, &bb);
-        let (w, h, rgb) = src.crop_rgb(x0, y0, x1, y1);
-        if w < 6 || h < 6 {
-            continue;
-        }
-        nm.tries += 1;
-        if let Ok(r) = nm.reader.read(&ocr::localize(w, h, &rgb)) {
-            if mm.add_number_probs(id, &r.probs, r.steps).is_some() {
-                nm.accepted += 1;
+    cands.sort_by(|a,b|a.2.cmp(&b.2).then(b.3.total_cmp(&a.3)).then(a.0.cmp(&b.0)));
+    let mut records=Vec::new();
+    for (id,segment,_,quality,crop) in cands.into_iter().take(nm.max_reads) {
+        nm.last_reads.insert((id,segment),t);
+        nm.tries+=1;
+        if let Ok(reading)=nm.reader.read(&ocr::localize(crop.w,crop.h,&crop.rgb)) {
+            if let Some(tr)=mm.tracker().tracks().iter().find(|tr|tr.id==id && tr.segment==segment) {
+                records.push(reco_minimap::tools::cache::record(tr,&reading,quality));
             }
+            if mm.add_number_probs(id,&reading.probs,reading.steps).is_some() {nm.accepted+=1;}
         }
     }
+    records
 }
 
 fn scene_json(e: &SceneEvent) -> serde_json::Value {
@@ -1354,12 +1347,7 @@ fn cmd_live(o: &Opts, input: &str) {
         });
     }
 
-    let mut scheduler = reco_minimap::scheduler::TileScheduler::new(o.f("sweep-secs",2.0));
-    let mut ball_search = reco_minimap::scheduler::RecoverySweep::default();
-    let mut ball_boxes: Vec<reco_minimap::tracker::BBox> = Vec::new();
-    let mut ball_seen = f64::NEG_INFINITY;
-    let mut person_boxes: Vec<reco_minimap::tracker::BBox> = Vec::new();
-    let mut persons_seen = f64::NEG_INFINITY;
+    let mut search = reco_minimap::search::MotionSearch::new(o.f("sweep-secs",2.0));
     let mut last_ocr = f64::NEG_INFINITY;
     let (mut ocr_applied,mut ocr_stale,mut ocr_errors)=(0usize,0usize,0usize);
     let ocr_interval = o.f("ocr-secs",2.0);
@@ -1384,29 +1372,19 @@ fn cmd_live(o: &Opts, input: &str) {
             }
         };
         let t = arrival.duration_since(t0).as_secs_f64();
-        // Search around ALL detections, including unknown teams and people not
-        // assigned a tracker slot. Identity uncertainty must not hide a player
-        // from the next detector pass.
-        let mut targets = if t-persons_seen <= 1.0 { person_boxes.clone() } else { Vec::new() };
-        if t-ball_seen <= 0.5 { targets.extend_from_slice(&ball_boxes); }
-        let (mut indices,full_sweep) = if o.has("adaptive-live") { scheduler.select(t,&tiles,info.w,info.h,&targets) } else { ((0..tiles.len()).collect(),true) };
-        let person_tile_count=indices.len();
-        // Ball recovery must not depend solely on player/previous-ball boxes.
-        // Rotate through unobserved areas using the same calibrated scales and
-        // parallel inference pool, then merge once on this frame's timestamp.
-        if !full_sweep {
-            indices.extend(ball_search.select(tiles.len(),o.u("ball-search-tiles",4)));
-            indices.sort_unstable(); indices.dedup();
-        }
-        let recovery_tiles=indices.len()-person_tile_count;
+        let selection = if o.has("adaptive-live") {
+            search.select(t, &tiles, info.w, info.h, o.u("ball-search-tiles",4))
+        } else {
+            reco_minimap::search::SearchPlan { indices:(0..tiles.len()).collect(), full_sweep:true, recovery_tiles:0, coasting_targets:0 }
+        };
+        let full_sweep=selection.full_sweep;
+        let recovery_tiles=selection.recovery_tiles;
+        let indices=selection.indices;
         let selected: Vec<_> = indices.iter().map(|&i|tiles[i]).collect();
         let inference_start = Instant::now();
         let mut dets = model.detect(&frame, &selected).unwrap_or_else(|e| fail(e));
         let inference_ms = inference_start.elapsed().as_secs_f64()*1000.0;
-        person_boxes = dets.iter().filter(|d|d.class!=Class::Ball).map(|d|reco_minimap::tracker::BBox{cx:d.cx,cy:d.cy,w:d.w,h:d.h}).collect();
-        if !person_boxes.is_empty() { persons_seen=t; }
-        ball_boxes = dets.iter().filter(|d|d.class==Class::Ball).map(|d|reco_minimap::tracker::BBox{cx:d.cx,cy:d.cy,w:d.w,h:d.h}).collect();
-        if !ball_boxes.is_empty() { ball_seen=t; }
+        if o.has("adaptive-live") { search.observe(t,&dets); }
         for d in dets.iter_mut().filter(|d| d.class == Class::Player) {
             d.color = if shirt_match { frame.torso_color_matching(d, torso, &shirts) } else { frame.torso_color_in(d, torso) };
         }
@@ -1443,7 +1421,7 @@ fn cmd_live(o: &Opts, input: &str) {
         v["age_ms"] = serde_json::json!((age_ms * 10.0).round() / 10.0);
         v["ocr"] = serde_json::json!({"background":numbers.is_some(),"pending":numbers.as_ref().map(|n|!n.ready()).unwrap_or(false),"applied":ocr_applied,"stale":ocr_stale,"errors":ocr_errors});
         v["performance"] = serde_json::json!({"tiles":selected.len(),"total_tiles":tiles.len(),"full_sweep":full_sweep,"inference_ms":inference_ms,"dropped_frames":latest.dropped.load(Ordering::Relaxed),"queue_capacity":1,"age_scope":"decoded_frame_to_result","recovery_tiles":recovery_tiles,"workers":model.workers(),
-            "detected_players":dets.iter().filter(|d|d.class==Class::Player).count(),"detected_balls":ball_boxes.len()});
+            "detected_players":dets.iter().filter(|d|d.class==Class::Player).count(),"coasting_targets":selection.coasting_targets,"detected_balls":dets.iter().filter(|d|d.class==Class::Ball).count()});
         let line = v.to_string();
         if let Some(j) = jsonl.as_mut() {
             let _ = writeln!(j, "{line}");
@@ -1582,6 +1560,7 @@ fn cmd_ticker(o: &Opts, input: &str) {
 }
 
 fn cmd_run(o: &Opts, input: &str) {
+    let total_started=Instant::now();
     let info = open_info(o, input);
     progress::report(None, None, trs!("Modell wird geladen …", "Loading the model …", "Chargement du modèle …", "Cargando el modelo …"));
     let mut model = load_model(o);
@@ -1661,8 +1640,14 @@ fn cmd_run(o: &Opts, input: &str) {
         fail::<()>(trs!("kein Ausgang gewählt: --minimap, --alpha, --pip, --json und/oder --dets", "no output chosen: --minimap, --alpha, --pip, --json and/or --dets", "aucune sortie choisie : --minimap, --alpha, --pip, --json et/ou --dets", "no se ha elegido ninguna salida: --minimap, --alpha, --pip, --json y/o --dets"));
     }
     if let Some(w) = dets_out.as_mut() {
-        let head = serde_json::json!({"reco_minimap_dets": 1, "video": input, "w": info.w, "h": info.h, "fps": info.fps, "every": every, "start": t_start(o),
-            "thr": {"ball": model.cfg.thr_ball, "player": model.cfg.thr_player, "referee": model.cfg.thr_referee}});
+        let model_hash=reco_minimap::tools::cache::sha256(&model.info.onnx).unwrap_or_else(|e|fail(e));
+        let ocr_hash=numbers.as_ref().map(|_|reco_minimap::tools::cache::sha256(&o.s("ocr-model").map(std::path::PathBuf::from).unwrap_or_else(ocr::default_model_path)).unwrap_or_else(|e|fail(e)));
+        let head = serde_json::json!({"reco_minimap_dets": 1, "video": input, "w": info.w, "h": info.h, "fps": info.fps, "every": every, "start": t_start(o), "evidence_schema":1,
+            "model":{"sha256":model_hash,"input_size":model.size,"batch":model.batch},
+            "search":{"adaptive":o.has("adaptive"),"full_every":o.f("full-every",1.0),"ball_search_tiles":o.u("ball-search-tiles",2),"tiles":tiles.iter().map(|t|[t.x,t.y,t.w,t.h]).collect::<Vec<_>>()},
+            "config":{"roster_home":o.s("roster-home"),"roster_away":o.s("roster-away")},
+            "ocr":{"sha256":ocr_hash,"enabled":numbers.is_some(),"min_h":numbers.as_ref().map(|n|n.min_h),"max_reads":numbers.as_ref().map(|n|n.max_reads)},
+            "thr": {"ball": model.cfg.thr_ball, "player": model.cfg.thr_player, "player_high":thr_players(o).1, "referee": model.cfg.thr_referee}});
         let _ = writeln!(w, "{head}");
     }
 
@@ -1686,10 +1671,9 @@ fn cmd_run(o: &Opts, input: &str) {
     // `--adaptive`: only the tiles around the people and the ball of the previous frame, plus a few
     // rotating tiles for the rest of the picture and a full sweep every `--full-every` seconds
     let adaptive = o.has("adaptive");
-    let mut scheduler = reco_minimap::scheduler::TileScheduler::new(o.f("full-every", 1.0));
-    let mut sweep = reco_minimap::scheduler::RecoverySweep::default();
-    let mut prev_boxes: Vec<reco_minimap::tracker::BBox> = Vec::new();
+    let mut search = reco_minimap::search::MotionSearch::new(o.f("full-every", 1.0));
     let mut tiles_run = 0usize;
+    let mut d_ocr=std::time::Duration::ZERO;
     loop {
         if progress::stop_requested() {
             stopped = true;
@@ -1704,22 +1688,15 @@ fn cmd_run(o: &Opts, input: &str) {
         let this = idx * every as u64; // ffmpeg only delivers every Nth frame
         idx += 1;
         let t = t_start + this as f64 / info.fps;
-        let mut dets = if adaptive {
-            let (mut idxs, full) = scheduler.select(t, &tiles, info.w, info.h, &prev_boxes);
-            if !full {
-                idxs.extend(sweep.select(tiles.len(), o.u("ball-search-tiles", 2)));
-                idxs.sort_unstable();
-                idxs.dedup();
-            }
-            let chosen: Vec<_> = idxs.iter().map(|&i| tiles[i]).collect();
-            tiles_run += chosen.len();
-            model.detect(&frame, &chosen).unwrap_or_else(|e| fail(e))
-        } else {
-            tiles_run += tiles.len();
-            model.detect(&frame, &tiles).unwrap_or_else(|e| fail(e))
-        };
+        let selection=if adaptive {
+            search.select(t,&tiles,info.w,info.h,o.u("ball-search-tiles",2))
+        } else {reco_minimap::search::SearchPlan{indices:(0..tiles.len()).collect(),full_sweep:true,recovery_tiles:0,coasting_targets:0}};
+        let selection_stats=(selection.indices.len(),selection.full_sweep,selection.recovery_tiles,selection.coasting_targets);
+        let chosen:Vec<_>=selection.indices.iter().map(|&i|tiles[i]).collect();
+        let mut dets = model.detect(&frame, &chosen).unwrap_or_else(|e| fail(e));
+        tiles_run += chosen.len();
         if adaptive {
-            prev_boxes = dets.iter().map(|d| reco_minimap::tracker::BBox { cx: d.cx, cy: d.cy, w: d.w, h: d.h }).collect();
+            search.observe(t, &dets);
         }
         for d in dets.iter_mut().filter(|d| d.class == Class::Player) {
             d.color = if shirt_match { frame.torso_color_matching(d, torso, &shirts) } else { frame.torso_color_in(d, torso) };
@@ -1733,20 +1710,25 @@ fn cmd_run(o: &Opts, input: &str) {
         }
         n_ref += dets.iter().filter(|d| d.class == Class::Referee).count();
         n_ball += dets.iter().filter(|d| d.class == Class::Ball).count();
-        if let Some(w) = dets_out.as_mut() {
-            let _ = writeln!(w, "{}", dets_json(t, &dets));
-        }
         let tt = Instant::now();
         let state = mm.process(t, &dets);
-        if let Some(nm) = numbers.as_mut() {
+        let ocr_start=Instant::now();
+        let readings=if let Some(nm) = numbers.as_mut() {
             let hf = hires.as_mut().and_then(|r| r.next());
-            read_numbers(nm, &mut mm, hf.as_ref().unwrap_or(&frame), t);
+            read_numbers(nm, &mut mm, hf.as_ref().unwrap_or(&frame), t)
+        } else {Vec::new()};
+        let ocr_time=ocr_start.elapsed();
+        d_ocr+=ocr_time;
+        if let Some(w) = dets_out.as_mut() {
+            let mut row=dets_json(t,&dets);
+            row["ocr"]=serde_json::json!(readings);
+            writeln!(w,"{row}").unwrap_or_else(|e|fail(e));
         }
         log_events(&state.events);
         let sc = scenes.as_mut().map(|d| d.update(&state)).unwrap_or_default();
         log_scenes(&sc, &profile.id);
         scene_log.extend(sc.iter().cloned());
-        d_track += tt.elapsed();
+        d_track += tt.elapsed().saturating_sub(ocr_time);
         let to = Instant::now();
         // in-between frames (interpolated), then the detected one
         if smooth {
@@ -1776,7 +1758,8 @@ fn cmd_run(o: &Opts, input: &str) {
             w.write(&frame.rgb).unwrap_or_else(|e| fail(e));
         }
         if jsonl.is_some() || tsim.is_some() {
-            let fj = state_json_with(&state, &sc);
+            let mut fj = state_json_with(&state, &sc);
+            fj["performance"]=serde_json::json!({"tiles":selection_stats.0,"total_tiles":tiles.len(),"full_sweep":selection_stats.1,"recovery_tiles":selection_stats.2,"coasting_targets":selection_stats.3,"ocr_ms":ocr_time.as_secs_f64()*1000.0});
             if let Some(ts) = tsim.as_mut() {
                 ts.add_frame(&fj);
             }
@@ -1863,6 +1846,14 @@ fn cmd_run(o: &Opts, input: &str) {
   -> {p}", ts.summary_line());
     }
     let _ = Vec2::default();
+    if numbers.is_some() {
+        eprintln!("{}", tr!("Nummernlesen: {:.1} ms pro Bild", "Number reading: {:.1} ms per frame", "Lecture des numéros : {:.1} ms par image", "Lectura de dorsales: {:.1} ms por imagen", per(d_ocr)));
+    }
+    if let Some(path)=o.s("metrics") {
+        let metrics=serde_json::json!({"schema":1,"frames":done,"source_start":t_start,"source_end":t_start+done as f64*every as f64/info.fps,"wall_seconds":total_started.elapsed().as_secs_f64(),"analysis_seconds":t0.elapsed().as_secs_f64(),"initialization_seconds":t0.duration_since(total_started).as_secs_f64(),"decode_seconds":d_decode.as_secs_f64(),"preprocess_seconds":model.t_prep.as_secs_f64(),"inference_seconds":model.t_infer.as_secs_f64(),"tracking_seconds":d_track.as_secs_f64(),"ocr_seconds":d_ocr.as_secs_f64(),"output_seconds":d_out.as_secs_f64(),"tiles":tiles_run,"adaptive":adaptive,"workers":model.workers(),"batch":model.batch});
+        std::fs::write(path,serde_json::to_string_pretty(&metrics).unwrap()).unwrap_or_else(|e|fail(e));
+    }
+
 }
 
 // ---------------------------------------------------------------- record + replay
@@ -1903,9 +1894,14 @@ fn cmd_replay(o: &Opts, path: &str) {
     let text = std::fs::read_to_string(path).unwrap_or_else(|e| fail(format!("{path}: {e}")));
     let mut lines = text.lines().filter(|l| !l.trim().is_empty());
     let head: serde_json::Value = lines.next().and_then(|l| serde_json::from_str(l).ok()).filter(|v: &serde_json::Value| v["reco_minimap_dets"].as_u64() == Some(1)).unwrap_or_else(|| fail(tr!("{path}: keine Erkennungs-Datei (erzeugen mit `run … --dets <datei>`)", "{path}: not a detections file (create one with `run … --dets <file>`)", "{path} : ce n'est pas un fichier de détections (en créer un avec `run … --dets <fichier>`)", "{path}: no es un archivo de detecciones (créalo con `run … --dets <archivo>`)")));
+    if head["evidence_schema"].as_u64().unwrap_or(0)>1 {fail::<()>(trs!("Erkennungs-Datei aus einer neueren Version – bitte Reco Minimap aktualisieren", "Detections file from a newer version – please update Reco Minimap", "Fichier de détections d'une version plus récente – mettre à jour Reco Minimap", "Archivo de detecciones de una versión más reciente: actualiza Reco Minimap"));}
     let rate = head["fps"].as_f64().unwrap_or(25.0) / head["every"].as_f64().unwrap_or(1.0).max(1.0);
     let rec = |k: &str| head["thr"][k].as_f64().unwrap_or(0.0) as f32;
-    let (thr_ball, thr_player, thr_ref) = (o.f("thr-ball", thr_ball_default() as f64) as f32, thr_players(o).0, o.f("thr-ref", 0.50) as f32);
+    let thr_ball=o.s("thr-ball").map(|_|o.f("thr-ball",rec("ball") as f64) as f32).unwrap_or(rec("ball"));
+    let high=o.s("thr-player").map(|_|thr_players(o).1).unwrap_or(head["thr"]["player_high"].as_f64().map(|n|n as f32).unwrap_or(thr_players(o).1));
+    let low=o.s("thr-player-low").or(o.s("thr-player")).and_then(|s|s.parse::<f32>().ok()).unwrap_or(rec("player")).min(high);
+    let thr_player=low;
+    let thr_ref=o.f("thr-ref",rec("referee") as f64) as f32;
     for (name, want, have) in [("--thr-ball", thr_ball, rec("ball")), ("--thr-player(-low)", thr_player, rec("player")), ("--thr-ref", thr_ref, rec("referee"))] {
         if want < have - 1e-6 {
             eprintln!("{}", tr!("Hinweis: {name} {want} liegt unter der Aufnahme-Schwelle {have}; es gilt {have}.", "Note: {name} {want} is below the recording threshold {have}; {have} applies.", "Remarque : {name} {want} est sous le seuil d'enregistrement {have} ; {have} s'applique.", "Nota: {name} {want} está por debajo del umbral de grabación {have}; se aplica {have}."));
@@ -1918,7 +1914,14 @@ fn cmd_replay(o: &Opts, path: &str) {
     let mut mcfg = game_config(o, &profile, home, away);
     mcfg.referee_rgb = o.s("ref-color").and_then(parse_hex);
     teams.apply(&mut mcfg);
-    mcfg.tracker.spawn_conf = { let (low, high) = thr_players(o); if low < high { high } else { 0.0 } };
+    let home_roster=o.s("roster-home").or_else(||head["config"]["roster_home"].as_str());
+    let away_roster=o.s("roster-away").or_else(||head["config"]["roster_away"].as_str());
+    mcfg.roster_home=home_roster.map(parse_roster).unwrap_or_default();
+    mcfg.roster_away=away_roster.map(parse_roster).unwrap_or_default();
+    mcfg.keepers_home=home_roster.map(reco_minimap::jersey::parse_roster_keepers).unwrap_or_default();
+    mcfg.keepers_away=away_roster.map(reco_minimap::jersey::parse_roster_keepers).unwrap_or_default();
+
+    mcfg.tracker.spawn_conf=if low<high {high} else {0.0};
     let mut scenes = o.has("scenes").then(|| { let mut d = SceneDetector::new(profile.clone()); d.direction = direction_opt(o); d });
     let mut mm = Minimap::new(mcfg, Box::new(projector));
     let mut jsonl = o.s("json").map(|p| std::io::BufWriter::new(std::fs::File::create(p).unwrap_or_else(|e| fail(format!("{p}: {e}")))));
@@ -1931,13 +1934,19 @@ fn cmd_replay(o: &Opts, path: &str) {
     let (from, to) = (clock_opt(o, "start"), t_duration(o).map(|d| t_start(o) + d));
     let t0 = Instant::now();
     let (mut n, mut n_scene) = (0u64, 0usize);
+    let mut replay_ocr=(0usize,0usize);
     for line in lines {
-        let (t, mut dets) = serde_json::from_str(line).ok().and_then(|v| dets_from_json(&v)).unwrap_or_else(|| fail(tr!("{path}: Zeile {} unlesbar", "{path}: line {} cannot be read", "{path} : ligne {} illisible", "{path}: la línea {} no se puede leer", n + 2)));
+        let cached:serde_json::Value=serde_json::from_str(line).unwrap_or_else(|e|fail(e));
+        let (t, mut dets) = dets_from_json(&cached).unwrap_or_else(|| fail(tr!("{path}: Zeile {} unlesbar", "{path}: line {} cannot be read", "{path} : ligne {} illisible", "{path}: la línea {} no se puede leer", n + 2)));
         if from.map(|f| t < f).unwrap_or(false) || to.map(|e| t >= e).unwrap_or(false) {
             continue;
         }
         dets.retain(|d| d.conf >= match d.class { Class::Ball => thr_ball, Class::Player => thr_player, Class::Referee => thr_ref });
         let state = mm.process(t, &dets);
+        if let Some(records)=cached["ocr"].as_array() {
+            let (applied,rejected)=reco_minimap::tools::cache::apply(&mut mm,records,t);
+            replay_ocr.0+=applied; replay_ocr.1+=rejected;
+        }
         log_events(&state.events);
         let sc = scenes.as_mut().map(|d| d.update(&state)).unwrap_or_default();
         log_scenes(&sc, &profile.id);
@@ -1954,9 +1963,18 @@ fn cmd_replay(o: &Opts, path: &str) {
         w.finish().unwrap_or_else(|e| fail(e));
     }
     if let Some(mut j) = jsonl {
-        let _ = j.flush();
+        j.flush().unwrap_or_else(|e|fail(e));
+        drop(j);
+        if head["ocr"]["enabled"].as_bool()==Some(true) && !o.has("no-backfill") {
+            if let Some(path)=o.s("json") {
+                reco_minimap::tools::backfill::backfill_file(std::path::Path::new(path)).unwrap_or_else(|e|fail(e));
+            }
+        }
     }
     let ts = mm.tracker().team_stats;
+    if replay_ocr != (0, 0) {
+        eprintln!("{}", tr!("Gespeicherte Nummern-Lesungen: {} übernommen, {} verworfen (Spur passt nicht mehr)", "Stored number readings: {} applied, {} rejected (track no longer matches)", "Lectures de numéros enregistrées : {} appliquées, {} rejetées (la piste ne correspond plus)", "Lecturas de dorsales guardadas: {} aplicadas, {} rechazadas (la pista ya no coincide)", replay_ocr.0, replay_ocr.1));
+    }
     eprintln!("{}", tr!("{n} Bilder in {:.2} s wiedergegeben ({:.1} Bilder/s in der Aufnahme).", "{n} frames replayed in {:.2} s ({:.1} frames/s in the recording).", "{n} images rejouées en {:.2} s ({:.1} images/s dans l'enregistrement).", "{n} imágenes reproducidas en {:.2} s ({:.1} imágenes/s en la grabación).", t0.elapsed().as_secs_f32(), rate));
     eprintln!("{}", tr!("Team-Zuordnung: {} Erkennungen trotz anderer Trikotfarbe über die Position zugeordnet, {} Teamwechsel eines Tracks", "Team assignment: {} detections assigned by position despite another shirt colour, {} team changes of a track", "Attribution des équipes : {} détections attribuées par la position malgré une autre couleur de maillot, {} changements d'équipe d'une piste", "Asignación de equipo: {} detecciones asignadas por posición pese a otro color de camiseta, {} cambios de equipo de una pista", ts.cross_matches, ts.flips));
     if scenes.is_some() {

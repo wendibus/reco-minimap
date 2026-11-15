@@ -224,8 +224,9 @@ export function RunPanel() {
       <div className="mm-gap"><Btn hint={t.hints.addSegment} onClick={() => mutate((p) => { p.segments.push({ name: T('run.segname') + (p.segments.length + 1), start: 0, duration: 600 }); })}>+ {T('run.add')}</Btn></div>
     </Card>
     <Card title={T('run.outputs')}>
-      <Check k="run.outputs.minimap" label={T('run.out_minimap')} /><Check k="run.outputs.alpha" label={T('run.out_alpha')} /><Check k="run.outputs.pip" label={T('run.out_pip')} /><Check k="run.outputs.json" label={T('run.out_json')} />
+      <Check k="run.outputs.minimap" label={T('run.out_minimap')} /><Check k="run.outputs.alpha" label={T('run.out_alpha')} /><Check k="run.outputs.pip" label={T('run.out_pip')} /><Check k="run.outputs.json" label={T('run.out_json')} /><Check k="run.outputs.evidence" label={T('run.out_evidence')} />
       <Check k="run.outputs.ticker" label={t.tickerSim.runOption} /><p className="mm-hint">{t.tickerSim.runHint}</p>
+      <p className="mm-hint">{T('run.out_evidence_hint')}</p>
       <Check k="run.scenes" label={T('run.scenes')} /><p className="mm-hint">{T('run.scenes_hint')}</p>
       <div className="mm-grid3"><Num k="run.every" label={T('run.every')} min={1} /><Num k="run.alpha_bg" label={T('run.alpha_bg')} step={0.1} /><Num k="run.min_alpha" label={T('run.min_alpha')} step={0.1} /></div>
       <p className="mm-hint">{T('run.every_hint')}</p>

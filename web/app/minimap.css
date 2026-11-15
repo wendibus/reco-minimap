@@ -113,3 +113,8 @@
   .mm-split { grid-template-columns: 1fr; }
 }
 .mm-trainer { margin-top: 12px; padding-top: 10px; border-top: .5px solid var(--sep); }
+
+.mm-weak { opacity: .65; }
+.mm-score td:last-child { width: auto; }
+.mm-score .mm-sw { margin-right: 6px; }
+.mm-scroll { max-height: 280px; overflow: auto; }

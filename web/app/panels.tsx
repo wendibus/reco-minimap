@@ -129,7 +129,8 @@ export function CalibPanel() {
   const c = files.court, sc = files.scales;
   const home = tm.home ?? '#cccccc', away = tm.away ?? '#2f354e', hgk = tm.home_gk || '#22aa44', agk = tm.away_gk || '#ffcc00';
   const saveTeams = async (h: string, a: string, hg: string, ag: string, on = gkOn) => {
-    await api('/api/teams/save', { dir, home: h, away: a, home_gk: on ? hg : '', away_gk: on ? ag : '' });
+    const gk = on && isKeeperSport(); // goalkeeper colours only exist in sports with goalkeepers
+    await api('/api/teams/save', { dir, home: h, away: a, home_gk: gk ? hg : '', away_gk: gk ? ag : '' });
     await refresh();
   };
   return <>
@@ -264,7 +265,7 @@ export function LivePanel() {
       <p className="mm-hint">{T('ticker.ui_web_hint')}</p>
       <Check k="live.network" label={T('ticker.ui_network')} />
       <div className="mm-row mm-gap"><Btn primary hint={t.hints.liveStart} disabled={!!url} onClick={start}>{T('live.start')}</Btn><Btn hint={t.hints.liveStop} disabled={!url} onClick={() => job && void cancelJob(job.id, true)}>{T('live.stop')}</Btn></div>
-      {url && <><h3>{T('live.url')}</h3><a href={url} target="_blank" rel="noreferrer">{url}</a> · <a href={`${url}?floor=1&debug=1`} target="_blank" rel="noreferrer">test</a><p className="mm-hint">{T('live.obs')}</p>
+      {url && <><h3>{T('live.url')}</h3><a href={url} target="_blank" rel="noreferrer">{url}</a> · <a href={`${url}?floor=1&debug=1`} target="_blank" rel="noreferrer">{T('live.test')}</a><p className="mm-hint">{T('live.obs')}</p>
         <h3>{T('ticker.link')}</h3><a href={turl} target="_blank" rel="noreferrer">{turl}</a>{l.network && !init?.lan_ip && <p className="bad small">{T('ticker.ui_noip')}</p>}
         {l.ticker_approve && <><h3>{T('ticker.ui_admin')}</h3><a href={`${url}ticker/admin`} target="_blank" rel="noreferrer">{url}ticker/admin</a></>}</>}
     </Card>

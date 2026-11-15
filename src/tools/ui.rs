@@ -779,10 +779,12 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
         ("POST", "/api/teams/save") => {
             let dir = PathBuf::from(get_s(&b, "dir"));
             let mut v = json!({"home": get_s(&b, "home"), "away": get_s(&b, "away")});
-            // goalkeeper colours are optional: an empty value removes them
+            // goalkeeper colours are optional (an empty value removes them) and only kept for sports with goalkeepers
+            let sport = std::fs::read_to_string(dir.join("project.json")).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).map(|p| get_s(&p, "sport")).unwrap_or_default();
+            let keepers = sport.is_empty() || crate::sport::has_keepers(&sport);
             for k in ["home_gk", "away_gk"] {
                 let c = get_s(&b, k);
-                if c.len() == 7 && c.starts_with('#') {
+                if keepers && c.len() == 7 && c.starts_with('#') {
                     v[k] = json!(c);
                 }
             }

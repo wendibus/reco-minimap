@@ -360,17 +360,19 @@ reco-minimap stats out/game.jsonl --court court.json --json out/game.stats.json
 reco-minimap clip game.mp4 --at 312.4,1290 --before 6 --after 4 --out out/clips
 ```
 
-The statistics count **attempts**; whether a shot went in is not visible to the detection.
+The statistics count **attempts**; whether a shot went in is not visible to the detection directly. The **score is estimated** from how play restarts after a score, and every scoring event lists its evidence so you can check it in a clip.
 
 | Part | What it shows |
 |---|---|
 | Key figures | attempts per team, possession, how often the ball was found, duration |
 | Shot chart | every attempt at its place (basketball: from game situations, so they must be on while processing; goal sports: a fast ball flight that starts within range and points at a goal), shaped by kind, as chart or table |
 | Attempts by zone | density on the field and the share of each zone (per sport: e.g. restricted area / paint / mid-range / corner 3 / above-the-break 3 in basketball, goal area / penalty area / outside in football, 6 m / wing / back court / 7 m in handball) |
-| Time sections | attempts in equal parts of the video (4 in basketball and hockey, otherwise 2) with the home – away difference; there is no game clock |
+| Time sections | attempts in equal parts of the video (4 in basketball, hockey, lacrosse and American football, 5 in volleyball, otherwise 2) with the home – away difference; there is no game clock |
 | Possession, thirds | share of time each team holds the ball; for field sports the share of the ball in each third |
 | Positions | heat maps of home, away and the ball |
 | Team shape | width and depth of each team, with and without the ball, over time, and the average line-up per time section (from positions only) |
+| Score (estimated) | basketball: a 2- or 3-point attempt followed within 10 s by an inbound of the other team from the end line under that basket (free throws are not counted); football, futsal, handball, hockey, lacrosse: a kick-off / throw-off / centre pass / face-off by the other team shortly after an attempt (not at the start of the video or after the change of ends). *likely* when both teams fit, *possible* otherwise. Volleyball, rugby and American football: not possible from positions |
+| Playing time per player | time on the field per jersey number and team; every continuously tracked trail counts for the number read most often on it (needs *Read and show jersey numbers*); names from the squad of step 4 |
 | Key moments | attempts, game situations, confirmed substitutions; tick them and cut short clips into `out/clips/` |
 
 ## Live mode and OBS

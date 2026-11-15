@@ -41,6 +41,8 @@ li .act button{min-height:36px;padding:0 10px}
 button.ok{background:#43c37b;border-color:#43c37b;color:#fff}button.no{background:transparent;color:#ff6b6b;border-color:#ff6b6b}
 `;
 
+// the name of a restart differs per sport (same table in live.html and the interface's stats)
+const sceneKey = (k, sport) => k === 'kickoff' ? ({ handball: 'throw_off', hockey: 'centre_pass', lacrosse: 'face_off' }[sport] || k) : k === 'throw_in' ? ({ basketball: 'inbound', futsal: 'kick_in' }[sport] || k) : k === 'penalty' && sport === 'hockey' ? 'penalty_stroke' : k;
 const LANG_IDS = Object.keys(RT_STRINGS);
 function pickLang(pref) {
   let saved = null; try { saved = localStorage.getItem('lang'); } catch (e) {}
@@ -87,10 +89,8 @@ function mount(root, o) {
       return { text: T('ticker.sub_possible', { team: tb, out: who(ev.team, ev.out) }), weak: true, tag: T('ticker.unconfirmed') };
     }
     if (ev.type === 'scene') {
-      let k = ev.kind;
-      if (k === 'kickoff' && cfg.sport === 'handball') k = 'throw_off';
-      else if (k === 'throw_in' && cfg.sport === 'basketball') k = 'inbound';
-      else if (k === 'free_throw' && ev.phase === 'attempt') k = 'free_throw_attempt';
+      let k = sceneKey(ev.kind, cfg.sport);
+      if (k === 'free_throw' && ev.phase === 'attempt') k = 'free_throw_attempt';
       const label = T('scene.' + k) + (ev.side === 'l' ? ' ←' : ev.side === 'r' ? ' →' : '');
       return { text: tb ? label + ' · ' + tb : label, weak: false, tag: ev.borderline ? T('scene.borderline') : '' };
     }

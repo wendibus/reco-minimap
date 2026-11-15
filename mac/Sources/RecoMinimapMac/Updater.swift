@@ -8,9 +8,9 @@ enum UpdaterError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .badSignature:
-            return L("Die Signatur des Updates ist ungültig. Es wurde nicht installiert.", "The update's signature is invalid. It was not installed.")
+            return L("Die Signatur des Updates ist ungültig. Es wurde nicht installiert.", "The update's signature is invalid. It was not installed.", "La signature de la mise à jour n'est pas valide. Elle n'a pas été installée.", "La firma de la actualización no es válida. No se ha instalado.")
         case .notConfigured:
-            return L("Automatische Updates sind in dieser App-Version nicht aktiviert.", "Automatic updates are not enabled in this build of the app.")
+            return L("Automatische Updates sind in dieser App-Version nicht aktiviert.", "Automatic updates are not enabled in this build of the app.", "Les mises à jour automatiques ne sont pas activées dans cette version de l'app.", "Las actualizaciones automáticas no están activadas en esta versión de la app.")
         }
     }
 }

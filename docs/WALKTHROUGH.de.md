@@ -291,7 +291,7 @@ Links eine Heatmap der Versuche: Das Feld ist in Felder von etwa 2 × 2 m geteil
 
 ### Versuche je Zeitabschnitt
 
-Das Video wird in gleich lange Abschnitte geteilt (Basketball und Hockey vier, sonst zwei); Balken je Team und darunter die Differenz Heim – Gast je Abschnitt. Das Programm kennt keine Spieluhr: Unterbrechungen zählen mit, und ein Abschnitt ist nicht dasselbe wie ein Viertel oder eine Halbzeit, wenn das Video nicht genau ein Spielabschnitt ist.
+Das Video wird in gleich lange Abschnitte geteilt (Basketball, Hockey, Lacrosse und American Football vier, Volleyball fünf, sonst zwei); Balken je Team und darunter die Differenz Heim – Gast je Abschnitt. Das Programm kennt keine Spieluhr: Unterbrechungen zählen mit, und ein Abschnitt ist nicht dasselbe wie ein Viertel oder eine Halbzeit, wenn das Video nicht genau ein Spielabschnitt ist.
 
 ### Ballbesitz und Ball im Feld
 
@@ -323,6 +323,14 @@ Die Karte *Teamform* zeigt, wie breit und wie tief jedes Team steht. Sie rechnet
 * **Durchschnittliche Aufstellung:** Für jeden Zeitabschnitt und wahlweise *Mit Ball*, *Gegen den Ball* oder *Alle* zeigt das Feld die mittlere Position jedes Spielerplatzes, den Teamschwerpunkt (+) und ein Rechteck aus mittlerer Breite und Tiefe. Plätze, die in weniger als einem Fünftel des Abschnitts sichtbar waren, fehlen.
 * **Wofür:** Steht ein Team in Abschnitt 3 enger als am Anfang? Wie weit zieht es sich gegen den Ball zusammen, wie weit macht es das Feld mit Ball breit?
 * **Grenzen:** Die Werte gelten für das Team, nicht für einzelne Spieler: Ohne Trikotnummern können zwei Spielerplätze die Person tauschen, und die durchschnittliche Aufstellung verwischt dann. Spieler weit weg von der Kamera werden seltener erkannt, was die Breite unterschätzen kann.
+
+### Spielstand (geschätzt)
+
+Ob ein Wurf oder Schuss traf, sieht die Erkennung nicht direkt. Sie erkennt aber, wie das Spiel danach weitergeht: Beim **Basketball** wirft nach einem Korb das andere Team innerhalb weniger Sekunden von der Grundlinie unter diesem Korb ein. Bei **Fußball, Futsal, Handball, Hockey und Lacrosse** stößt nach einem Tor das andere Team an (Anwurf, Anspiel, Face-off). Daraus schätzt die Karte den Spielstand und listet jeden Treffer mit Zeit, Team, Punkten und *wahrscheinlich* oder *möglich*. Freiwürfe werden nicht mitgezählt; bei Volleyball, Rugby und American Football ist keine Schätzung möglich. Prüfe die Treffer über die Clips – und stelle in Schritt 3 die Spielrichtung ein, dann stimmen die Teams zuverlässiger.
+
+### Spielzeit je Spieler
+
+Zeit auf dem Feld je Rückennummer, getrennt nach Heim und Gast, mit Anteil an der Videodauer. Jede durchgehend verfolgte Spur zählt für die Nummer, die auf ihr am häufigsten gelesen wurde; Spuren ohne gelesene Nummer stehen unter *ohne erkannte Nummer*. Dafür muss beim Verarbeiten *Trikotnummern lesen und anzeigen* an sein. Namen kommen aus dem Kader in Schritt 4 (`7:Anna`).
 
 ### Schlüsselmomente und Clips
 

@@ -115,7 +115,7 @@ function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<':
 const player = id => roster.find(r => r.id === id);
 const teamColour = t => (doc.teams[t] && doc.teams[t].color) || (t === 'home' ? '#e63946' : '#3b82f6');
 const keeperColour = t => (doc.teams[t] && doc.teams[t].keeper_color) || null;
-const isKeeperSport = () => !!doc && (KEEPER_SPORTS.includes(doc.sport) || roster.some(r => r.keeper));
+const isKeeperSport = () => !!doc && KEEPER_SPORTS.includes(doc.sport);
 
 // ---------------------------------------------------------------- scene <-> state
 function load(scene) {

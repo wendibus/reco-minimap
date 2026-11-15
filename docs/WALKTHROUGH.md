@@ -291,7 +291,7 @@ On the left a heat map of the attempts: the field is split into cells of about 2
 
 ### Attempts per time section
 
-The video is split into sections of equal length (four in basketball and hockey, otherwise two); bars per team and below them the difference home – away per section. The program knows no game clock: stoppages count, and a section is not the same as a quarter or half unless the video is exactly one period.
+The video is split into sections of equal length (four in basketball, hockey, lacrosse and American football, five in volleyball, otherwise two); bars per team and below them the difference home – away per section. The program knows no game clock: stoppages count, and a section is not the same as a quarter or half unless the video is exactly one period.
 
 ### Possession and ball on the field
 
@@ -323,6 +323,14 @@ The *Team shape* card shows how wide and how deep each team stands. It only uses
 * **Average line-up:** For each time section, and for *With the ball*, *Without the ball* or *All*, the field shows the average position of every player slot, the team centre (+) and a rectangle of the average width and depth. Slots visible in less than a fifth of the section are left out.
 * **What for:** Does a team stand tighter in section 3 than at the start? How much does it close up without the ball, how wide does it make the field with it?
 * **Limits:** The values describe the team, not single players: without jersey numbers two player slots can swap people, and the average line-up then blurs. Players far from the camera are found less often, which can underestimate the width.
+
+### Score (estimated)
+
+The detection does not see directly whether a shot went in. It does see how play restarts afterwards: in **basketball** the other team inbounds from the end line under that basket within a few seconds after a made basket; in **football, futsal, handball, hockey and lacrosse** the other team kicks off after a goal (throw-off, centre pass, face-off). From that the card estimates the score and lists every score with time, team, points and *likely* or *possible*. Free throws are not counted; volleyball, rugby and American football cannot be estimated. Check the scores with the clips – and set the playing direction in step 3, which makes the teams more reliable.
+
+### Playing time per player
+
+Time on the field per jersey number, for home and away, with the share of the video length. Every continuously tracked trail counts for the number read most often on it; trails without a number are listed as *no number read*. This needs *Read and show jersey numbers* while processing. Names come from the squad in step 4 (`7:Anna`).
 
 ### Key moments and clips
 

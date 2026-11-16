@@ -16,6 +16,7 @@ pub mod ocr;
 pub mod progress;
 pub mod review;
 pub mod scales;
+pub mod scoreboard;
 pub mod stats;
 pub mod stats_players;
 pub mod backfill;

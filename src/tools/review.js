@@ -102,7 +102,9 @@ if (typeof document !== 'undefined') (async function boot() {
     $('addPlayer').disabled = !hash;
   }
   function events() {
-    const all = rows.flatMap(r => (r.events || []).map(e => ({...e,t:Number.isFinite(e.t)?e.t:r.t}))), seen = new Set();
+    let score = '';
+    // scoreboard readings come with every clock tick: keep only those where the score changes
+    const all = rows.flatMap(r => (r.events || []).map(e => ({...e,t:Number.isFinite(e.t)?e.t:r.t}))).filter(e => {if(e.type!=='scoreboard')return true;const k=e.home+':'+e.away;if(k===score)return false;score=k;return true;}), seen = new Set();
     const unique = all.filter(e => {const k=JSON.stringify(e);if(seen.has(k))return false;seen.add(k);return true;});
     const type = e => String(e.type || e.kind || tt('review.event'));
     const previous = $('eventType').value;

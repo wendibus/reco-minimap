@@ -80,6 +80,8 @@ pub struct SceneEvent {
     pub confidence: f32,
     /// Shot attempts only: the release point is within the position error of the 3-point line.
     pub borderline: bool,
+    /// The player taking the restart / shot (tracking slot), when the detection knows them.
+    pub actor: Option<u32>,
 }
 
 #[derive(Clone, Debug)]
@@ -107,6 +109,7 @@ struct Cand {
     pos: Vec2,
     side: Option<char>,
     conf: f32,
+    actor: Option<u32>,
 }
 
 struct Entry {
@@ -122,6 +125,7 @@ struct PendingShot {
     goal: Vec2,
     start: f32,
     best: f32,
+    shooter: u32,
 }
 
 pub struct SceneDetector {
@@ -130,7 +134,7 @@ pub struct SceneDetector {
     pub cfg: SceneCfg,
     active: HashMap<(SceneKind, u8), Entry>,
     last_fire: HashMap<(SceneKind, u8), f64>,
-    holder: Option<(Vec2, Team, f64)>,
+    holder: Option<(Vec2, Team, f64, u32)>,
     prev_state: Option<BallState>,
     pending: Option<PendingShot>,
     recent_substitutions: Vec<crate::SubEvent>,
@@ -203,7 +207,7 @@ impl SceneDetector {
                     self.recent_substitutions.iter().filter(|sub|sub.t<=t).cloned().collect::<Vec<_>>()
                 } else {Vec::new()};
                 if !related_substitutions.is_empty() { evidence.push("recent_substitution_candidate"); }
-                out.push(SceneEvent { t, started_at:e.since, evidence, related_substitutions, kind: c.kind, team: c.team, pos: c.pos, side: c.side, confidence: c.conf, borderline: false });
+                out.push(SceneEvent { t, started_at:e.since, evidence, related_substitutions, kind: c.kind, team: c.team, pos: c.pos, side: c.side, confidence: c.conf, borderline: false, actor: c.actor });
             }
         }
         let rearm = self.cfg.rearm_gap;

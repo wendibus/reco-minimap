@@ -37,8 +37,11 @@ impl TickerSim {
         self.frames += 1;
         self.t_first.get_or_insert(t);
         self.t_last = self.t_last.max(t);
-        let Some(events) = frame["events"].as_array().filter(|e| !e.is_empty()) else { return };
-        let mut events = events.clone();
+        // Scoreboard readings arrive with every clock tick; they feed the statistics, not the ticker.
+        let mut events: Vec<Value> = frame["events"].as_array().map(|e| e.iter().filter(|e| e["type"] != "scoreboard").cloned().collect()).unwrap_or_default();
+        if events.is_empty() {
+            return;
+        }
         if let Some(d) = self.direction {
             for e in events.iter_mut().filter(|e| e["type"] == "scene" && crate::direction::is_attacking_scene(e["kind"].as_str().unwrap_or(""))) {
                 if let Some(side) = e["side"].as_str().and_then(|s| s.chars().next()).filter(|c| matches!(c, 'l' | 'r')) {
@@ -172,6 +175,7 @@ mod tests {
         s.add_frame(&json!({"t": 0.0, "events": []}));
         s.add_frame(&json!({"t": 30.0, "events": [{"type": "sub", "kind": "confirmed", "team": "home", "out": 7, "in": 12, "t": 30.0}]}));
         s.add_frame(&json!({"t": 100.0, "events": [{"type": "scene", "kind": "free_throw", "team": "away", "t": 100.0}, {"type": "sub", "kind": "possible", "team": "away", "t": 100.0}]}));
+        s.add_frame(&json!({"t": 101.0, "events": [{"type": "scoreboard", "t": 101.0, "home": 2, "away": 0}]}));
         s.add_frame(&json!({"t": 300.0, "events": []}));
         let v = s.to_json("game.jsonl");
         // manual release is off in a simulation: everything is published

@@ -15,6 +15,11 @@
 //!
 //! Both are estimates and are labelled as such; every scoring event carries its evidence so it can
 //! be checked in a clip.
+//!
+//! **Basketball with a scoreboard** (`run --scoreboard`): the score is read from the board instead.
+//! Every +1/+2/+3 is matched to the fitting attempt before it ([`crate::scoring::attribute`]); the
+//! shooter gets the points with a probability, marked as read or inferred by how their jersey number
+//! was known. Without a fitting attempt the points go to the team only.
 
 use std::collections::HashMap;
 
@@ -22,6 +27,7 @@ use serde_json::{json, Value};
 
 use super::stats::Attempt;
 use crate::direction::Direction;
+use crate::scoring::{attribute, score_changes, AttributionCfg, Basis, NumberStatus, ShotAttempt, ShotKind, Shooter};
 use crate::sport::SportProfile;
 use crate::team::Team;
 
@@ -38,8 +44,8 @@ struct Tracklet {
     inferred: f64,
 }
 
-/// Playing time per team and jersey number.
-pub fn players(frames: &[Value]) -> Value {
+/// Every continuous tracklet (`id`, `segment`) with its time, team and numbers.
+fn tracklets(frames: &[Value]) -> HashMap<(u64, u64), Tracklet> {
     let mut tl: HashMap<(u64, u64), Tracklet> = HashMap::new();
     for (i, fr) in frames.iter().enumerate() {
         let t = fr["t"].as_f64().unwrap_or(0.0);
@@ -67,6 +73,12 @@ pub fn players(frames: &[Value]) -> Value {
             }
         }
     }
+    tl
+}
+
+/// Playing time per team and jersey number.
+pub fn players(frames: &[Value]) -> Value {
+    let tl = tracklets(frames);
     let mut per: HashMap<(String, u64), f64> = HashMap::new();
     let mut deduced: HashMap<(String, u64), f64> = HashMap::new();
     let mut without: HashMap<String, f64> = HashMap::new();
@@ -128,9 +140,112 @@ fn other(t: &str) -> &'static str {
     }
 }
 
-/// Estimated score from the attempts and the restarts after them (see the module docs).
+/// The shooter of an attempt: the tracklet of its track at that time and the number read most
+/// often on it (deduced when most of its numbered time was deduced).
+fn shooter_of(frames: &[Value], tl: &HashMap<(u64, u64), Tracklet>, a: &Attempt) -> Option<Shooter> {
+    let track = a.actor?;
+    let i = frames.partition_point(|f| f["t"].as_f64().unwrap_or(0.0) < a.t);
+    let near = [i, i.saturating_sub(1)].into_iter().filter_map(|k| frames.get(k));
+    let p = near.flat_map(|f| f["players"].as_array().into_iter().flatten()).find(|p| p["id"].as_u64() == Some(track))?;
+    let segment = p["segment"].as_u64().unwrap_or(0);
+    let e = tl.get(&(track, segment));
+    let best = e.and_then(|e| e.numbers.iter().max_by(|x, y| x.1.total_cmp(y.1).then(y.0.cmp(x.0))).map(|(n, s)| (*n, *s)));
+    let (number, status) = match (best, e) {
+        (Some((n, secs)), Some(e)) => (Some(n as u32), if e.inferred > 0.5 * e.numbers.values().sum::<f64>().max(secs) { NumberStatus::Inferred } else { NumberStatus::Read }),
+        _ => (None, NumberStatus::Unknown),
+    };
+    Some(Shooter { track: track as u32, segment: segment as u32, number, status })
+}
+
+fn team_of(s: &str) -> Team {
+    match s {
+        "home" => Team::Home,
+        "away" => Team::Away,
+        _ => Team::Unknown,
+    }
+}
+
+/// Basketball with a calibrated scoreboard: the real score, every change on the board with the
+/// attempt and shooter that most likely produced it, and the points per player.
+fn score_from_board(frames: &[Value], att: &[Attempt], readings: &[crate::scoreboard::Reading]) -> Value {
+    let tl = tracklets(frames);
+    let shots: Vec<(usize, ShotAttempt)> = att
+        .iter()
+        .enumerate()
+        .filter_map(|(i, a)| Some((i, ShotAttempt { t: a.t, team: team_of(&a.team), kind: ShotKind::parse(&a.kind)?, shooter: shooter_of(frames, &tl, a), confidence: a.confidence })))
+        .collect();
+    let attempts: Vec<ShotAttempt> = shots.iter().map(|s| s.1).collect();
+    let changes = score_changes(readings);
+    let credits = attribute(&changes, &attempts, &AttributionCfg::default());
+    let last = |f: fn(&crate::scoreboard::Reading) -> Option<u32>| readings.iter().rev().find_map(f);
+    let first = |f: fn(&crate::scoreboard::Reading) -> Option<u32>| readings.iter().find_map(f);
+    let mut events = Vec::new();
+    // points per (team, number); shooter without number; team only
+    let mut per: HashMap<(&str, u32), (i64, i64, i64)> = HashMap::new();
+    let mut no_number: HashMap<&str, i64> = HashMap::new();
+    let mut team_only: HashMap<&str, i64> = HashMap::new();
+    for c in &credits {
+        let team = team_str(c.change.team);
+        let a = c.attempt.map(|i| &att[shots[i].0]);
+        let sh = c.shooter;
+        events.push(json!({"t": r1(c.change.t), "team": team, "points": c.change.points, "from": c.change.from, "to": c.change.to,
+            "basis": c.basis.key(), "probability": c.probability, "candidates": c.candidates, "cancelled": c.cancelled,
+            "attempt": a.map(|a| json!({"t": r1(a.t), "kind": a.kind, "x": r1(a.pos.x as f64), "y": r1(a.pos.y as f64)})),
+            "shooter": sh.map(|s| json!({"number": s.number, "status": s.status.key(), "track": s.track, "segment": s.segment}))}));
+        if c.cancelled || c.change.points <= 0 {
+            continue;
+        }
+        let pts = c.change.points as i64;
+        match (c.basis, sh) {
+            (Basis::Attempt, Some(Shooter { number: Some(n), status, .. })) => {
+                let e = per.entry((team, n)).or_default();
+                e.0 += pts;
+                if status == NumberStatus::Inferred {
+                    e.2 += pts;
+                } else {
+                    e.1 += pts;
+                }
+            }
+            (Basis::Attempt, _) => *no_number.entry(team).or_default() += pts,
+            _ => *team_only.entry(team).or_default() += pts,
+        }
+    }
+    let list = |team: &str| {
+        let mut v: Vec<(u32, (i64, i64, i64))> = per.iter().filter(|((t, _), _)| *t == team).map(|((_, n), p)| (*n, *p)).collect();
+        v.sort_by(|a, b| b.1 .0.cmp(&a.1 .0).then(a.0.cmp(&b.0)));
+        v.into_iter().map(|(n, (p, read, inf))| json!({"number": n, "points": p, "read": read, "inferred": inf})).collect::<Vec<_>>()
+    };
+    // the score over time, only where score or period change (not every clock tick)
+    let mut timeline: Vec<Value> = Vec::new();
+    let mut prev: Option<(Option<u32>, Option<u32>, Option<u32>)> = None;
+    for r in readings {
+        let k = (r.home, r.away, r.period);
+        if prev != Some(k) {
+            timeline.push(json!({"t": r1(r.t), "home": r.home, "away": r.away, "period": r.period, "clock": r.clock}));
+            prev = Some(k);
+        }
+    }
+    let n = |m: &HashMap<&str, i64>, k: &str| m.get(k).copied().unwrap_or(0);
+    json!({"supported": true, "method": "scoreboard",
+        "home": last(|r| r.home).unwrap_or(0), "away": last(|r| r.away).unwrap_or(0),
+        "start": {"home": first(|r| r.home), "away": first(|r| r.away)},
+        "period": last(|r| r.period), "clock": last(|r| r.clock),
+        "events": events, "timeline": timeline,
+        "players": {"home": list("home"), "away": list("away")},
+        "no_number": {"home": n(&no_number, "home"), "away": n(&no_number, "away")},
+        "team_only": {"home": n(&team_only, "home"), "away": n(&team_only, "away")}})
+}
+
+/// Estimated score from the attempts and the restarts after them (see the module docs). For
+/// basketball with scoreboard readings in the frames, the board's score with the scorers instead.
 pub fn score(profile: &SportProfile, frames: &[Value], att: &[Attempt], dir: Option<Direction>) -> Value {
     let sport = profile.id.as_str();
+    if sport == "basketball" {
+        let readings = super::scoreboard::readings_in(frames);
+        if readings.iter().any(|r| r.home.is_some() || r.away.is_some()) {
+            return score_from_board(frames, att, &readings);
+        }
+    }
     let scenes: Vec<&Value> = frames.iter().flat_map(|f| f["events"].as_array().into_iter().flatten()).filter(|e| e["type"] == "scene").collect();
     let t0 = frames.first().and_then(|f| f["t"].as_f64()).unwrap_or(0.0);
     let mut events: Vec<Value> = Vec::new();
@@ -217,7 +332,46 @@ mod tests {
     }
 
     fn att(t: f64, team: &str, kind: &str, goal: usize) -> Attempt {
-        Attempt { t, team: team.into(), pos: Vec2::new(0.0, 0.0), kind: kind.into(), zone: "", goal, distance: 5.0, confidence: 0.6 }
+        Attempt { t, team: team.into(), pos: Vec2::new(0.0, 0.0), kind: kind.into(), zone: "", goal, distance: 5.0, confidence: 0.6, actor: None }
+    }
+
+    #[test]
+    fn basketball_points_per_player_from_the_scoreboard() {
+        let p = SportProfile::basketball();
+        // #11 (home, read) and #4 (away, deduced) on the court the whole time
+        let pl = |id: u64, team: &str, n: u64, status: &str| json!({"id": id, "segment": 0, "team": team, "state": "visible", "jersey": null,
+            "identity": {"status": status, "player": {"team": team, "number": n}}});
+        let mut frames = Vec::new();
+        for i in 0..=60 {
+            let t = i as f64;
+            let mut ev = Vec::new();
+            if i == 10 {
+                ev.push(json!({"type": "scene", "phase": "attempt", "kind": "shot2", "team": "home", "side": "r", "x": 24.0, "y": 7.5, "confidence": 0.6, "t": t, "actor": 1}));
+            }
+            if i == 30 {
+                ev.push(json!({"type": "scene", "phase": "attempt", "kind": "shot3", "team": "away", "side": "l", "x": 7.5, "y": 7.5, "confidence": 0.6, "t": t, "actor": 2}));
+            }
+            let board = |h: u32, a: u32| json!({"type": "scoreboard", "t": t, "home": h, "away": a, "clock": 300 - i, "period": 1});
+            match i {
+                0 => ev.push(board(20, 18)),
+                13 => ev.push(board(22, 18)),
+                34 => ev.push(board(22, 21)),
+                50 => ev.push(board(24, 21)), // nothing seen before it: team only
+                _ => {}
+            }
+            frames.push(json!({"t": t, "players": [pl(1, "home", 11, "candidate"), pl(2, "away", 4, "inferred")], "events": ev}));
+        }
+        let att = super::super::stats::attempts(&p, &frames);
+        assert_eq!(att.len(), 2);
+        let s = score(&p, &frames, &att, None);
+        assert_eq!(s["method"], "scoreboard");
+        assert_eq!((s["home"].as_u64(), s["away"].as_u64()), (Some(24), Some(21)));
+        assert_eq!(s["players"]["home"][0], json!({"number": 11, "points": 2, "read": 2, "inferred": 0}));
+        assert_eq!(s["players"]["away"][0], json!({"number": 4, "points": 3, "read": 0, "inferred": 3}));
+        assert_eq!(s["team_only"]["home"], 2);
+        assert_eq!(s["events"][0]["shooter"]["status"], "read");
+        assert_eq!(s["events"][2]["basis"], "team_only");
+        assert_eq!(s["timeline"].as_array().unwrap().len(), 4);
     }
 
     #[test]

@@ -30,6 +30,8 @@ pub struct Attempt {
     pub goal: usize,
     pub distance: f32,
     pub confidence: f32,
+    /// Tracking slot of the shooter / taker, when the scene detection knows it.
+    pub actor: Option<u64>,
 }
 
 /// Shot rules of the goal sports: (goal half width m, longest shot m, slowest shot m/s).
@@ -185,6 +187,7 @@ pub fn attempts(profile: &SportProfile, frames: &[Value]) -> Vec<Attempt> {
                 goal,
                 distance: pos.dist(goals[goal]),
                 confidence: f(e, "confidence").unwrap_or(0.0),
+                actor: e["actor"].as_u64(),
             });
         }
     }
@@ -243,7 +246,7 @@ pub fn attempts(profile: &SportProfile, frames: &[Value]) -> Vec<Attempt> {
             if let Some((gi, d, cos)) = best {
                 last_shot = t;
                 let team = last_holder.as_ref().filter(|(ht, _)| t - ht <= 1.5).map(|(_, tm)| tm.clone()).unwrap_or_else(|| "none".into());
-                out.push(Attempt { t, team, pos: p, kind: "shot".into(), zone: zone_of(sport, "shot", p, goals[gi], profile.field.length), goal: gi, distance: d, confidence: cos.clamp(0.0, 1.0) });
+                out.push(Attempt { t, team, pos: p, kind: "shot".into(), zone: zone_of(sport, "shot", p, goals[gi], profile.field.length), goal: gi, distance: d, confidence: cos.clamp(0.0, 1.0), actor: None });
             }
         }
     }

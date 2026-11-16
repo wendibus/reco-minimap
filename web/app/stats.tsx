@@ -13,13 +13,19 @@ type Stats = Json & {
   thirds: number[]; heat: { nx: number; ny: number; home: number[]; away: number[]; ball: number[] };
   shape?: Shape;
   players?: { home: PlayerTime[]; away: PlayerTime[]; without_number: { home: number; away: number }; numbers_seen: boolean };
-  score?: { supported: boolean; method?: string; home: number; away: number; likely?: { home: number; away: number }; events: ScoreEvent[] };
+  score?: { supported: boolean; method?: string; home: number; away: number; likely?: { home: number; away: number }; events: ScoreEvent[];
+    // method "scoreboard" (basketball with a calibrated hall scoreboard)
+    period?: number | null; clock?: number | null; board?: BoardEvent[];
+    players?: Record<'home' | 'away', BoardPoints[]>; no_number?: Record<'home' | 'away', number>; team_only?: Record<'home' | 'away', number> };
   direction?: { source: 'given' | 'estimated' | 'unknown'; home_start: 'l' | 'r' | null; switch_at: number | null; agree: number; total: number; reassigned: number };
   moments: { t: number; type: 'attempt' | 'scene' | 'sub'; kind?: string; team: Team; zone?: string; out?: number | null; in?: number | null }[];
 };
 
 type PlayerTime = { number: number; seconds: number; share: number; inferred_share?: number };
 type ScoreEvent = { t: number; team: Team; points: number; kind: string; evidence: string[]; restart_t: number; confidence: 'likely' | 'possible' };
+type BoardEvent = { t: number; team: Team; points: number; from: number; to: number; basis: 'attempt' | 'team_only' | 'correction' | 'jump'; probability: number; candidates: number; cancelled: boolean;
+  attempt: { t: number; kind: string } | null; shooter: { number: number | null; status: 'read' | 'inferred' | 'unknown'; track: number } | null };
+type BoardPoints = { number: number; points: number; read: number; inferred: number };
 
 /** The name of a restart differs per sport (same table as the ticker and the live view). */
 export function sceneKey(k: string, sport: string): string {
@@ -172,7 +178,7 @@ export function StatsPanel() {
     {picker}
     <TickerSimCard file={file} />
     <div className="mm-tiles">
-      {stats.score?.supported && stats.score.events.length > 0 && <Tile label={ts.scoreTile} value={`${stats.score.home}:${stats.score.away}`} sub={stats.score.likely ? ts.scoreLikely(stats.score.likely.home, stats.score.likely.away) : undefined} />}
+      {stats.score?.supported && (stats.score.method === 'scoreboard' || stats.score.events.length > 0) && <Tile label={ts.scoreTile} value={`${stats.score.home}:${stats.score.away}`} sub={stats.score.method === 'scoreboard' ? ts.scoreBoardSub + (stats.score.period ? ' · ' + ts.gamePeriod(stats.score.period) : '') : stats.score.likely ? ts.scoreLikely(stats.score.likely.home, stats.score.likely.away) : undefined} />}
       {sec.shots && <><Tile label={`${ts.attempts} · ${ts.home}`} value={stats.totals.home} swatch={colors.home} /><Tile label={`${ts.attempts} · ${ts.away}`} value={stats.totals.away} swatch={colors.away} /></>}
       {sec.possession && <Tile label={`${ts.possession} · ${ts.home}`} value={`${Math.round(stats.possession.home * 100)} %`} sub={`${ts.away} ${Math.round(stats.possession.away * 100)} %`} />}
       <Tile label={ts.ballSeen} value={`${Math.round(stats.possession.ball_seen * 100)} %`} />
@@ -236,7 +242,9 @@ export function StatsPanel() {
       <Field s={stats}>{heatCells(stats, stats.heat[layer], stats.heat.nx, stats.heat.ny, layer === 'ball' ? 'var(--ball)' : 'var(--accent)', (n) => `${Math.round(n / Math.max(1, stats.heat[layer].reduce((a, b) => a + b, 0)) * 1000) / 10} %`)}</Field>
     </Card>}
 
-    {stats.score && <ScoreCard s={stats} colors={colors} names={teamName} kindLabel={kindLabel} />}
+    {stats.score && (stats.score.method === 'scoreboard'
+      ? <><BoardScoreCard s={stats} colors={colors} names={teamName} kindLabel={kindLabel} /><PointsCard s={stats} colors={colors} names={teamName} roster={{ home: rosterNames(project.run?.numbers?.roster_home), away: rosterNames(project.run?.numbers?.roster_away) }} /></>
+      : <ScoreCard s={stats} colors={colors} names={teamName} kindLabel={kindLabel} />)}
     {stats.players && <PlayersCard p={stats.players} span={dur} colors={colors} names={teamName} roster={{ home: rosterNames(project.run?.numbers?.roster_home), away: rosterNames(project.run?.numbers?.roster_away) }} />}
 
     {stats.shape && <ShapeCard s={stats} shape={stats.shape} colors={colors} names={teamName} />}
@@ -427,13 +435,60 @@ function ScoreCard({ s, colors, names, kindLabel }: { s: Stats; colors: Record<T
   </Card>;
 }
 
+/** The score from the hall scoreboard: every change with the attempt and shooter it was matched to. */
+function BoardScoreCard({ s, colors, names, kindLabel }: { s: Stats; colors: Record<Team, string>; names: Record<Team, string>; kindLabel: (k?: string) => string }) {
+  const { t } = useApp();
+  const ts = t.stats, sc = s.score!;
+  const ev = (sc.events as unknown as BoardEvent[]);
+  const who = (e: BoardEvent) => {
+    if (e.basis === 'correction') return ts.correction;
+    if (e.basis === 'jump') return ts.jump;
+    if (e.basis === 'team_only' || !e.shooter) return ts.teamOnly;
+    const n = e.shooter.number;
+    return n == null ? ts.noNumber : `#${n} · ${e.shooter.status === 'inferred' ? ts.numberInferred : ts.numberRead}`;
+  };
+  return <Card title={ts.scoreBoard} hint={ts.scoreHintBoard}>
+    <div className="mm-legend">{(['home', 'away'] as Team[]).map((k) => <span key={k}><i className="mm-sw" style={{ background: colors[k] }} />{names[k]} <strong>{sc[k as 'home' | 'away']}</strong></span>)}{sc.period ? <span className="mm-muted">{ts.gamePeriod(sc.period)}</span> : null}</div>
+    {ev.length === 0 ? <p className="mm-muted">{ts.scoreEmpty}</p> : <div className="mm-scroll"><table className="mm-table mm-score"><tbody>{ev.map((e, i) => <tr key={i} className={e.cancelled || e.basis !== 'attempt' ? 'mm-weak' : ''}>
+      <td>{clock(e.t)}</td><td><i className="mm-sw" style={{ background: colors[e.team] }} />{names[e.team]}</td>
+      <td>{e.points > 0 ? '+' : ''}{e.points} <span className="mm-muted">({e.from}→{e.to})</span></td>
+      <td>{who(e)}{e.cancelled ? ` · ${ts.cancelled}` : ''}</td>
+      <td className="mm-muted">{e.attempt ? `${kindLabel(e.attempt.kind)} ${ts.at(clock(e.attempt.t))}` : ''}</td>
+      <td>{e.basis === 'attempt' ? `${Math.round(e.probability * 100)} %` : ''}</td>
+    </tr>)}</tbody></table></div>}
+  </Card>;
+}
+
+/** Points per jersey number from the scoreboard changes, one column per team. */
+function PointsCard({ s, colors, names, roster }: { s: Stats; colors: Record<Team, string>; names: Record<Team, string>; roster: Record<'home' | 'away', Record<number, string>> }) {
+  const { t } = useApp();
+  const ts = t.stats, sc = s.score!;
+  const top = Math.max(1, ...(['home', 'away'] as const).flatMap((k) => (sc.players?.[k] ?? []).map((p) => p.points)));
+  return <Card title={ts.pointsTitle} hint={ts.pointsHint}>
+    <div className="mm-split mm-even">
+      {(['home', 'away'] as const).map((k) => <div key={k}>
+        <h3><i className="mm-sw" style={{ background: colors[k] }} />{names[k]} <span className="mm-muted">{sc[k]}</span></h3>
+        <div className="mm-bars">
+          {(sc.players?.[k] ?? []).map((pl) => <div key={pl.number} className="mm-bar-row">
+            <span className="mm-bar-label">#{pl.number}{roster[k][pl.number] ? ' ' + roster[k][pl.number] : ''}</span>
+            <span className="mm-bar-track"><span className="mm-bar-fill" style={{ width: `${(pl.points / top) * 100}%`, background: colors[k] }} /></span>
+            <span className="mm-bar-value">{ts.pts(pl.points)}{pl.inferred > 0 && <span className="mm-muted" title={ts.pointsHint}> · {ts.ptsInferred(pl.inferred)}</span>}</span>
+          </div>)}
+          {(sc.no_number?.[k] ?? 0) > 0 && <div className="mm-bar-row mm-weak"><span className="mm-bar-label">{ts.noNumberPts}</span><span className="mm-bar-track" /><span className="mm-bar-value">{ts.pts(sc.no_number![k])}</span></div>}
+          {(sc.team_only?.[k] ?? 0) > 0 && <div className="mm-bar-row mm-weak"><span className="mm-bar-label">{ts.teamOnlyPts}</span><span className="mm-bar-track" /><span className="mm-bar-value">{ts.pts(sc.team_only![k])}</span></div>}
+        </div>
+      </div>)}
+    </div>
+  </Card>;
+}
+
 /** Time on the field per jersey number, one column per team. */
 function PlayersCard({ p, span, colors, names, roster }: { p: NonNullable<Stats['players']>; span: number; colors: Record<Team, string>; names: Record<Team, string>; roster: Record<'home' | 'away', Record<number, string>> }) {
   const { t } = useApp();
   const ts = t.stats;
   const mm = (sec: number) => clock(sec);
   return <Card title={ts.playersTitle} hint={ts.playersHint}>
-    {!p.numbers_seen ? <p className="mm-muted">{ts.noNumbers}</p> : <div className="mm-split">
+    {!p.numbers_seen ? <p className="mm-muted">{ts.noNumbers}</p> : <div className="mm-split mm-even">
       {(['home', 'away'] as const).map((k) => <div key={k}>
         <h3><i className="mm-sw" style={{ background: colors[k] }} />{names[k]}</h3>
         <div className="mm-bars">

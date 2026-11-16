@@ -80,8 +80,11 @@
 .mm-shape { width: 12px; height: 12px; fill: var(--label-3); }
 .mm-tip { max-width: 240px; pointer-events: none; }
 .mm-split { display: grid; grid-template-columns: minmax(0, 3fr) minmax(220px, 2fr); gap: 18px; align-items: center; }
-.mm-bars { display: grid; gap: 8px; }
-.mm-bar-row { display: grid; grid-template-columns: minmax(90px, auto) 1fr auto; align-items: center; gap: 8px; font-size: 12px; }
+/* two equal team columns (points and playing time per player) */
+.mm-split.mm-even { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); align-items: start; }
+.mm-bars { display: grid; grid-template-columns: minmax(90px, auto) 1fr auto; gap: 8px; }
+/* rows share the columns of the list, so every bar track has the same width */
+.mm-bar-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; gap: 8px; font-size: 12px; }
 .mm-bar-label { color: var(--label); }
 .mm-bar-track { height: 10px; border-radius: 4px; background: var(--fill-2); overflow: hidden; }
 .mm-bar-fill { display: block; height: 100%; border-radius: 0 4px 4px 0; background: var(--accent); }

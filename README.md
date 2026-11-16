@@ -374,6 +374,7 @@ The statistics count **attempts**; whether a shot went in is not visible to the 
 | Positions | heat maps of home, away and the ball |
 | Team shape | width and depth of each team, with and without the ball, over time, and the average line-up per time section (from positions only) |
 | Score (estimated) | basketball: a 2- or 3-point attempt followed within 10 s by an inbound of the other team from the end line under that basket (free throws are not counted); football, futsal, handball, hockey, lacrosse: a kick-off / throw-off / centre pass / face-off by the other team shortly after an attempt (not at the start of the video or after the change of ends). *likely* when both teams fit, *possible* otherwise. Volleyball, rugby and American football: not possible from positions |
+| Score from the scoreboard | basketball with `run --scoreboard`: the score read from the hall's board in the panorama; every +1/+2/+3 goes to the fitting attempt just before it, the shooter with a probability and whether the number was read or inferred, otherwise the team only; *points per player* |
 | Playing time per player | time on the field per jersey number and team; every continuously tracked trail counts for the number read most often on it (needs *Read and show jersey numbers*); names from the squad of step 4 |
 | Key moments | attempts, game situations, confirmed substitutions; tick them and cut short clips into `out/clips/` |
 
@@ -452,6 +453,8 @@ Important: the minimap needs the **same full panorama you calibrated on**. The A
 | `replay <detections.jsonl> --court … --teams …` | Re-run tracking, ball and game situations from recorded detections (`run … --dets file`), without the video: seconds instead of minutes. Byte-identical to the run it was recorded from; use it to compare `--thr-player`, team colours or tracker changes |
 | `stats <states.jsonl>` | Numbers about a run: slots, jumps, ball states, substitutions |
 | `ticker <states.jsonl> [--out FILE] [--export DIR]` | The live ticker this result would have produced (`liveticker.json` with a summary) |
+| `scoreboard-calibrate <video> [--time 60] [--out scoreboard.json]` | Locate the scoreboard in the panorama (basketball) → `scoreboard.json`; `run … --scoreboard scoreboard.json` reads it while processing |
+| `scoreboard <video> [--scoreboard f] [--json out.jsonl]` | Read score, game clock and period from the board |
 | `import-model <path> --to <dir>` | Verify and copy a Reco Trainer model |
 | `fetch-ocr` | Download the number-reading model |
 | `fetch-model` | Download the model of Reco camera (default model, all sports) |

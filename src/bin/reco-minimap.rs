@@ -374,6 +374,8 @@ fn main() {
     let input = o.pos.first().cloned().unwrap_or_else(|| fail(trs!("<video> fehlt (siehe --help)", "<video> is missing (see --help)", "<vidéo> manquante (voir --help)", "falta <vídeo> (ver --help)")));
     match args[0].as_str() {
         "calibrate" => cmd_calibrate(&o, &input),
+        "scoreboard-calibrate" => cmd_scoreboard_calibrate(&o, &input),
+        "scoreboard" => cmd_scoreboard(&o, &input),
         "selfcheck" => cmd_selfcheck(&o, &input),
         "scales" => cmd_scales(&o, &input),
         "stats" => cmd_stats(&o, &input),
@@ -505,6 +507,36 @@ fn cmd_calibrate(o: &Opts, input: &str) {
     eprintln!("{}", tr!("Sportart: {} ({} × {} m)", "Sport: {} ({} × {} m)", "Sport : {} ({} × {} m)", "Deporte: {} ({} × {} m)", profile.id, profile.field.length, profile.field.width));
     calib::run(input, &info, o.f("time", 5.0), out, !o.has("no-open"), profile, o.s("lang").unwrap_or("de")).unwrap_or_else(|e| fail(e));
     eprintln!("{}", tr!("Fertig: {out}", "Done: {out}", "Terminé : {out}", "Listo: {out}"));
+}
+
+/// `scoreboard-calibrate <video> [--time 60] [--out scoreboard.json]`: find the hall scoreboard and its digit blocks on a local web page.
+fn cmd_scoreboard_calibrate(o: &Opts, input: &str) {
+    let info = open_info(o, input);
+    let out = o.s("out").unwrap_or("scoreboard.json");
+    reco_minimap::tools::scoreboard::calibrate(input, &info, o.f("time", 60.0), out, !o.has("no-open"), o.s("lang").unwrap_or("de")).unwrap_or_else(|e| fail(e));
+    eprintln!("{}", tr!("Fertig: {out}", "Done: {out}", "Terminé : {out}", "Listo: {out}"));
+}
+
+/// `scoreboard <video> --scoreboard scoreboard.json [--start/--duration] [--json readings.jsonl]`: read only the scoreboard
+/// (one JSON line per stable change: t, home, away, clock in seconds, period).
+fn cmd_scoreboard(o: &Opts, input: &str) {
+    let info = open_info(o, input);
+    let cfg = reco_minimap::tools::scoreboard::load(o.s("scoreboard").unwrap_or("scoreboard.json")).unwrap_or_else(|e| fail(e));
+    let (start, dur) = (t_start(o), t_duration(o));
+    let end = dur.map(|d| start + d).or(info.duration);
+    let mut prog = progress::Throttle::new(std::time::Duration::from_millis(500));
+    let rs = reco_minimap::tools::scoreboard::read_video(input, &info, &cfg, start, dur, |t| {
+        prog.report(end.filter(|e| *e > start).map(|e| (t - start) / (e - start)), None, &tr!("Video bei {}", "video at {}", "vidéo à {}", "vídeo en {}", fmt_clock(t)));
+    })
+    .unwrap_or_else(|e| fail(e));
+    let lines: Vec<String> = rs.iter().map(|r| reco_minimap::tools::scoreboard::reading_json(r).to_string()).collect();
+    match o.s("json") {
+        Some(p) => std::fs::write(p, lines.join("\n") + "\n").unwrap_or_else(|e| fail(format!("{p}: {e}"))),
+        None => lines.iter().for_each(|l| println!("{l}")),
+    }
+    let changes = reco_minimap::scoring::score_changes(&rs);
+    let last = |f: fn(&reco_minimap::scoreboard::Reading) -> Option<u32>| rs.iter().rev().find_map(f).map(|v| v.to_string()).unwrap_or_else(|| "–".into());
+    eprintln!("{}", tr!("{} Ablesungen, {} Punkteänderungen, zuletzt {}:{} (Heim:Gast)", "{} readings, {} score changes, last {}:{} (home:away)", "{} lectures, {} changements de score, dernier {}:{} (domicile:visiteurs)", "{} lecturas, {} cambios de marcador, último {}:{} (local:visitante)", rs.len(), changes.len(), last(|r| r.home), last(|r| r.away)));
 }
 
 // ---------------------------------------------------------------- selfcheck
@@ -1169,7 +1201,7 @@ fn read_numbers(nm: &mut Numbers, mm: &mut Minimap, src: &Frame, t: f64) -> Vec<
 fn scene_json(e: &SceneEvent) -> serde_json::Value {
     serde_json::json!({"type": "scene", "kind": e.kind.key(), "team": match e.team { Some(Team::Home) => "home", Some(Team::Away) => "away", _ => "none" },
         "side": e.side.map(|c| c.to_string()), "x": (e.pos.x * 100.0).round() / 100.0, "y": (e.pos.y * 100.0).round() / 100.0,
-        "confidence": (e.confidence * 100.0).round() / 100.0, "borderline": e.borderline, "t": (e.t * 1000.0).round() / 1000.0,
+        "confidence": (e.confidence * 100.0).round() / 100.0, "borderline": e.borderline, "actor": e.actor, "t": (e.t * 1000.0).round() / 1000.0,
         "started_at":e.started_at,"evidence":e.evidence,"phase":if e.kind==SceneKind::FreeThrow && e.evidence.contains(&"ball_release_towards_basket") {"attempt"} else if matches!(e.kind,SceneKind::ShotTwo|SceneKind::ShotThree) {"attempt"} else {"formation"},
         "related_substitutions":e.related_substitutions.iter().map(|sub|serde_json::json!({"t":sub.t,"slot":sub.slot,"team":match sub.team {Team::Home=>"home",Team::Away=>"away",Team::Unknown=>"unknown"},"status":match sub.kind {reco_minimap::SubKind::Possible=>"possible",reco_minimap::SubKind::Confirmed=>"confirmed"},"out_number":sub.out_number,"in_number":sub.in_number})).collect::<Vec<_>>()})
 }
@@ -1652,6 +1684,35 @@ fn cmd_run(o: &Opts, input: &str) {
     }
 
     let mut reader = FrameReader::open(input, &info, t_start(o), t_duration(o), every as u32).unwrap_or_else(|e| fail(e));
+    // `--scoreboard scoreboard.json`: read the hall scoreboard alongside, from its own stream of the board region
+    let mut board = o.s("scoreboard").filter(|_| jsonl.is_some() || tsim.is_some()).map(|p| {
+        let cfg = reco_minimap::tools::scoreboard::load(p).unwrap_or_else(|e| fail(e));
+        if profile.id != "basketball" {
+            eprintln!("{}", trs!("Hinweis: Die Anzeigetafel wird gelesen, die Zuordnung der Punkte zu Würfen gibt es nur für Basketball.", "Note: the scoreboard is read; matching points to attempts exists for basketball only.", "Remarque : le tableau d'affichage est lu ; l'attribution des points aux tirs n'existe que pour le basket.", "Nota: se lee el marcador; la asignación de puntos a tiros solo existe para baloncesto."));
+        }
+        reco_minimap::tools::scoreboard::Stream::start(input, &info, &cfg, t_start(o), t_duration(o)).unwrap_or_else(|e| fail(e))
+    });
+    let mut n_board = 0usize;
+    let mut last_board: Option<reco_minimap::scoreboard::Reading> = None;
+    // every frame line is written one frame late, so readings that arrive later still find their frame
+    let mut held: Option<serde_json::Value> = None;
+    fn emit_frame(v: serde_json::Value, tsim: &mut Option<reco_minimap::tools::ticker_sim::TickerSim>, jsonl: &mut Option<std::io::BufWriter<std::fs::File>>) {
+        if let Some(ts) = tsim.as_mut() {
+            ts.add_frame(&v);
+        }
+        if let Some(j) = jsonl.as_mut() {
+            let _ = writeln!(j, "{v}");
+        }
+    }
+    fn attach_board(v: &mut serde_json::Value, rs: Vec<reco_minimap::scoreboard::Reading>, n: &mut usize, last: &mut Option<reco_minimap::scoreboard::Reading>) {
+        if let Some(ev) = v["events"].as_array_mut() {
+            *n += rs.len();
+            if let Some(r) = rs.last() {
+                *last = Some(*r);
+            }
+            ev.extend(rs.iter().map(reco_minimap::tools::scoreboard::reading_json));
+        }
+    }
     // optional second, higher-resolution version of the same panorama for reading numbers
     let mut hires = o.s("hires").map(|p| {
         let hi = video::probe(p).unwrap_or_else(|e| fail(format!("--hires: {e}")));
@@ -1760,11 +1821,11 @@ fn cmd_run(o: &Opts, input: &str) {
         if jsonl.is_some() || tsim.is_some() {
             let mut fj = state_json_with(&state, &sc);
             fj["performance"]=serde_json::json!({"tiles":selection_stats.0,"total_tiles":tiles.len(),"full_sweep":selection_stats.1,"recovery_tiles":selection_stats.2,"coasting_targets":selection_stats.3,"ocr_ms":ocr_time.as_secs_f64()*1000.0});
-            if let Some(ts) = tsim.as_mut() {
-                ts.add_frame(&fj);
+            if let Some(b) = board.as_mut() {
+                attach_board(&mut fj, b.take_until(t), &mut n_board, &mut last_board);
             }
-            if let Some(j) = jsonl.as_mut() {
-                let _ = writeln!(j, "{fj}");
+            if let Some(prev) = held.replace(fj) {
+                emit_frame(prev, &mut tsim, &mut jsonl);
             }
         }
         prev_state = Some(state.clone());
@@ -1783,6 +1844,20 @@ fn cmd_run(o: &Opts, input: &str) {
             let end = t_duration(o).map(|d| t_start + d).or(info.duration);
             let eta = end.map(|d| tr!("  Rest ~{}", "  ~{} left", "  reste ~{}", "  quedan ~{}", duration_hms((d - t).max(0.0) / speed.max(0.001) as f64))).unwrap_or_else(|| trs!("  Rest unbekannt", "  time left unknown", "  reste inconnu", "  resto desconocido").into());
             eprint!("{}", tr!("\r  t={t:7.1}s  {fps:4.1} Bilder/s (Quelle {:.1}/s){eta}   ", "\r  t={t:7.1}s  {fps:4.1} frames/s (source {:.1}/s){eta}   ", "\r  t={t:7.1}s  {fps:4.1} images/s (source {:.1}/s){eta}   ", "\r  t={t:7.1}s  {fps:4.1} imágenes/s (fuente {:.1}/s){eta}   ", info.fps / every as f64));
+        }
+    }
+    if let Some(mut last) = held.take() {
+        if let Some(b) = board.take() {
+            let tl = last["t"].as_f64().unwrap_or(0.0);
+            attach_board(&mut last, b.finish_until(tl), &mut n_board, &mut last_board);
+        }
+        emit_frame(last, &mut tsim, &mut jsonl);
+    }
+    if o.s("scoreboard").is_some() {
+        let fmt = |v: Option<u32>| v.map(|v| v.to_string()).unwrap_or_else(|| "–".into());
+        match last_board {
+            Some(r) => eprintln!("{}", tr!("\nAnzeigetafel: {n_board} Ablesungen, zuletzt {}:{} (Heim:Gast)", "\nScoreboard: {n_board} readings, last {}:{} (home:away)", "\nTableau d'affichage : {n_board} lectures, dernier {}:{} (domicile:visiteurs)", "\nMarcador: {n_board} lecturas, último {}:{} (local:visitante)", fmt(r.home), fmt(r.away))),
+            None => eprintln!("{}", trs!("\nAnzeigetafel: nichts gelesen – Kalibrierung prüfen (Schritt 3).", "\nScoreboard: nothing read – check the calibration (step 3).", "\nTableau d'affichage : rien lu – vérifiez le calibrage (étape 3).", "\nMarcador: no se leyó nada; revisa la calibración (paso 3).")),
         }
     }
     if stopped {

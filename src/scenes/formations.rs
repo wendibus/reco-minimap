@@ -47,7 +47,7 @@ impl SceneDetector {
         if calm * 10 < others.len() * 7 {
             return;
         }
-        out.push(Cand { kind: SceneKind::TipOff, key: 0, team: None, pos: c, side: None, conf: 0.7 });
+        out.push(Cand { kind: SceneKind::TipOff, key: 0, team: None, pos: c, side: None, conf: 0.7, actor: None });
     }
 
 
@@ -78,7 +78,7 @@ impl SceneDetector {
             if !ok {
                 continue;
             }
-            out.push(Cand { kind: SceneKind::ThrowIn, key: (p.id % 250) as u8, team: Some(p.team), pos: p.pos, side: None, conf: if ball_with { 0.8 } else { 0.5 } });
+            out.push(Cand { kind: SceneKind::ThrowIn, key: (p.id % 250) as u8, team: Some(p.team), pos: p.pos, side: None, conf: if ball_with { 0.8 } else { 0.5 }, actor: Some(p.id) });
         }
     }
 
@@ -118,7 +118,7 @@ impl SceneDetector {
         if calm * 10 < players.len() * 8 {
             return;
         }
-        out.push(Cand { kind: SceneKind::Kickoff, key: 0, team: Some(inside[0].team), pos: c, side: None, conf: 0.7 });
+        out.push(Cand { kind: SceneKind::Kickoff, key: 0, team: Some(inside[0].team), pos: c, side: None, conf: 0.7, actor: None });
     }
 
     /// A taker standing still at a corner, several players waiting in the area next to it.
@@ -144,7 +144,7 @@ impl SceneDetector {
                 continue;
             }
             let conf = (0.6 + 0.04 * inbox.len().min(8) as f32).min(0.9);
-            out.push(Cand { kind: SceneKind::Corner, key: i as u8, team: Some(k.team), pos: k.pos, side: Some(end), conf });
+            out.push(Cand { kind: SceneKind::Corner, key: i as u8, team: Some(k.team), pos: k.pos, side: Some(end), conf, actor: Some(k.id) });
         }
     }
 
@@ -177,7 +177,7 @@ impl SceneDetector {
                     continue; // only the goalkeeper may stand in the area
                 }
             }
-            out.push(Cand { kind, key: end as u8, team: Some(k.team), pos: k.pos, side: Some(end), conf: 0.75 });
+            out.push(Cand { kind, key: end as u8, team: Some(k.team), pos: k.pos, side: Some(end), conf: 0.75, actor: Some(k.id) });
         }
     }
 }

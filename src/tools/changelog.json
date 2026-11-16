@@ -1,4 +1,30 @@
 {
+  "0.17.0": {
+    "de": [
+      "Basketball: Anzeigetafel im Panorama kalibrieren (Schritt 3) und beim Verarbeiten mitlesen – Spielstand, Spieluhr und Viertel.",
+      "Jeder Treffer (+1/+2/+3) wird dem passenden Wurfversuch davor zugeordnet: Werfer mit Wahrscheinlichkeit, Nummer gelesen oder erschlossen; ohne passenden Versuch nur ans Team.",
+      "Statistik: echter Spielstand von der Tafel und Punkte je Spieler.",
+      "Neue Befehle `scoreboard-calibrate` und `scoreboard`, Option `run --scoreboard`."
+    ],
+    "en": [
+      "Basketball: calibrate the scoreboard in the panorama (step 3) and read it while processing – score, game clock and period.",
+      "Every basket (+1/+2/+3) is matched to the fitting attempt before it: the shooter with a probability, number read or inferred; without a fitting attempt the team only.",
+      "Statistics: the real score from the board and points per player.",
+      "New commands `scoreboard-calibrate` and `scoreboard`, option `run --scoreboard`."
+    ],
+    "fr": [
+      "Basket : calibrer le tableau d'affichage dans le panorama (étape 3) et le lire pendant le traitement – score, chrono et période.",
+      "Chaque panier (+1/+2/+3) est attribué à la tentative correspondante juste avant : le tireur avec une probabilité, numéro lu ou déduit ; sans tentative correspondante, seulement l'équipe.",
+      "Statistiques : le vrai score du tableau et les points par joueur.",
+      "Nouvelles commandes `scoreboard-calibrate` et `scoreboard`, option `run --scoreboard`."
+    ],
+    "es": [
+      "Baloncesto: calibrar el marcador en el panorama (paso 3) y leerlo al procesar: resultado, reloj y periodo.",
+      "Cada canasta (+1/+2/+3) se asigna al intento correspondiente anterior: el lanzador con una probabilidad, dorsal leído o deducido; sin intento que encaje, solo el equipo.",
+      "Estadísticas: el resultado real del marcador y los puntos por jugador.",
+      "Nuevos comandos `scoreboard-calibrate` y `scoreboard`, opción `run --scoreboard`."
+    ]
+  },
   "0.16.0": {
     "de": [
       "Adaptive Kacheln mit Bewegungsvorhersage: gesucht wird dort, wo Spieler und Ball gleich sein werden; kurz verdeckte Spieler werden weiter mitgesucht.",

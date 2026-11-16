@@ -1,4 +1,18 @@
 {
+  "0.18.1": {
+    "de": [
+      "Kalibrierung (Spielfeld und Anzeigetafel): Herauszoomen geht nur noch bis zum ganzen Bild, beim Verschieben bleibt das Bild immer im Fenster."
+    ],
+    "en": [
+      "Calibration (field and scoreboard): zooming out stops at the whole picture, and panning always keeps the picture in the window."
+    ],
+    "fr": [
+      "Calibrage (terrain et tableau d'affichage) : le dézoom s'arrête à l'image entière et le déplacement garde toujours l'image dans la fenêtre."
+    ],
+    "es": [
+      "Calibración (campo y marcador): alejar el zoom se detiene en la imagen completa y al desplazar la imagen siempre queda en la ventana."
+    ]
+  },
   "0.18.0": {
     "de": [
       "Kalibrierung mit Fisheye-Objektiv (z. B. Vollfeld mit einer Kamera): Die Verzeichnung wird aus den angeklickten Punkten mitberechnet, die Spielfeldlinien erscheinen gebogen wie im Bild.",

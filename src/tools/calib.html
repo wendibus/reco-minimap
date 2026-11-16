@@ -60,7 +60,14 @@ function legend(now){requestAnimationFrame(legend);const c=$('legend');if(!info|
  g.fillStyle=on?'#ff8c00':'#5a3a10';g.beginPath();g.arc(x,y,5,0,7);g.fill();
  g.fillStyle='#fff';g.font='bold 11px sans-serif';g.textAlign=x>cw-30?'right':'left';g.fillText(cur+1,x+(x>cw-30?-9:9),y+(y<24?14:-7));}
 function resize(){cv.width=cv.clientWidth;cv.height=cv.clientHeight;fit();}
-function fit(){scale=Math.min(cv.width/img.width,cv.height/img.height);ox=(cv.width-img.width*scale)/2;oy=(cv.height-img.height*scale)/2;draw();}
+const fitScale=()=>Math.min(cv.width/img.width,cv.height/img.height);
+function fit(){scale=fitScale();ox=(cv.width-img.width*scale)/2;oy=(cv.height-img.height*scale)/2;draw();}
+// The view never shows less than the whole picture and never lets it slide out: at most "fit"
+// zoomed out, and along an axis the picture is centred when it is narrower than the window,
+// otherwise it always fills it.
+function clampView(){if(!img.width)return;scale=Math.min(Math.max(scale,fitScale()),fitScale()*40);
+ const ax=(o,size,view)=>size<=view?(view-size)/2:Math.min(0,Math.max(view-size,o));
+ ox=ax(ox,img.width*scale,cv.width);oy=ax(oy,img.height*scale,cv.height);}
 addEventListener('resize',()=>{resize()});
 function build(){const l=$('list');l.innerHTML='';info.landmarks.forEach((m,i)=>{const d=document.createElement('div');d.className='row';d.id='r'+i;d.innerHTML=`<span class="num">${i+1}</span><span>${landmarkLabel(m.key,info.sport)}</span><span class="res" id="s${i}">–</span>`;d.onclick=()=>{cur=i;refresh();};l.appendChild(d);});refresh();}
 function refresh(){info.landmarks.forEach((m,i)=>{const r=$('r'+i);r.className='row'+(pts[i]?' done':'')+(i===cur?' cur':'');$('s'+i).textContent=pts[i]?(resid[i]!==undefined?resid[i].toFixed(2)+' m':'✓'):'–';});
@@ -84,9 +91,9 @@ addEventListener('keydown',e=>{if(e.key==='Backspace'){e.preventDefault();undo()
 let drag=null;
 cv.addEventListener('mousedown',e=>{drag={x:e.offsetX,y:e.offsetY,ox,oy,moved:false};});
 addEventListener('mouseup',e=>{if(drag&&!drag.moved&&e.target===cv){const[ix,iy]=toImg(drag.x,drag.y);if(ix>=0&&iy>=0&&ix<img.width&&iy<img.height)place(ix,iy);}drag=null;});
-cv.addEventListener('mousemove',e=>{mouse={x:e.offsetX,y:e.offsetY,in:true};if(drag){const dx=e.offsetX-drag.x,dy=e.offsetY-drag.y;if(Math.hypot(dx,dy)>4)drag.moved=true;if(drag.moved){ox=drag.ox+dx;oy=drag.oy+dy;}}draw();});
+cv.addEventListener('mousemove',e=>{mouse={x:e.offsetX,y:e.offsetY,in:true};if(drag){const dx=e.offsetX-drag.x,dy=e.offsetY-drag.y;if(Math.hypot(dx,dy)>4)drag.moved=true;if(drag.moved){ox=drag.ox+dx;oy=drag.oy+dy;clampView();}}draw();});
 cv.addEventListener('mouseleave',()=>{mouse.in=false;draw();});
-cv.addEventListener('wheel',e=>{e.preventDefault();const f=e.deltaY<0?1.2:1/1.2;const mx=e.offsetX,my=e.offsetY;ox=mx-(mx-ox)*f;oy=my-(my-oy)*f;scale*=f;draw();},{passive:false});
+cv.addEventListener('wheel',e=>{e.preventDefault();const f=e.deltaY<0?1.2:1/1.2;const mx=e.offsetX,my=e.offsetY;const ns=Math.min(Math.max(scale*f,fitScale()),fitScale()*40),k=ns/scale;ox=mx-(mx-ox)*k;oy=my-(my-oy)*k;scale=ns;clampView();draw();},{passive:false});
 function draw(){ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.height);if(!img.width)return;
  ctx.setTransform(scale,0,0,scale,ox,oy);ctx.imageSmoothingEnabled=scale<1;ctx.drawImage(img,0,0);
  ctx.strokeStyle='#7CFC00';ctx.lineWidth=2/scale;overlay.forEach(pl=>{ctx.beginPath();pl.forEach(([u,v],k)=>{const x=u*img.width,y=v*img.height;k?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.stroke();});

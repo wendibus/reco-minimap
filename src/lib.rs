@@ -8,6 +8,7 @@
 //! this crate decodes its output ([`detect::decode_rfdetr`]) and does
 //! everything downstream. Pure Rust, no dependencies.
 
+pub mod autocal;
 pub mod ball;
 pub mod board;
 pub mod detect;

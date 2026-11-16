@@ -143,6 +143,8 @@ Le calibrage apprend au programme où se trouve le terrain dans l'image. Trois c
 
 Si votre salle n'a pas les dimensions standard, ne cliquez que les quatre coins (et le centre) ; les autres points supposent un terrain standard.
 
+**Automatique :** au lieu de cliquer chaque point, la page peut chercher le terrain elle-même. Sous *Automatique*, cochez **les coins qui sont hors de l'image** (sur un panorama pris depuis la ligne de côté, en général les deux coins proches), puis cliquez *Trouver le terrain automatiquement*. La page cherche les lignes peintes, y place le terrain (quelques secondes ; avec le fisheye aussi la distorsion) et pose les points trouvés. L'indication des coins est importante : sans elle, un terrain trop petit peut sembler correspondre. Vérifiez ensuite les lignes vertes ; replacez à la main les points décalés – un nouveau clic affine à partir des points actuels. *Montrer les lignes détectées* colore ce que la recherche compte comme ligne (cela marche le mieux avec un terrain vide et des lignes bien visibles).
+
 **Fisheye (p. ex. un terrain entier avec une seule caméra) :** si les lignes du terrain sont **courbées** dans l'image, cochez *Objectif fisheye* avant *Lancer le calibrage* (ou directement sur la page de calibrage). La page calcule alors aussi la distorsion de l'objectif à partir de vos points et dessine les lignes vertes courbées comme les vraies. Il faut au moins 6 points ; mieux vaut 10 ou plus, répartis jusqu'aux bords de l'image, là où la courbure est la plus forte. Sans fisheye, la page le propose si l'erreur reste élevée. Le traitement, les tuiles et les statistiques utilisent automatiquement la correspondance redressée.
 
 ### 3b · Mesurer la taille des joueurs

@@ -143,6 +143,8 @@ Calibration teaches the program where the field is in the picture. Three things 
 
 If your venue is not standard size, click only the four corners (and the centre); the other landmarks assume a standard field.
 
+**Automatic:** instead of clicking every point you can let the page find the field. Under *Automatic*, tick **which corners are outside the picture** (on a panorama from the sideline usually the two near corners), then click *Find the field automatically*. The page looks for the painted lines and places the field on them (a few seconds; with fisheye on the lens as well) and sets the points it finds. The corner hint matters: without it a smaller field can seem to fit the lines. Check the green lines; if single points are off, set them by hand – clicking the button again refines from the current points. *Show detected lines* colours what the search counts as a line (an empty field with clearly visible lines works best).
+
 **Fisheye (e.g. a full court from one camera):** if the field lines are **curved** in the picture, tick *Fisheye lens* before *Start calibration* (or on the calibration page itself). The page then estimates the lens distortion from your points as well and draws the green lines bent like the real ones. It needs at least 6 points; use 10 or more, spread out to the edges of the picture, where the bend is strongest. Without fisheye, the page suggests it when the error stays high. Processing, tiles and statistics use the straightened mapping automatically.
 
 ### 3b · Measure player sizes

@@ -216,24 +216,50 @@ fn solve8(mut a: [[f64; 8]; 8], mut b: [f64; 8]) -> Option<[f64; 8]> {
     Some(x)
 }
 
-/// Planar calibration: panorama (normalized) -> court metres.
+/// Planar calibration: panorama (normalized) -> court metres, optionally behind a fisheye lens
+/// (the lens straightens the image first, see [`crate::lens`]).
 #[derive(Clone, Copy, Debug)]
 pub struct HomographyProjector {
     pub pano_to_court: Homography,
+    pub lens: Option<crate::lens::Lens>,
+    lens_r_max: f64,
 }
 
 impl HomographyProjector {
     /// `pano_pts`: normalized panorama coords of known court points,
     /// `court_pts`: the same points in court metres.
     pub fn calibrate(pano_pts: &[Vec2], court_pts: &[Vec2]) -> Option<Self> {
-        Some(Self {
-            pano_to_court: Homography::from_points(pano_pts, court_pts)?,
+        Some(Self::new(Homography::from_points(pano_pts, court_pts)?, None))
+    }
+
+    /// Homography from the straightened image; `lens` `None` (or the identity) = plain image.
+    pub fn new(pano_to_court: Homography, lens: Option<crate::lens::Lens>) -> Self {
+        let lens = lens.filter(|l| !l.is_identity());
+        Self { pano_to_court, lens, lens_r_max: lens.map(|l| l.max_radius()).unwrap_or(0.0) }
+    }
+
+    /// Court metres -> normalized panorama coordinates (the inverse of [`Projector::to_court`]).
+    pub fn to_pano_fn(&self) -> Option<impl Fn(Vec2) -> Option<Vec2>> {
+        let inv = self.pano_to_court.inverse()?;
+        let (lens, rm) = (self.lens, self.lens_r_max);
+        Some(move |c: Vec2| {
+            let p = inv.apply(c)?;
+            match lens {
+                None => Some(p),
+                Some(l) => l.distort(p.x as f64, p.y as f64, rm).map(|(u, v)| Vec2::new(u as f32, v as f32)),
+            }
         })
     }
 }
 
 impl Projector for HomographyProjector {
     fn to_court(&self, u: f32, v: f32) -> Option<Vec2> {
-        self.pano_to_court.apply(Vec2::new(u, v))
+        match &self.lens {
+            None => self.pano_to_court.apply(Vec2::new(u, v)),
+            Some(l) => {
+                let (x, y) = l.undistort(u as f64, v as f64)?;
+                self.pano_to_court.apply(Vec2::new(x as f32, y as f32))
+            }
+        }
     }
 }

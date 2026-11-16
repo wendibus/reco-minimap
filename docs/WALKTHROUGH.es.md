@@ -143,6 +143,8 @@ La calibración le enseña al programa dónde está el campo en la imagen. Aquí
 
 Si tu pabellón no tiene medidas estándar, marca solo las cuatro esquinas (y el centro); los demás puntos suponen un campo estándar.
 
+**Ojo de pez (p. ej. un campo completo con una sola cámara):** si las líneas del campo se ven **curvadas** en la imagen, marca *Objetivo ojo de pez* antes de *Iniciar calibración* (o en la propia página de calibración). La página calcula entonces también la distorsión del objetivo a partir de tus puntos y dibuja las líneas verdes curvadas como las reales. Hacen falta al menos 6 puntos; mejor 10 o más, repartidos hasta los bordes de la imagen, donde la curvatura es mayor. Sin ojo de pez, la página lo propone si el error sigue alto. El procesamiento, las teselas y las estadísticas usan automáticamente la correspondencia corregida.
+
 ### 3b · Medir el tamaño de los jugadores
 
 Haz clic en *Medir*. El programa mira una docena de imágenes y aprende qué tamaño tiene un jugador en cada fila de la imagen. Después, cada franja se analiza con el tamaño de tesela adecuado (`--tile auto`): la detección mejora y es aproximadamente el doble de rápida. Necesita la calibración de 3a. Una vez por posición de cámara.

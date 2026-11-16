@@ -444,7 +444,7 @@ Important: the minimap needs the **same full panorama you calibrated on**. The A
 | Command | Purpose |
 |---|---|
 | `ui` | Browser interface (`--port 8788`, `--no-open`, `--no-update-check`) |
-| `calibrate <video>` | Click field landmarks → `court.json` (`--sport`, `--time`, `--lang`; custom: `--length --width --team-size --referees`) |
+| `calibrate <video>` | Click field landmarks → `court.json` (`--sport`, `--time`, `--lang`; custom: `--length --width --team-size --referees`; `--fisheye` also estimates the lens distortion, e.g. a full court from one fisheye camera) |
 | `selfcheck <video> --model …` | Run the model on sample frames and report players per frame, ball hits, speed (`--annotate dir` writes marked PNGs) |
 | `scales <video> --model …` | Measure player size per image row → `scales.json` for `--tile auto` |
 | `colors <video> --model … [--court court.json]` | Detect the two shirt colours (and, with `--court`, the goalkeepers' for football, futsal, handball, hockey, lacrosse) → `teams.json` |

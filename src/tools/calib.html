@@ -26,6 +26,7 @@ canvas#legend{display:block;width:100%;border:.5px solid var(--sep);border-radiu
   <h1 id="t_title"></h1>
   <p id="t_intro"></p>
   <p id="t_sides"></p>
+  <label id="fishbox" style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;cursor:pointer"><input type="checkbox" id="fisheye" style="margin-top:2px"><span><b id="t_fish"></b><br><span id="t_fishhint" style="color:var(--label-2);font-size:11.5px"></span></span></label>
   <div id="q"></div>
   <div id="legendbox"><p id="t_legend" style="font-size:12px;margin-bottom:4px"></p><canvas id="legend"></canvas><p id="t_cam" style="font-size:11px;text-align:center"></p></div>
   <div id="list"></div>
@@ -39,12 +40,12 @@ canvas#legend{display:block;width:100%;border:.5px solid var(--sep);border-radiu
 <script src="/i18n.js"></script>
 <script>
 const $=id=>document.getElementById(id);
-let info,img=new Image(),pts={},cur=0,scale=1,ox=0,oy=0,overlay=[],resid={},rms=null,mouse={x:0,y:0,in:false};
+let info,img=new Image(),pts={},cur=0,lens=null,scale=1,ox=0,oy=0,overlay=[],resid={},rms=null,mouse={x:0,y:0,in:false};
 const cv=$('cv'),ctx=cv.getContext('2d'),lp=$('loupe'),lctx=lp.getContext('2d');
 function texts(){document.title=T('calp.title');$('t_title').textContent=T('calp.title');$('t_intro').textContent=T('calp.intro');$('t_sides').textContent=T('calp.sides');
- $('t_legend').textContent=T('calp.legend');$('t_cam').textContent='▲ '+T('calp.camera');$('undo').textContent=T('calp.undo');$('skip').textContent=T('calp.skip');$('save').textContent=T('calp.save');$('t_priv').textContent=T('calp.privacy');
+ $('t_legend').textContent=T('calp.legend');$('t_cam').textContent='▲ '+T('calp.camera');$('undo').textContent=T('calp.undo');$('skip').textContent=T('calp.skip');$('save').textContent=T('calp.save');$('t_fish').textContent=T('calp.fisheye');$('t_fishhint').textContent=T('calp.fisheye_hint');$('t_priv').textContent=T('calp.privacy');
  if(info)$('t_scaled').textContent=T('calp.scaled',{l:info.field[0],w:info.field[1]});}
-async function init(){info=await (await fetch('/api/info')).json();if(info.lang)setLang(info.lang);texts();img.onload=()=>{resize();build();draw();};img.src='/frame.png';requestAnimationFrame(legend);}
+async function init(){info=await (await fetch('/api/info')).json();if(info.lang)setLang(info.lang);texts();$('fisheye').checked=!!info.fisheye;$('fisheye').onchange=solve;img.onload=()=>{resize();build();draw();};img.src='/frame.png';requestAnimationFrame(legend);}
 // Small top-down field: every landmark as a dot (green = set), the one to click next blinking.
 // "far" is at the top and the camera at the bottom, as in the landmark names.
 function legend(now){requestAnimationFrame(legend);const c=$('legend');if(!info||!c.clientWidth)return;
@@ -64,14 +65,18 @@ addEventListener('resize',()=>{resize()});
 function build(){const l=$('list');l.innerHTML='';info.landmarks.forEach((m,i)=>{const d=document.createElement('div');d.className='row';d.id='r'+i;d.innerHTML=`<span class="num">${i+1}</span><span>${landmarkLabel(m.key,info.sport)}</span><span class="res" id="s${i}">–</span>`;d.onclick=()=>{cur=i;refresh();};l.appendChild(d);});refresh();}
 function refresh(){info.landmarks.forEach((m,i)=>{const r=$('r'+i);r.className='row'+(pts[i]?' done':'')+(i===cur?' cur':'');$('s'+i).textContent=pts[i]?(resid[i]!==undefined?resid[i].toFixed(2)+' m':'✓'):'–';});
  const n=Object.keys(pts).length;$('save').disabled=n<4;
- let t=n===0?T('calp.none'):n<4?T('calp.need',{n:n,m:4-n}):(rms===null?'…':`${T('calp.rms')}: <b class="${rms<0.5?'good':rms<0.9?'':'warn'}">${rms.toFixed(2)} m</b> – ${T('calp.points',{n:n})}`+(n<8?' · '+T('calp.more'):'')+(rms>=0.9?' · '+T('calp.high'):''));
+ let t=n===0?T('calp.none'):n<4?T('calp.need',{n:n,m:4-n}):(rms===null?'…':`${T('calp.rms')}: <b class="${rms<0.5?'good':rms<0.9?'':'warn'}">${rms.toFixed(2)} m</b> – ${T('calp.points',{n:n})}`+(n<8?' · '+T('calp.more'):'')+(rms>=0.9?' · '+T('calp.high'):''))
+  +(fish()&&n<info.fisheye_min?'<br><span style="font-weight:400">'+T('calp.fisheye_need',{n:info.fisheye_min})+'</span>':'')
+  +(lens?'<br><span style="font-weight:400">'+T('calp.lens',{k:lens.k1.toFixed(3)})+'</span>':'')
+  +(!fish()&&rms!==null&&rms>=0.5&&n>=info.fisheye_min?'<br><span style="font-weight:400">'+T('calp.try_fisheye')+'</span>':'');
  $('q').innerHTML=t;draw();}
 function toImg(x,y){return[(x-ox)/scale,(y-oy)/scale];}
 function nextFree(){for(let k=1;k<=info.landmarks.length;k++){const j=(cur+k)%info.landmarks.length;if(!pts[j])return j;}return cur;}
+const fish=()=>$('fisheye').checked;
 async function solve(){const arr=Object.entries(pts).map(([i,p])=>({id:+i,u:p.u/img.width,v:p.v/img.height}));
- if(arr.length<4){overlay=[];resid={};rms=null;refresh();return;}
- const r=await (await fetch('/api/solve',{method:'POST',body:JSON.stringify({points:arr})})).json();
- if(r.ok){overlay=r.overlay;resid={};r.residuals.forEach(e=>resid[e.id]=e.m);rms=r.rms;}else{overlay=[];rms=null;}refresh();}
+ if(arr.length<4){overlay=[];resid={};rms=null;lens=null;refresh();return;}
+ const r=await (await fetch('/api/solve',{method:'POST',body:JSON.stringify({points:arr,fisheye:fish()})})).json();
+ if(r.ok){overlay=r.overlay;resid={};r.residuals.forEach(e=>resid[e.id]=e.m);rms=r.rms;lens=r.lens;}else{overlay=[];rms=null;lens=null;}refresh();}
 function place(ix,iy){pts[cur]={u:ix,v:iy};cur=nextFree();refresh();solve();}
 $('undo').onclick=undo;$('skip').onclick=()=>{cur=(cur+1)%info.landmarks.length;refresh();};
 function undo(){const k=Object.keys(pts).map(Number);if(!k.length)return;const last=Math.max(...k);delete pts[last];cur=last;resid={};refresh();solve();}
@@ -89,7 +94,7 @@ function draw(){ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.heig
  Object.entries(pts).forEach(([i,p])=>{const x=ox+p.u*scale,y=oy+p.v*scale;ctx.strokeStyle='#ff8c00';ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y,7,0,7);ctx.moveTo(x-12,y);ctx.lineTo(x+12,y);ctx.moveTo(x,y-12);ctx.lineTo(x,y+12);ctx.stroke();ctx.fillStyle='#ff8c00';ctx.font='bold 12px sans-serif';ctx.fillText(+i+1,x+9,y-9);});
  lctx.clearRect(0,0,168,168);if(mouse.in){const[ix,iy]=toImg(mouse.x,mouse.y);lctx.imageSmoothingEnabled=false;lctx.drawImage(img,ix-21,iy-21,42,42,0,0,168,168);lctx.strokeStyle='#ff8c00';lctx.lineWidth=1;lctx.beginPath();lctx.moveTo(84,0);lctx.lineTo(84,168);lctx.moveTo(0,84);lctx.lineTo(168,84);lctx.stroke();}}
 $('save').onclick=async()=>{const arr=Object.entries(pts).map(([i,p])=>({id:+i,u:p.u/img.width,v:p.v/img.height}));
- const r=await (await fetch('/api/save',{method:'POST',body:JSON.stringify({points:arr})})).json();
+ const r=await (await fetch('/api/save',{method:'POST',body:JSON.stringify({points:arr,fisheye:fish()})})).json();
  $('msg').innerHTML=r.ok?`<span class="good">${T('calp.saved')}:</span> ${r.path}<br>${T('calp.saved_hint',{rms:r.rms.toFixed(2)})}`:`<span class="warn">${r.error}</span>`;};
 init();
 </script></body></html>

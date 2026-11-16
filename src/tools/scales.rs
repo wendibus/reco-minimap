@@ -12,7 +12,7 @@ use crate::{tr};
 use serde_json::{json, Value};
 
 use crate::detect::{plan_tiles, Tile};
-use crate::geom::{Field, Homography, Vec2};
+use crate::geom::{Field, Vec2};
 
 #[derive(Clone, Debug)]
 pub struct Scales {
@@ -139,14 +139,14 @@ fn full_frame(frame_w: u32, frame_h: u32) -> Tile {
 }
 
 /// Floor points of `field` grown by `margin_m`, on a 0.25 m grid, as panorama pixels.
-pub fn floor_points(court_to_pano: &Homography, field: &Field, margin_m: f32, frame_w: u32, frame_h: u32) -> Vec<(f32, f32)> {
+pub fn floor_points(court_to_pano: &dyn Fn(Vec2) -> Option<Vec2>, field: &Field, margin_m: f32, frame_w: u32, frame_h: u32) -> Vec<(f32, f32)> {
     let step = 0.25f32;
     let (nx, ny) = (((field.length + 2.0 * margin_m) / step).ceil() as usize, ((field.width + 2.0 * margin_m) / step).ceil() as usize);
     let mut out = Vec::with_capacity((nx + 1) * (ny + 1));
     for j in 0..=ny {
         for i in 0..=nx {
             let c = Vec2::new((-margin_m + i as f32 * step).min(field.length + margin_m), (-margin_m + j as f32 * step).min(field.width + margin_m));
-            if let Some(p) = court_to_pano.apply(c) {
+            if let Some(p) = court_to_pano(c) {
                 out.push((p.x * frame_w as f32, p.y * frame_h as f32));
             }
         }

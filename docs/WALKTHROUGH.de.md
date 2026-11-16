@@ -143,6 +143,8 @@ Die Kalibrierung bringt dem Programm bei, wo das Spielfeld im Bild liegt. Hier p
 
 Hat deine Halle kein Standardmaß, klicke nur die vier Ecken (und den Mittelpunkt); die übrigen Punkte setzen ein Standardfeld voraus.
 
+**Fisheye (z. B. ein Vollfeld mit einer Kamera):** Sind die Spielfeldlinien im Bild **gebogen**, vor *Kalibrierung starten* *Fisheye-Objektiv* ankreuzen (oder auf der Kalibrierseite selbst). Die Seite berechnet die Verzeichnung dann aus deinen Punkten mit und zeichnet die grünen Linien so gebogen wie die echten. Nötig sind mindestens 6 Punkte; besser 10 oder mehr, bis an die Bildränder verteilt, wo die Biegung am stärksten ist. Ohne Fisheye schlägt die Seite es vor, wenn der Fehler hoch bleibt. Verarbeitung, Kacheln und Statistik nutzen die entzerrte Zuordnung automatisch.
+
 ### 3b · Spielergrößen messen
 
 Klicke *Messen*. Das Programm schaut sich etwa ein Dutzend Bilder an und lernt, wie groß ein Spieler in jeder Bildzeile erscheint. Später wird jeder Bildstreifen mit der passenden Kachelgröße durchsucht (`--tile auto`): Die Erkennung wird besser und etwa doppelt so schnell. Es braucht die Kalibrierung aus 3a. Einmal pro Kameraposition.

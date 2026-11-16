@@ -167,6 +167,10 @@ Klicke *Messen*. Das Programm schaut sich etwa ein Dutzend Bilder an und lernt, 
 
 Bei Sportarten mit Toren oder Körben (Basketball, Fußball, Futsal, Handball, Hockey, Lacrosse): **Heim spielt zu Beginn auf** *links* oder *rechts* (wie in der Minikarte), dazu bei Bedarf **Seitenwechsel bei** als Videozeit, z. B. `20:00`. Würfe, Freiwürfe, Ecken, Elfmeter und 7-Meter zählen dann für das Team, das auf dieses Tor spielt – auch wenn beim Werfer die Trikotfarbe falsch erkannt wurde. Bei *Automatisch schätzen* leitet die Statistik die Richtung aus den Würfen ab und wendet sie nur an, wenn sie eindeutig ist (mindestens 6 Versuche, 70 % passen). Schritt 7 zeigt unter dem Wurfbild, welche Richtung gilt und wie viele Versuche umgeteilt wurden.
 
+### 3e · Anzeigetafel (Basketball, optional)
+
+Ist die Anzeigetafel der Halle im Panorama zu sehen, kann der Spielstand von ihr abgelesen werden. **Anzeigetafel kalibrieren** öffnet eine Seite mit einem Bild zur gewählten Videozeit: die vier Ecken der Tafel anklicken, die Ziffernfelder vorschlagen lassen (Punkte links und rechts, Spieluhr, Viertel – alle lassen sich verschieben), wählen, ob die Heimpunkte links oder rechts stehen, und speichern. Die Felder liegen in `scoreboard.json` im Projekt; beim Verarbeiten wird die Tafel mitgelesen (Option *Anzeigetafel mitlesen*).
+
 ## Schritt 4 · Verarbeiten
 
 1. **Abschnitte.** Jede Zeile ist ein Lauf: *Name*, *Start* und *Ende* als `min:s` (oder `h:min:s` oder reine Sekunden). Ein leeres Ende heißt bis zum Schluss des Videos; so lässt sich auch nur ein Teil einer langen Aufnahme auswerten. Ein Spiel in Viertel zu teilen ist sicherer – ein Abbruch kostet ein Viertel, nicht das ganze Spiel. *Abschnitt hinzufügen* fügt eine Zeile hinzu.
@@ -330,6 +334,10 @@ Die Karte *Teamform* zeigt, wie breit und wie tief jedes Team steht. Sie rechnet
 ### Spielstand (geschätzt)
 
 Ob ein Wurf oder Schuss traf, sieht die Erkennung nicht direkt. Sie erkennt aber, wie das Spiel danach weitergeht: Beim **Basketball** wirft nach einem Korb das andere Team innerhalb weniger Sekunden von der Grundlinie unter diesem Korb ein. Bei **Fußball, Futsal, Handball, Hockey und Lacrosse** stößt nach einem Tor das andere Team an (Anwurf, Anspiel, Face-off). Daraus schätzt die Karte den Spielstand und listet jeden Treffer mit Zeit, Team, Punkten und *wahrscheinlich* oder *möglich*. Freiwürfe werden nicht mitgezählt; bei Volleyball, Rugby und American Football ist keine Schätzung möglich. Prüfe die Treffer über die Clips – und stelle in Schritt 3 die Spielrichtung ein, dann stimmen die Teams zuverlässiger.
+
+### Spielstand von der Anzeigetafel (Basketball)
+
+Mit kalibrierter Anzeigetafel wird der Spielstand abgelesen statt geschätzt: Die Karte zeigt Stand, Viertel und jede Änderung mit Zeit, Team und Punkten. Jedes +1/+2/+3 wird dem passenden Wurfversuch kurz davor zugeordnet (Freiwurf für +1, 2er-Versuch für +2, 3er-Versuch für +3, gleiches Team, bis 20 s vorher). Der Werfer dieses Versuchs bekommt die Punkte – mit Wahrscheinlichkeit und ob seine Trikotnummer an ihm **gelesen** oder entlang der Spur **erschlossen** wurde. Ohne passenden Versuch gehen die Punkte nur ans Team. *Punkte je Spieler* zählt sie zusammen. Die Tafel zeigt Änderungen etwa ein bis zwei Sekunden später; das wird berücksichtigt. Korrekturen an der Tafel (Stand geht zurück) heben die letzte Zuordnung auf.
 
 ### Spielzeit je Spieler
 

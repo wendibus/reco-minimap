@@ -161,6 +161,11 @@ export function CalibPanel() {
       <Check k="figures.shirt_match" label={T('cal.shirt_match')} /><p className="mm-hint">{T('cal.shirt_match_hint')}</p>
       <Check k="figures.no_referees" label={T('cal.no_referees')} />
     </Card>
+    {project.sport === 'basketball' && <Card title={T('sb.title')} hint={T('sb.hint')}>
+      <div className="mm-row mm-gap"><span className="mm-muted">{T('sb.time')}</span><div style={{ width: 90 }}><Num k="scoreboard_time" label="" /></div>
+        <Btn primary hint={t.hints.calibrateScoreboard} onClick={() => void runJob('scoreboard_calibrate', { ...common(), time: project.scoreboard_time ?? 60, lang })}>{T('sb.btn')}</Btn>
+        <span className={files.scoreboard ? 'ok' : 'mm-muted'}>{files.scoreboard ? T('sb.state', { n: files.scoreboard.fields, side: T(files.scoreboard.home === 'right' ? 'sb.right' : 'sb.left') }) : T('sb.none')}</span></div>
+    </Card>}
     {['basketball', 'football', 'futsal', 'handball', 'hockey', 'lacrosse'].includes(project.sport) && <Card title={t.direction.title} hint={t.direction.hint}>
       <div className="mm-grid2"><Sel k="direction.home" label={t.direction.home} options={[['', t.direction.auto], ['l', t.direction.left], ['r', t.direction.right]]} /><Text k="direction.switch" label={t.direction.switch} placeholder="24:00" /></div>
       <p className="mm-hint">{t.direction.switchHint}</p>
@@ -204,7 +209,7 @@ export function RunPanel() {
     for (let i = 0; i < list.length; i++) {
       const s = list[i];
       log(T('run.queue', { i: i + 1, n: list.length, name: s.name }));
-      const st = await runJob('run', { ...common(), name: s.name, start: s.start, duration: s.duration, every: r.every, adaptive: r.adaptive === true, distant: r.distant === true, outputs: r.outputs, ticker_names: project.live?.ticker_names, home_name: project.live?.home_name, away_name: project.live?.away_name, alpha_bg: r.alpha_bg, min_alpha: r.min_alpha, draw_home: c.draw_home, draw_away: c.draw_away, ref_color: c.ref_color }, { index: i + 1, count: list.length, label: s.name });
+      const st = await runJob('run', { ...common(), name: s.name, start: s.start, duration: s.duration, every: r.every, scoreboard: r.scoreboard !== false, adaptive: r.adaptive === true, distant: r.distant === true, outputs: r.outputs, ticker_names: project.live?.ticker_names, home_name: project.live?.home_name, away_name: project.live?.away_name, alpha_bg: r.alpha_bg, min_alpha: r.min_alpha, draw_home: c.draw_home, draw_away: c.draw_away, ref_color: c.ref_color }, { index: i + 1, count: list.length, label: s.name });
       if (st !== 'done') break;
     }
     setBusy(false);
@@ -228,6 +233,7 @@ export function RunPanel() {
       <Check k="run.outputs.ticker" label={t.tickerSim.runOption} /><p className="mm-hint">{t.tickerSim.runHint}</p>
       <p className="mm-hint">{T('run.out_evidence_hint')}</p>
       <Check k="run.scenes" label={T('run.scenes')} /><p className="mm-hint">{T('run.scenes_hint')}</p>
+      {files.scoreboard && <><Check k="run.scoreboard" label={T('sb.use')} /><p className="mm-hint">{T('sb.use_hint')}</p></>}
       <div className="mm-grid3"><Num k="run.every" label={T('run.every')} min={1} /><Num k="run.alpha_bg" label={T('run.alpha_bg')} step={0.1} /><Num k="run.min_alpha" label={T('run.min_alpha')} step={0.1} /></div>
       <p className="mm-hint">{T('run.every_hint')}</p>
       <Check k="run.adaptive" label={T('run.adaptive')} /><Check k="run.distant" label={T('run.distant')} /><p className="mm-hint">{T('run.speed_hint')}</p>

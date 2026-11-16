@@ -32,7 +32,7 @@ impl SceneDetector {
             }
             let ball_support = matches!(s.ball.state,BallState::Held{track} if track==sh.id);
             let conf = (0.5 + 0.04 * lane.min(6) as f32 + if ball_support {0.15} else {0.0}).min(0.9);
-            out.push(Cand { kind: SceneKind::FreeThrow, key: end as u8, team: Some(sh.team), pos: sh.pos, side: Some(end), conf });
+            out.push(Cand { kind: SceneKind::FreeThrow, key: end as u8, team: Some(sh.team), pos: sh.pos, side: Some(end), conf, actor: Some(sh.id) });
         }
     }
 
@@ -44,16 +44,16 @@ impl SceneDetector {
         let t = s.t;
         if let BallState::Held { track } = s.ball.state {
             if let Some(p) = s.players.iter().find(|p| p.id == track) {
-                self.holder = Some((p.pos, p.team, t));
+                self.holder = Some((p.pos, p.team, t, p.id));
             }
         }
         let released = matches!(self.prev_state, Some(BallState::Held { .. })) && matches!(s.ball.state, BallState::InFlight);
         if released {
-            if let Some((pos, team, th)) = self.holder {
+            if let Some((pos, team, th, shooter)) = self.holder {
                 if t - th <= 1.5 {
                     let (goal, d) = self.profile.goals.iter().map(|g| (*g, pos.dist(*g))).fold((self.profile.goals[0], f32::MAX), |a, b| if b.1 < a.1 { b } else { a });
                     if d <= 13.0 {
-                        self.pending = Some(PendingShot { t0: t, release: pos, team, goal, start: d, best: d });
+                        self.pending = Some(PendingShot { t0: t, release: pos, team, goal, start: d, best: d, shooter });
                     }
                 }
             }
@@ -76,7 +76,7 @@ impl SceneDetector {
             // free throw. Require a recently observed preparation at this end.
             let ft = [Vec2::new(5.8, w / 2.0), Vec2::new(l - 5.8, w / 2.0)];
             if ft.iter().zip(['l','r']).any(|(f,end)|f.dist(ps.release)<=1.3 && self.last_fire.get(&(SceneKind::FreeThrow,end as u8)).map(|at|(0.0..=10.0).contains(&(ps.t0-at))).unwrap_or(false)) {
-                out.push(SceneEvent{t:ps.t0,started_at:ps.t0,kind:SceneKind::FreeThrow,team:Some(ps.team),pos:ps.release,side:Some(if ps.goal.x<l/2.0 {'l'} else {'r'}),confidence:0.75,borderline:false,evidence:vec!["recent_free_throw_formation","ball_release_towards_basket"],related_substitutions:Vec::new()});
+                out.push(SceneEvent{t:ps.t0,started_at:ps.t0,kind:SceneKind::FreeThrow,team:Some(ps.team),pos:ps.release,side:Some(if ps.goal.x<l/2.0 {'l'} else {'r'}),confidence:0.75,borderline:false,evidence:vec!["recent_free_throw_formation","ball_release_towards_basket"],related_substitutions:Vec::new(),actor:Some(ps.shooter)});
                 return;
             }
             let dist = ps.release.dist(ps.goal);
@@ -95,6 +95,7 @@ impl SceneDetector {
                 started_at: ps.t0,
                 evidence: vec!["ball_release_towards_basket"],
                 related_substitutions: Vec::new(),
+                actor: Some(ps.shooter),
             });
         }
     }

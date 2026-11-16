@@ -167,6 +167,10 @@ Click *Measure*. The program looks at a dozen frames and learns how tall a playe
 
 For sports with goals or baskets (basketball, football, futsal, handball, hockey, lacrosse): **Home attacks at the start** *left* or *right* (as on the minimap), and if needed **Change of ends at** as video time, e.g. `20:00`. Shots, free throws, corners, penalties and 7 m throws then count for the team attacking that end – even when the shooter's shirt colour was misread. With *Estimate automatically* the statistics derive the direction from the attempts and apply it only when it is clear (at least 6 attempts, 70 % fit). Step 7 shows below the shot chart which direction applies and how many attempts were moved.
 
+### 3e · Scoreboard (basketball, optional)
+
+If the hall's scoreboard is visible in the panorama, the score can be read from it. **Calibrate the scoreboard** opens a page with a frame from the chosen video time: click the four corners of the board, let it propose the digit fields (score left and right, game clock, period, each can be adjusted), choose whether the home score is on the left or the right, and save. The fields are stored in `scoreboard.json` in the project; while processing, the board is read alongside (option *Read the scoreboard*).
+
 ## Step 4 · Process
 
 1. **Segments.** Each row is one run: a *Name*, a *Start* and an *End* as `min:s` (or `h:min:s`, or plain seconds). An empty end means up to the end of the video, so you can analyse just a part of a long recording. Splitting a game into quarters is safer – an interruption costs one quarter, not the whole game. *Add segment* adds a row.
@@ -330,6 +334,10 @@ The *Team shape* card shows how wide and how deep each team stands. It only uses
 ### Score (estimated)
 
 The detection does not see directly whether a shot went in. It does see how play restarts afterwards: in **basketball** the other team inbounds from the end line under that basket within a few seconds after a made basket; in **football, futsal, handball, hockey and lacrosse** the other team kicks off after a goal (throw-off, centre pass, face-off). From that the card estimates the score and lists every score with time, team, points and *likely* or *possible*. Free throws are not counted; volleyball, rugby and American football cannot be estimated. Check the scores with the clips – and set the playing direction in step 3, which makes the teams more reliable.
+
+### Score from the scoreboard (basketball)
+
+With a calibrated scoreboard the score is read instead of estimated: the card shows the score, the period and every change with time, team and points. Each +1/+2/+3 is matched to the attempt just before it that fits (free throw for +1, 2-point attempt for +2, 3-point attempt for +3, by the same team, up to 20 s earlier). The shooter of that attempt gets the points, with a probability and whether the jersey number was **read** on that player or **inferred** along the trail. Without a fitting attempt the points go to the team only. *Points per player* adds them up. The board shows changes about one to two seconds late; this is taken into account. Corrections on the board (score going down) cancel the last credit.
 
 ### Playing time per player
 

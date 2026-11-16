@@ -167,6 +167,10 @@ Cliquez *Mesurer*. Le programme examine une douzaine d'images et apprend quelle 
 
 Pour les sports avec buts ou paniers (basketball, football, futsal, handball, hockey, lacrosse) : **Domicile attaque au début vers** *gauche* ou *droite* (comme sur la minicarte), et si besoin **Changement de côté à** en temps vidéo, p. ex. `20:00`. Tirs, lancers francs, corners, penaltys et jets de 7 m comptent alors pour l'équipe qui attaque ce but – même si la couleur du maillot du tireur a été mal reconnue. Avec *Estimer automatiquement*, les statistiques déduisent le sens des tentatives et ne l'appliquent que s'il est net (au moins 6 tentatives, 70 % concordent). L'étape 7 indique sous la carte des tirs le sens retenu et combien de tentatives ont été réattribuées.
 
+### 3e · Tableau d'affichage (basket, facultatif)
+
+Si le tableau d'affichage de la salle est visible dans le panorama, le score peut y être lu. **Calibrer le tableau** ouvre une page avec une image au temps choisi : cliquez les quatre coins du tableau, laissez proposer les champs de chiffres (score à gauche et à droite, chrono, période – tous ajustables), indiquez si le score de l'équipe à domicile est à gauche ou à droite, puis enregistrez. Les champs sont stockés dans `scoreboard.json` dans le projet ; pendant le traitement, le tableau est lu en même temps (option *Lire le tableau d'affichage*).
+
 ## Étape 4 · Traitement
 
 1. **Segments.** Chaque ligne est un traitement : *Nom*, *Début* et *Fin* sous la forme `min:s` (ou `h:min:s`, ou des secondes). Une fin vide signifie jusqu'à la fin de la vidéo ; vous pouvez ainsi n'analyser qu'une partie d'un long enregistrement. Découper un match en quart-temps est plus sûr – une interruption coûte un quart-temps, pas le match entier. *Ajouter un segment* ajoute une ligne.
@@ -330,6 +334,10 @@ La carte *Forme de l’équipe* montre la largeur et la profondeur de chaque éq
 ### Score (estimé)
 
 La détection ne voit pas directement si un tir est réussi. Elle voit en revanche comment le jeu reprend : au **basketball**, après un panier, l’autre équipe remet en jeu depuis la ligne de fond sous ce panier en quelques secondes ; au **football, futsal, handball, hockey et lacrosse**, l’autre équipe engage après un but. La carte en déduit le score et liste chaque point avec le temps, l’équipe, les points et *probable* ou *possible*. Les lancers francs ne sont pas comptés ; volley-ball, rugby et football américain ne peuvent pas être estimés. Vérifiez avec les clips – et réglez le sens du jeu à l’étape 3 pour des équipes plus fiables.
+
+### Score lu sur le tableau (basket)
+
+Avec un tableau calibré, le score est lu au lieu d'être estimé : la carte montre le score, la période et chaque changement avec temps, équipe et points. Chaque +1/+2/+3 est attribué à la tentative correspondante juste avant (lancer franc pour +1, tir à 2 points pour +2, tir à 3 points pour +3, même équipe, jusqu'à 20 s avant). Le tireur reçoit les points, avec une probabilité et l'indication si son numéro a été **lu** sur lui ou **déduit** le long de la trace. Sans tentative correspondante, les points vont seulement à l'équipe. *Points par joueur* les additionne. Le tableau affiche les changements avec une à deux secondes de retard ; c'est pris en compte. Une correction au tableau (score qui baisse) annule la dernière attribution.
 
 ### Temps de jeu par joueur
 

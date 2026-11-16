@@ -126,26 +126,27 @@ fn parse_points(body: &str, n_landmarks: usize) -> Option<Vec<(usize, Vec2)>> {
     Some(out)
 }
 
-fn respond(s: &mut TcpStream, code: &str, ctype: &str, body: &[u8]) {
+pub(crate) fn respond(s: &mut TcpStream, code: &str, ctype: &str, body: &[u8]) {
     let head = format!("HTTP/1.1 {code}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n", body.len());
     let _ = s.write_all(head.as_bytes());
     let _ = s.write_all(body);
 }
 
-fn handle(mut s: TcpStream, st: &Shared) {
+/// Method, full path (with query) and body of one HTTP request.
+pub(crate) fn read_request(s: &mut TcpStream) -> Option<(String, String, String)> {
     let _ = s.set_read_timeout(Some(Duration::from_secs(10)));
     let mut buf = Vec::new();
     let mut tmp = [0u8; 4096];
     let header_end = loop {
         match s.read(&mut tmp) {
-            Ok(0) | Err(_) => return,
+            Ok(0) | Err(_) => return None,
             Ok(n) => buf.extend_from_slice(&tmp[..n]),
         }
         if let Some(p) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
             break p + 4;
         }
         if buf.len() > 1 << 20 {
-            return;
+            return None;
         }
     };
     let head = String::from_utf8_lossy(&buf[..header_end]).to_string();
@@ -154,7 +155,6 @@ fn handle(mut s: TcpStream, st: &Shared) {
         let mut it = first.split_whitespace();
         (it.next().unwrap_or(""), it.next().unwrap_or(""))
     };
-    let path = full_path.split('?').next().unwrap_or("");
     let clen = head.lines().find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0))).unwrap_or(0);
     while buf.len() < header_end + clen {
         match s.read(&mut tmp) {
@@ -163,6 +163,12 @@ fn handle(mut s: TcpStream, st: &Shared) {
         }
     }
     let body = String::from_utf8_lossy(&buf[header_end.min(buf.len())..]).to_string();
+    Some((method.to_string(), full_path.to_string(), body))
+}
+
+fn handle(mut s: TcpStream, st: &Shared) {
+    let Some((method, full_path, body)) = read_request(&mut s) else { return };
+    let (method, path) = (method.as_str(), full_path.split('?').next().unwrap_or(""));
     let n_lm = st.profile.landmarks.len();
 
     match (method, path) {

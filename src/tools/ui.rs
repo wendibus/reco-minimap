@@ -308,7 +308,8 @@ fn project_files(dir: &Path) -> Value {
         }
     }
     outs.sort_by(|a, b| b["t"].as_u64().cmp(&a["t"].as_u64()));
-    json!({"court": court_v, "scales": rd("scales.json").map(|v| json!({"n": v["n"]})), "teams": rd("teams.json"), "out": outs})
+    let board = super::scoreboard::load(&dir.join("scoreboard.json").to_string_lossy()).ok().map(|c| json!({"fields": c.fields().len(), "home": if c.home == crate::scoreboard::HomeSide::Right { "right" } else { "left" }}));
+    json!({"court": court_v, "scales": rd("scales.json").map(|v| json!({"n": v["n"]})), "teams": rd("teams.json"), "scoreboard": board, "out": outs})
 }
 
 fn load_project(dir: &Path) -> Result<Value, String> {
@@ -451,6 +452,10 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
                 }
             }
         }
+        "scoreboard_calibrate" => {
+            need(&video, trs!("Video", "video", "vidéo", "vídeo"))?;
+            pushs(&mut a, &["scoreboard-calibrate", &video, "--time", &get_s(p, "time"), "--out", "scoreboard.json", "--lang", &get_s(p, "lang")]);
+        }
         "selfcheck" | "scales" | "colors" => {
             need(&video, trs!("Video", "video", "vidéo", "vídeo"))?;
             need(&model, trs!("Modell", "model", "modèle", "modelo"))?;
@@ -481,6 +486,10 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
             }
             if p["scenes"].as_bool() == Some(true) {
                 pushs(&mut a, &["--scenes"]);
+            }
+            // the calibrated hall scoreboard is read along unless switched off (run only: its own video stream)
+            if kind == "run" && dir.join("scoreboard.json").exists() && p["scoreboard"].as_bool() != Some(false) {
+                pushs(&mut a, &["--scoreboard", "scoreboard.json"]);
             }
             direction_args(&mut a, p);
             if let Some(t) = &torso {
@@ -646,7 +655,7 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
         other => return Err(tr!("unbekannter Auftrag: {other}", "unknown job: {other}", "tâche inconnue : {other}", "tarea desconocida: {other}")),
     }
     // the job reports in the language of the page (calibrate already carries it for its own page)
-    if kind != "calibrate" {
+    if kind != "calibrate" && kind != "scoreboard_calibrate" {
         if let Some(l) = p["lang"].as_str().and_then(super::i18n::Lang::parse) {
             pushs(&mut a, &["--lang", l.code()]);
         }
@@ -1056,6 +1065,8 @@ mod tests {
         // an unknown language is not passed on; calibrate keeps its own single --lang
         assert!(pair(&build_args("update", Path::new("/x"), &json!({"lang": "xx"})).unwrap(), "--lang").is_none());
         let c = build_args("calibrate", Path::new("/x"), &json!({"video": "/v.mp4", "sport": "basketball", "time": 5, "lang": "es"})).unwrap();
+        let sb = build_args("scoreboard_calibrate", Path::new("/x"), &json!({"video": "/v.mp4", "time": 60, "lang": "fr"})).unwrap();
+        assert_eq!(sb, ["scoreboard-calibrate", "/v.mp4", "--time", "60", "--out", "scoreboard.json", "--lang", "fr"]);
         assert_eq!(c.iter().filter(|x| *x == "--lang").count(), 1);
     }
 

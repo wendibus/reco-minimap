@@ -18,6 +18,8 @@ pub mod jersey;
 pub mod render;
 pub mod scenes;
 pub mod scheduler;
+pub mod scoreboard;
+pub mod scoring;
 pub mod search;
 pub mod sport;
 pub mod team;

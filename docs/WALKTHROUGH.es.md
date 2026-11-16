@@ -167,6 +167,10 @@ Haz clic en *Medir*. El programa mira una docena de imágenes y aprende qué tam
 
 En deportes con porterías o canastas (baloncesto, fútbol, fútbol sala, balonmano, hockey, lacrosse): **El local ataca al principio hacia** *izquierda* o *derecha* (como en el minimapa) y, si hace falta, **Cambio de campo en** como tiempo del vídeo, p. ej. `20:00`. Tiros, tiros libres, córneres, penaltis y lanzamientos de 7 m cuentan entonces para el equipo que ataca esa portería, aunque el color de la camiseta del tirador se haya reconocido mal. Con *Estimar automáticamente*, las estadísticas deducen la dirección de los intentos y solo la aplican si es clara (al menos 6 intentos, encaja el 70 %). El paso 7 muestra bajo el mapa de tiros qué dirección se aplica y cuántos intentos se reasignaron.
 
+### 3e · Marcador (baloncesto, opcional)
+
+Si el marcador del pabellón se ve en el panorama, el resultado puede leerse de él. **Calibrar el marcador** abre una página con una imagen en el tiempo elegido: haz clic en las cuatro esquinas del marcador, deja que proponga los campos de dígitos (puntos a la izquierda y a la derecha, reloj, periodo; todos se pueden ajustar), elige si los puntos del local están a la izquierda o a la derecha y guarda. Los campos quedan en `scoreboard.json` en el proyecto; al procesar se lee el marcador a la vez (opción *Leer el marcador*).
+
 ## Paso 4 · Procesar
 
 1. **Segmentos.** Cada fila es un proceso: *Nombre*, *Inicio* y *Fin* como `min:s` (o `h:min:s`, o segundos). Un fin vacío significa hasta el final del vídeo; así puedes analizar solo una parte de una grabación larga. Dividir un partido en cuartos es más seguro – una interrupción cuesta un cuarto, no el partido entero. *Añadir segmento* añade una fila.
@@ -330,6 +334,10 @@ La tarjeta *Forma del equipo* muestra qué tan ancho y profundo se coloca cada e
 ### Marcador (estimado)
 
 La detección no ve directamente si un tiro entra. Sí ve cómo se reanuda el juego: en **baloncesto**, tras una canasta el otro equipo saca desde la línea de fondo bajo esa canasta en pocos segundos; en **fútbol, fútbol sala, balonmano, hockey y lacrosse**, el otro equipo hace el saque de centro tras un gol. Con ello la tarjeta estima el marcador y lista cada tanto con tiempo, equipo, puntos y *probable* o *posible*. Los tiros libres no se cuentan; en voleibol, rugby y fútbol americano no se puede estimar. Compruébalo con los clips y ajusta la dirección de juego en el paso 3 para que los equipos sean más fiables.
+
+### Marcador leído (baloncesto)
+
+Con el marcador calibrado, el resultado se lee en lugar de estimarse: la tarjeta muestra el resultado, el periodo y cada cambio con tiempo, equipo y puntos. Cada +1/+2/+3 se asigna al intento correspondiente justo antes (tiro libre para +1, tiro de 2 para +2, tiro de 3 para +3, mismo equipo, hasta 20 s antes). El lanzador recibe los puntos, con una probabilidad y si su dorsal se **leyó** en él o se **dedujo** a lo largo de la trayectoria. Sin un intento que encaje, los puntos van solo al equipo. *Puntos por jugador* los suma. El marcador muestra los cambios uno o dos segundos tarde; se tiene en cuenta. Una corrección en el marcador (el resultado baja) anula la última asignación.
 
 ### Tiempo de juego por jugador
 

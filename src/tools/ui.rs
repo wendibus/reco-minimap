@@ -294,7 +294,7 @@ pub fn guide(lang: super::i18n::Lang) -> &'static str {
 
 fn project_files(dir: &Path) -> Value {
     let court = dir.join("court.json");
-    let court_v = CourtCalib::load(&court.to_string_lossy()).ok().map(|c| json!({"points": c.points.len(), "rms": c.rms_m, "sport": c.sport, "pano": [c.pano_w, c.pano_h]}));
+    let court_v = CourtCalib::load(&court.to_string_lossy()).ok().map(|c| json!({"points": c.points.len(), "rms": c.rms_m, "sport": c.sport, "pano": [c.pano_w, c.pano_h], "fisheye": c.lens.is_some()}));
     let rd = |n: &str| std::fs::read_to_string(dir.join(n)).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok());
     let mut outs = Vec::new();
     if let Ok(rdir) = std::fs::read_dir(dir.join("out")) {
@@ -443,6 +443,9 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
         "calibrate" => {
             need(&video, trs!("Video", "video", "vidéo", "vídeo"))?;
             pushs(&mut a, &["calibrate", &video, "--sport", &get_s(p, "sport"), "--time", &get_s(p, "time"), "--out", "court.json", "--lang", &get_s(p, "lang")]);
+            if p["fisheye"] == true {
+                a.push("--fisheye".into());
+            }
             if get_s(p, "sport") == "custom" {
                 pushs(&mut a, &["--length", &get_s(p, "length"), "--width", &get_s(p, "width")]);
             }
@@ -1068,6 +1071,9 @@ mod tests {
         let sb = build_args("scoreboard_calibrate", Path::new("/x"), &json!({"video": "/v.mp4", "time": 60, "lang": "fr"})).unwrap();
         assert_eq!(sb, ["scoreboard-calibrate", "/v.mp4", "--time", "60", "--out", "scoreboard.json", "--lang", "fr"]);
         assert_eq!(c.iter().filter(|x| *x == "--lang").count(), 1);
+        assert!(!c.iter().any(|x| x == "--fisheye"));
+        let f = build_args("calibrate", Path::new("/x"), &json!({"video": "/v.mp4", "sport": "basketball", "time": 5, "lang": "de", "fisheye": true})).unwrap();
+        assert!(f.iter().any(|x| x == "--fisheye"));
     }
 
     #[test]

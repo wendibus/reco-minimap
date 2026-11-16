@@ -15,6 +15,7 @@ pub mod direction;
 pub mod geom;
 pub mod identity;
 pub mod jersey;
+pub mod lens;
 pub mod render;
 pub mod scenes;
 pub mod scheduler;

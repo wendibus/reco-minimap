@@ -72,6 +72,7 @@ fn court_json_roundtrip_keeps_sport_and_old_files_still_load() {
         referees: 1,
         points: (0..4).map(|i| CalPoint { name: format!("p{i}"), pano: reco_minimap::geom::Vec2::new(i as f32 * 0.2, 0.3 + 0.1 * (i % 2) as f32), court: reco_minimap::geom::Vec2::new(i as f32 * 5.0, 3.0 * (i % 2) as f32) }).collect(),
         rms_m: 0.1,
+        lens: None,
     };
     let p = root.join("court.json");
     c.save(&p.to_string_lossy(), "x.mp4").unwrap();
@@ -87,6 +88,45 @@ fn court_json_roundtrip_keeps_sport_and_old_files_still_load() {
     let ol = CourtCalib::load(&op.to_string_lossy()).unwrap();
     assert_eq!(ol.sport, "basketball");
     assert_eq!((ol.profile().team_size, ol.profile().field.length), (5, 28.0));
+    assert!(ol.lens.is_none());
+}
+
+#[test]
+fn fisheye_calibration_roundtrip_maps_both_ways() {
+    use reco_minimap::geom::{Projector, Vec2};
+    use reco_minimap::lens::Lens;
+    let root = tmp("fisheye");
+    let lens = Lens { cx: 0.5, cy: 0.52, k1: -0.3, k2: 0.01, aspect: 16.0 / 9.0 };
+    let rm = lens.max_radius();
+    // a court seen through a homography and bent by the lens, eight landmarks
+    let flat = reco_minimap::geom::Homography::from_points(
+        &[Vec2::new(0.0, 0.0), Vec2::new(28.0, 0.0), Vec2::new(28.0, 15.0), Vec2::new(0.0, 15.0)],
+        &[Vec2::new(0.2, 0.4), Vec2::new(0.8, 0.4), Vec2::new(1.0, 0.85), Vec2::new(0.0, 0.85)],
+    )
+    .unwrap();
+    let court: Vec<Vec2> = [(0.0, 0.0), (14.0, 0.0), (28.0, 0.0), (28.0, 15.0), (14.0, 15.0), (0.0, 15.0), (5.8, 7.5), (22.2, 7.5)].iter().map(|&(x, y)| Vec2::new(x, y)).collect();
+    let points = court
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let f = flat.apply(*c).unwrap();
+            let (u, v) = lens.distort(f.x as f64, f.y as f64, rm).unwrap();
+            CalPoint { name: format!("p{i}"), pano: Vec2::new(u as f32, v as f32), court: *c }
+        })
+        .collect();
+    let c = CourtCalib { pano_w: 1920, pano_h: 1080, sport: "basketball".into(), field_m: (28.0, 15.0), team_size: 5, referees: 2, points, rms_m: 0.0, lens: Some(lens) };
+    let p = root.join("court.json");
+    c.save(&p.to_string_lossy(), "x.mp4").unwrap();
+    let l = CourtCalib::load(&p.to_string_lossy()).unwrap();
+    assert_eq!(l.lens, Some(lens));
+    let proj = l.projector().unwrap();
+    let to_pano = proj.to_pano_fn().unwrap();
+    for cp in &l.points {
+        let m = proj.to_court(cp.pano.x, cp.pano.y).unwrap();
+        assert!(m.dist(cp.court) < 0.01, "{} -> {:?}", cp.name, m);
+        let back = to_pano(cp.court).unwrap();
+        assert!(back.dist(cp.pano) < 1e-4, "{} back {:?}", cp.name, back);
+    }
 }
 
 #[test]

@@ -143,6 +143,8 @@ Calibration teaches the program where the field is in the picture. Three things 
 
 If your venue is not standard size, click only the four corners (and the centre); the other landmarks assume a standard field.
 
+**Fisheye (e.g. a full court from one camera):** if the field lines are **curved** in the picture, tick *Fisheye lens* before *Start calibration* (or on the calibration page itself). The page then estimates the lens distortion from your points as well and draws the green lines bent like the real ones. It needs at least 6 points; use 10 or more, spread out to the edges of the picture, where the bend is strongest. Without fisheye, the page suggests it when the error stays high. Processing, tiles and statistics use the straightened mapping automatically.
+
 ### 3b · Measure player sizes
 
 Click *Measure*. The program looks at a dozen frames and learns how tall a player appears at each image row. Later, each band of the picture is searched with the tile size that suits it (`--tile auto`), which makes detection both better and about twice as fast. It needs the calibration from 3a. Run it once per camera position.

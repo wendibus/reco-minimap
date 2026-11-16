@@ -136,8 +136,9 @@ export function CalibPanel() {
   return <>
     <Card title={T('cal.field')} hint={T('cal.field_hint')}>
       <div className="mm-row mm-gap"><span className="mm-muted">{T('cal.time')}</span><div style={{ width: 90 }}><Num k="calib_time" label="" /></div>
-        <Btn primary hint={t.hints.calibrate} onClick={() => void runJob('calibrate', { ...common(), sport: project.sport, time: project.calib_time, lang, length: project.custom.length, width: project.custom.width, team_size: project.sport === 'custom' ? project.custom.team_size : '', referees: project.sport === 'custom' ? project.custom.referees : '' })}>{T('cal.field_btn')}</Btn>
-        <span className={c ? 'ok' : 'mm-muted'}>{c ? T('cal.field_state', { n: c.points, rms: (+c.rms).toFixed(2) }) : T('cal.field_none')}</span></div>
+        <Btn primary hint={t.hints.calibrate} onClick={() => void runJob('calibrate', { ...common(), sport: project.sport, time: project.calib_time, lang, fisheye: !!project.fisheye, length: project.custom.length, width: project.custom.width, team_size: project.sport === 'custom' ? project.custom.team_size : '', referees: project.sport === 'custom' ? project.custom.referees : '' })}>{T('cal.field_btn')}</Btn>
+        <span className={c ? 'ok' : 'mm-muted'}>{c ? T('cal.field_state', { n: c.points, rms: (+c.rms).toFixed(2) }) + (c.fisheye ? ' · ' + T('cal.fisheye_on') : '') : T('cal.field_none')}</span></div>
+      <Check k="fisheye" label={T('calp.fisheye')} /><p className="mm-hint">{T('cal.fisheye_hint')}</p>
     </Card>
     <Card title={T('cal.scales')} hint={T('cal.scales_hint')}>
       <div className="mm-row mm-gap"><Btn primary hint={t.hints.scales} disabled={!c} onClick={() => void runJob('scales', common())}>{T('cal.scales_btn')}</Btn><span className={sc ? 'ok' : 'mm-muted'}>{sc ? T('cal.scales_state', { n: sc.n }) : T('cal.scales_none')}</span></div>

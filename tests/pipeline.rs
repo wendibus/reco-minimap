@@ -688,7 +688,8 @@ fn auto_plan_reaches_the_near_sideline_and_follows_the_field() {
     // field corners of that panorama (far side narrow, near side wide)
     let court = [Vec2::new(0.0, 0.0), Vec2::new(28.0, 0.0), Vec2::new(28.0, 15.0), Vec2::new(0.0, 15.0)];
     let pano = [Vec2::new(979.0 / 2560.0, 695.0 / 1440.0), Vec2::new(1560.0 / 2560.0, 728.0 / 1440.0), Vec2::new(2059.0 / 2560.0, 984.0 / 1440.0), Vec2::new(414.0 / 2560.0, 908.0 / 1440.0)];
-    let to_pano = Homography::from_points(&court, &pano).unwrap();
+    let h = Homography::from_points(&court, &pano).unwrap();
+    let to_pano = move |c: Vec2| h.apply(c);
     let field = reco_minimap::geom::Field::basketball();
     let floor = floor_points(&to_pano, &field, 3.0, 2560, 1440);
     let feet = floor_points(&to_pano, &field, 1.0, 2560, 1440);

@@ -170,7 +170,7 @@ fn plan(o: &Opts, info: &VideoInfo) -> Vec<Tile> {
         // with a calibration at hand, only tile where the field is (ball detections are used up to 3 m outside)
         let field = o.s("court").filter(|_| !o.has("no-field-mask")).and_then(|c| {
             let (cal, profile) = load_court(c);
-            let inv = cal.projector().and_then(|p| p.pano_to_court.inverse())?;
+            let inv = cal.projector().and_then(|p| p.to_pano_fn())?;
             // columns: where the ball is still used (3 m outside); rows: where players are tracked (1 m)
             Some((floor_points(&inv, &profile.field, 3.0, info.w, info.h), floor_points(&inv, &profile.field, 1.0, info.w, info.h)))
         });
@@ -505,7 +505,9 @@ fn cmd_calibrate(o: &Opts, input: &str) {
     eprintln!("{}", tr!("Panorama {}x{} @ {:.2} fps", "Panorama {}x{} @ {:.2} fps", "Panorama {}x{} à {:.2} i/s", "Panorama {}x{} a {:.2} fps", info.w, info.h, info.fps));
     let profile = profile_from_opts(o);
     eprintln!("{}", tr!("Sportart: {} ({} × {} m)", "Sport: {} ({} × {} m)", "Sport : {} ({} × {} m)", "Deporte: {} ({} × {} m)", profile.id, profile.field.length, profile.field.width));
-    calib::run(input, &info, o.f("time", 5.0), out, !o.has("no-open"), profile, o.s("lang").unwrap_or("de")).unwrap_or_else(|e| fail(e));
+    // fisheye: asked for, or the calibration being replaced already had a lens
+    let fisheye = o.has("fisheye") || CourtCalib::load(out).map(|c| c.lens.is_some()).unwrap_or(false);
+    calib::run(input, &info, o.f("time", 5.0), out, !o.has("no-open"), profile, o.s("lang").unwrap_or("de"), fisheye).unwrap_or_else(|e| fail(e));
     eprintln!("{}", tr!("Fertig: {out}", "Done: {out}", "Terminé : {out}", "Listo: {out}"));
 }
 

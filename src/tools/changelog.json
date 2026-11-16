@@ -1,4 +1,26 @@
 {
+  "0.18.0": {
+    "de": [
+      "Kalibrierung mit Fisheye-Objektiv (z. B. Vollfeld mit einer Kamera): Die Verzeichnung wird aus den angeklickten Punkten mitberechnet, die Spielfeldlinien erscheinen gebogen wie im Bild.",
+      "Verarbeitung, Kacheln und Statistik nutzen die entzerrte Zuordnung automatisch.",
+      "Bleibt der Fehler hoch, schlägt die Kalibrierseite Fisheye vor; neue Option `calibrate --fisheye`."
+    ],
+    "en": [
+      "Calibration with a fisheye lens (e.g. full court from one camera): the distortion is estimated from the clicked points, the field lines appear bent as in the picture.",
+      "Processing, tiles and statistics use the straightened mapping automatically.",
+      "If the error stays high, the calibration page suggests fisheye; new option `calibrate --fisheye`."
+    ],
+    "fr": [
+      "Calibrage avec objectif fisheye (p. ex. terrain entier avec une caméra) : la distorsion est calculée à partir des points cliqués, les lignes du terrain apparaissent courbées comme dans l'image.",
+      "Le traitement, les tuiles et les statistiques utilisent automatiquement la correspondance redressée.",
+      "Si l'erreur reste élevée, la page de calibrage propose le fisheye ; nouvelle option `calibrate --fisheye`."
+    ],
+    "es": [
+      "Calibración con objetivo ojo de pez (p. ej. campo completo con una cámara): la distorsión se calcula a partir de los puntos marcados y las líneas del campo aparecen curvadas como en la imagen.",
+      "El procesamiento, las teselas y las estadísticas usan automáticamente la correspondencia corregida.",
+      "Si el error sigue alto, la página de calibración propone ojo de pez; nueva opción `calibrate --fisheye`."
+    ]
+  },
   "0.17.0": {
     "de": [
       "Basketball: Anzeigetafel im Panorama kalibrieren (Schritt 3) und beim Verarbeiten mitlesen – Spielstand, Spieluhr und Viertel.",

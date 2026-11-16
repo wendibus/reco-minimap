@@ -143,6 +143,8 @@ Le calibrage apprend au programme où se trouve le terrain dans l'image. Trois c
 
 Si votre salle n'a pas les dimensions standard, ne cliquez que les quatre coins (et le centre) ; les autres points supposent un terrain standard.
 
+**Fisheye (p. ex. un terrain entier avec une seule caméra) :** si les lignes du terrain sont **courbées** dans l'image, cochez *Objectif fisheye* avant *Lancer le calibrage* (ou directement sur la page de calibrage). La page calcule alors aussi la distorsion de l'objectif à partir de vos points et dessine les lignes vertes courbées comme les vraies. Il faut au moins 6 points ; mieux vaut 10 ou plus, répartis jusqu'aux bords de l'image, là où la courbure est la plus forte. Sans fisheye, la page le propose si l'erreur reste élevée. Le traitement, les tuiles et les statistiques utilisent automatiquement la correspondance redressée.
+
 ### 3b · Mesurer la taille des joueurs
 
 Cliquez *Mesurer*. Le programme examine une douzaine d'images et apprend quelle taille a un joueur à chaque ligne de l'image. Ensuite, chaque bande de l'image est analysée avec la taille de tuile adaptée (`--tile auto`) : la détection s'améliore et devient environ deux fois plus rapide. Cela nécessite le calibrage de 3a. Une fois par position de caméra.

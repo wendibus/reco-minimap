@@ -143,6 +143,8 @@ La calibración le enseña al programa dónde está el campo en la imagen. Aquí
 
 Si tu pabellón no tiene medidas estándar, marca solo las cuatro esquinas (y el centro); los demás puntos suponen un campo estándar.
 
+**Automático:** en lugar de marcar cada punto, la página puede buscar el campo sola. En *Automático*, marca **qué esquinas quedan fuera de la imagen** (en un panorama desde la banda, normalmente las dos cercanas) y pulsa *Buscar el campo automáticamente*. La página busca las líneas pintadas, coloca el campo sobre ellas (unos segundos; con ojo de pez también la distorsión) y pone los puntos encontrados. La indicación de las esquinas es importante: sin ella, un campo demasiado pequeño puede parecer encajar. Después revisa las líneas verdes; vuelve a poner a mano los puntos desviados; pulsar de nuevo afina desde los puntos actuales. *Mostrar líneas detectadas* colorea lo que la búsqueda cuenta como línea (funciona mejor con el campo vacío y líneas bien visibles).
+
 **Ojo de pez (p. ej. un campo completo con una sola cámara):** si las líneas del campo se ven **curvadas** en la imagen, marca *Objetivo ojo de pez* antes de *Iniciar calibración* (o en la propia página de calibración). La página calcula entonces también la distorsión del objetivo a partir de tus puntos y dibuja las líneas verdes curvadas como las reales. Hacen falta al menos 6 puntos; mejor 10 o más, repartidos hasta los bordes de la imagen, donde la curvatura es mayor. Sin ojo de pez, la página lo propone si el error sigue alto. El procesamiento, las teselas y las estadísticas usan automáticamente la correspondencia corregida.
 
 ### 3b · Medir el tamaño de los jugadores

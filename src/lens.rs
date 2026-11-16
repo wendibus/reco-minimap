@@ -94,7 +94,26 @@ impl Lens {
         if ru > g(r_max) {
             return None;
         }
-        // g grows on [0, r_max]: bisection is safe and fast enough (a few dozen steps)
+        // Newton from the straightened radius converges in a few steps for usual lenses
+        let mut r = ru.min(r_max);
+        for _ in 0..8 {
+            let f = self.factor(r * r);
+            let df = 2.0 * self.k1 * r + 4.0 * self.k2 * r * r * r;
+            let gr = r / f;
+            let dg = (f - r * df) / (f * f);
+            if dg <= 1e-9 {
+                break;
+            }
+            let next = r - (gr - ru) / dg;
+            if !(0.0..=r_max).contains(&next) {
+                break;
+            }
+            r = next;
+        }
+        if (g(r) - ru).abs() < 1e-10 {
+            return Some(self.from_radial(x * r / ru, y * r / ru));
+        }
+        // otherwise bisection: g grows on [0, r_max]
         let (mut lo, mut hi) = (0.0, r_max);
         for _ in 0..48 {
             let mid = 0.5 * (lo + hi);

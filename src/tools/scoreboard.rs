@@ -282,7 +282,7 @@ const BURST_FPS: f64 = 8.0;
 const BOARD_W: usize = 1600;
 
 /// JPEG of an RGB image, through ffmpeg (no image library in this program).
-fn encode_jpeg(w: usize, h: usize, rgb: &[u8]) -> Result<Vec<u8>, String> {
+pub(crate) fn encode_jpeg(w: usize, h: usize, rgb: &[u8]) -> Result<Vec<u8>, String> {
     let mut child = Command::new("ffmpeg")
         .args(["-v", "error", "-nostdin", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", &format!("{w}x{h}"), "-i", "-", "-frames:v", "1", "-q:v", "2", "-f", "image2pipe", "-vcodec", "mjpeg", "-"])
         .stdin(Stdio::piped())

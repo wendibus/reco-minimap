@@ -143,6 +143,8 @@ Die Kalibrierung bringt dem Programm bei, wo das Spielfeld im Bild liegt. Hier p
 
 Hat deine Halle kein Standardmaß, klicke nur die vier Ecken (und den Mittelpunkt); die übrigen Punkte setzen ein Standardfeld voraus.
 
+**Automatisch:** Statt jeden Punkt zu klicken, kann die Seite das Feld selbst suchen. Unter *Automatisch* ankreuzen, **welche Ecken außerhalb des Bildes liegen** (bei einem Panorama von der Seitenlinie meist die beiden vorderen), dann *Feld automatisch finden* klicken. Die Seite sucht die Spielfeldlinien, legt das Feld darauf (wenige Sekunden; mit Fisheye auch die Verzeichnung) und setzt die gefundenen Punkte. Die Ecken-Angabe ist wichtig: Ohne sie kann ein zu kleines Feld scheinbar passen. Danach die grünen Linien prüfen; einzelne Punkte, die danebenliegen, von Hand neu setzen – ein erneuter Klick verfeinert von den aktuellen Punkten aus. *Erkannte Linien zeigen* färbt, was die Suche als Linie zählt (am besten klappt es mit freiem Feld und gut sichtbaren Linien).
+
 **Fisheye (z. B. ein Vollfeld mit einer Kamera):** Sind die Spielfeldlinien im Bild **gebogen**, vor *Kalibrierung starten* *Fisheye-Objektiv* ankreuzen (oder auf der Kalibrierseite selbst). Die Seite berechnet die Verzeichnung dann aus deinen Punkten mit und zeichnet die grünen Linien so gebogen wie die echten. Nötig sind mindestens 6 Punkte; besser 10 oder mehr, bis an die Bildränder verteilt, wo die Biegung am stärksten ist. Ohne Fisheye schlägt die Seite es vor, wenn der Fehler hoch bleibt. Verarbeitung, Kacheln und Statistik nutzen die entzerrte Zuordnung automatisch.
 
 ### 3b · Spielergrößen messen

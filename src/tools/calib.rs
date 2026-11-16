@@ -10,7 +10,8 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use super::video::{grab_png, VideoInfo};
+use super::video::{grab, grab_png, Frame, VideoInfo};
+use crate::autocal::{self, Hints, LineMap, Placement};
 use crate::geom::{HomographyProjector, Projector, Vec2};
 use crate::lens::{Lens, LensLevel};
 use crate::sport::SportProfile;
@@ -135,7 +136,60 @@ struct Shared {
     lang: String,
     /// Start with the fisheye model switched on (existing calibration with a lens, or `--fisheye`).
     fisheye: bool,
+    /// The frame for the automatic calibration and its line pixels (found on first use).
+    frame: Option<Frame>,
+    lines: std::sync::OnceLock<LineMap>,
     done: AtomicBool,
+}
+
+impl Shared {
+    fn line_map(&self) -> Option<&LineMap> {
+        let f = self.frame.as_ref()?;
+        Some(self.lines.get_or_init(|| LineMap::from_rgb(&f.rgb, f.w, f.h)))
+    }
+}
+
+/// Placement (corners in the straightened image, lens strength) that the clicked points describe, as
+/// the starting point for the automatic calibration.
+fn placement_from_points(pairs: &[(usize, Vec2)], profile: &SportProfile, fisheye: bool, aspect: f64) -> Option<Placement> {
+    let pano: Vec<Vec2> = pairs.iter().map(|p| p.1).collect();
+    let court: Vec<Vec2> = pairs.iter().map(|p| Vec2::new(profile.landmarks[p.0].x, profile.landmarks[p.0].y)).collect();
+    let (h, k1) = match LensLevel::for_points(pairs.len()).filter(|_| fisheye) {
+        Some(_) => {
+            let f = crate::lens::fit(&pano, &court, aspect, LensLevel::K1)?;
+            (f.pano_to_court, f.lens.k1)
+        }
+        None => (crate::geom::Homography::from_points(&pano, &court)?, 0.0),
+    };
+    let inv = h.inverse()?;
+    let (l, w) = (profile.field.length, profile.field.width);
+    let c = |x: f32, y: f32| inv.apply(Vec2::new(x, y));
+    Some(Placement { corners: [c(0.0, 0.0)?, c(l, 0.0)?, c(l, w)?, c(0.0, w)?], k1 })
+}
+
+/// Automatic calibration: the landmarks of the fitted field that lie in the picture.
+fn auto_json(st: &Shared, body: &str, fisheye: bool, aspect: f64) -> Value {
+    let v: Value = serde_json::from_str(body).unwrap_or(Value::Null);
+    let mut outside = [false; 4];
+    for (i, o) in outside.iter_mut().enumerate() {
+        *o = v["outside"][i].as_bool().unwrap_or(false);
+    }
+    let Some(map) = st.line_map() else { return json!({"ok": false, "error": "no frame"}) };
+    let p = &st.profile;
+    let start = parse_points(body, p.landmarks.len()).filter(|x| x.len() >= 4).and_then(|x| placement_from_points(&x, p, fisheye, aspect));
+    let field = (p.field.length, p.field.width);
+    let Some(r) = autocal::fit(map, &p.lines, field, aspect, Hints { outside, fisheye }, start) else { return json!({"ok": false}) };
+    let Some(m) = autocal::Mapper::new(&r.placement, field, aspect) else { return json!({"ok": false}) };
+    let pts: Vec<Value> = p
+        .landmarks
+        .iter()
+        .enumerate()
+        .filter_map(|(i, l)| {
+            let q = m.to_image(Vec2::new(l.x, l.y))?;
+            (q.x > 0.003 && q.y > 0.003 && q.x < 0.997 && q.y < 0.997).then(|| json!({"id": i, "u": q.x, "v": q.y}))
+        })
+        .collect();
+    json!({"ok": true, "points": pts, "agreement": r.agreement, "k1": r.placement.k1})
 }
 
 /// Does the request ask for the fisheye model?
@@ -211,6 +265,11 @@ fn handle(mut s: TcpStream, st: &Shared) {
         ("GET", "/theme.css") => respond(&mut s, "200 OK", "text/css; charset=utf-8", include_str!("theme.css").as_bytes()),
         ("GET", "/i18n.js") => respond(&mut s, "200 OK", "application/javascript; charset=utf-8", include_str!("i18n.js").as_bytes()),
         ("GET", "/frame.png") => respond(&mut s, "200 OK", "image/png", &st.png),
+        ("GET", "/lines.jpg") => match st.line_map().map(|m| super::scoreboard::encode_jpeg(m.w, m.h, &m.mask_rgb())) {
+            Some(Ok(jpg)) => respond(&mut s, "200 OK", "image/jpeg", &jpg),
+            _ => respond(&mut s, "404 Not Found", "text/plain", b"no frame"),
+        },
+        ("POST", "/api/auto") => respond(&mut s, "200 OK", "application/json", auto_json(st, &body, fisheye, aspect).to_string().as_bytes()),
         ("GET", "/api/info") => {
             let v = json!({"w": st.info.w, "h": st.info.h, "sport": st.profile.id, "fisheye": st.fisheye, "fisheye_min": LensLevel::MIN_POINTS, "field": [st.profile.field.length, st.profile.field.width], "lang": st.lang,
                            "landmarks": st.profile.landmarks.iter().map(|l| json!({"key": l.key, "x": l.x, "y": l.y})).collect::<Vec<_>>(),
@@ -271,10 +330,12 @@ pub(crate) fn open_browser(url: &str) {
 /// Serve the calibration page until the user saves.
 pub fn run(input: &str, info: &VideoInfo, t: f64, out_path: &str, open: bool, profile: SportProfile, lang: &str, fisheye: bool) -> Result<(), String> {
     let png = grab_png(input, t)?;
+    // the automatic calibration works on the decoded frame; without it the page still works by hand
+    let frame = grab(input, info, t).ok();
     let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
-    let st = Arc::new(Shared { png, info: info.clone(), out_path: out_path.to_string(), video: input.to_string(), profile, lang: lang.to_string(), fisheye, done: AtomicBool::new(false) });
+    let st = Arc::new(Shared { png, info: info.clone(), out_path: out_path.to_string(), video: input.to_string(), profile, lang: lang.to_string(), fisheye, frame, lines: std::sync::OnceLock::new(), done: AtomicBool::new(false) });
     let url = format!("http://127.0.0.1:{port}/?lang={lang}");
     eprintln!("{}", tr!("Kalibrierung: {url}\n(Seite öffnet sich automatisch; sonst URL im Browser öffnen. Strg+C zum Abbrechen.)", "Calibration: {url}\n(The page opens by itself; otherwise open the URL in a browser. Ctrl+C to cancel.)", "Calibrage : {url}\n(La page s'ouvre toute seule ; sinon ouvrir l'URL dans un navigateur. Ctrl+C pour annuler.)", "Calibración: {url}\n(La página se abre sola; si no, abre la URL en un navegador. Ctrl+C para cancelar.)"));
     if open {

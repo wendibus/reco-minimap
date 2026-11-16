@@ -1,4 +1,22 @@
 {
+  "0.19.0": {
+    "de": [
+      "Automatische Feld-Kalibrierung: ankreuzen, welche Ecken außerhalb des Bildes liegen, und das Feld wird anhand der Spielfeldlinien gefunden – auch mit Fisheye. Die Punkte lassen sich danach von Hand korrigieren.",
+      "„Erkannte Linien zeigen“ färbt, was die Suche als Linie zählt."
+    ],
+    "en": [
+      "Automatic field calibration: tick which corners are outside the picture and the field is found from its painted lines – fisheye included. The points can be corrected by hand afterwards.",
+      "\"Show detected lines\" colours what the search counts as a line."
+    ],
+    "fr": [
+      "Calibrage automatique du terrain : cochez les coins hors de l'image et le terrain est trouvé à partir de ses lignes – fisheye compris. Les points peuvent ensuite être corrigés à la main.",
+      "« Montrer les lignes détectées » colore ce que la recherche compte comme ligne."
+    ],
+    "es": [
+      "Calibración automática del campo: marca qué esquinas quedan fuera de la imagen y el campo se encuentra por sus líneas, también con ojo de pez. Después los puntos se pueden corregir a mano.",
+      "«Mostrar líneas detectadas» colorea lo que la búsqueda cuenta como línea."
+    ]
+  },
   "0.18.1": {
     "de": [
       "Kalibrierung (Spielfeld und Anzeigetafel): Herauszoomen geht nur noch bis zum ganzen Bild, beim Verschieben bleibt das Bild immer im Fenster."

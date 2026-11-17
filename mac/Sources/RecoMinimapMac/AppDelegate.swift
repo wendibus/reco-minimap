@@ -349,6 +349,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         guard let url = navigationAction.request.url else { return .cancel }
         if url.scheme == "about" { return .allow }
         if (url.host == "127.0.0.1" || url.host == "localhost") && url.port == worker.port { return .allow }
+        // a local page embedded in the interface (e.g. the calibration) stays in its frame
+        if let frame = navigationAction.targetFrame, !frame.isMainFrame, url.host == "127.0.0.1" || url.host == "localhost" { return .allow }
         if url.scheme == "http" || url.scheme == "https" || url.scheme == "mailto" {
             NSWorkspace.shared.open(url)
         }

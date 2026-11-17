@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="de"><head><meta charset="utf-8"><title>reco-minimap</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="/theme.css"><style>
+<link rel="stylesheet" href="theme.css"><style>
 html,body{height:100%}
 #app{display:grid;grid-template-columns:1fr 340px;height:100%}
 #stage{position:relative;overflow:hidden;cursor:crosshair;background:var(--stage)}
@@ -52,7 +52,7 @@ canvas#legend{display:block;width:100%;border:.5px solid var(--sep);border-radiu
   <p id="t_priv" style="font-size:12px"></p>
  </aside>
 </div>
-<script src="/i18n.js"></script>
+<script src="i18n.js"></script>
 <script>
 const $=id=>document.getElementById(id);
 let info,img=new Image(),linesImg=null,pts={},lpts=[],handles=[],cur=0,lens=null,scale=1,ox=0,oy=0,overlay=[],resid={},rms=null,mouse={x:0,y:0,in:false};
@@ -61,7 +61,7 @@ function texts(){document.title=T('calp.title');$('t_title').textContent=T('calp
  $('t_legend').textContent=T('calp.legend');$('t_cam').textContent='▲ '+T('calp.camera');$('undo').textContent='↶ '+T('calp.undo');$('redo').textContent='↷ '+T('calp.redo');$('undo').title=T('calp.undo_key');$('redo').title=T('calp.redo_key');$('skip').textContent=T('calp.skip');$('save').textContent=T('calp.save');$('t_lens').textContent=T('calp.lens_title');$('t_lens_none').textContent=T('calp.lens_none');$('t_lens_fish').textContent=T('calp.lens_fisheye');$('t_lens_pano').textContent=T('calp.lens_panorama');$('t_pick').textContent=T('calp.pick_color');$('t_colorhint').textContent=T('calp.color_hint');$('t_auto').textContent=T('calp.auto');$('t_autohint').textContent=T('calp.auto_hint');$('t_outside').textContent=T('calp.outside');
  ['fl','fr','nr','nl'].forEach((k,i)=>$('t_o'+i).textContent=T('calp.c_'+k));$('autobtn').textContent=T('calp.auto_btn');$('t_showlines').textContent=T('calp.show_lines');$('t_erase').textContent=T('calp.erase');$('t_erase_clear').textContent=T('calp.erase_clear');$('t_erasehint').textContent=T('calp.erase_hint');$('t_lenshint').textContent=T('calp.lens_hint');$('t_priv').textContent=T('calp.privacy');
  if(info)$('t_scaled').textContent=T('calp.scaled',{l:info.field[0],w:info.field[1]});}
-async function init(){info=await (await fetch('/api/info')).json();if(info.lang)setLang(info.lang);texts();setLens(info.lens||'none');saved=snap();document.querySelectorAll('input[name=lens]').forEach(r=>r.onchange=()=>{record();solve();});img.onload=()=>{resize();build();draw();};img.src='/frame.png';requestAnimationFrame(legend);}
+async function init(){info=await (await fetch('api/info')).json();if(info.lang)setLang(info.lang);texts();setLens(info.lens||'none');saved=snap();document.querySelectorAll('input[name=lens]').forEach(r=>r.onchange=()=>{record();solve();});img.onload=()=>{resize();build();draw();};img.src='frame.png';requestAnimationFrame(legend);}
 // Small top-down field: every landmark as a dot (green = set), the one to click next blinking.
 // "far" is at the top and the camera at the bottom, as in the landmark names.
 const outside=()=>[0,1,2,3].map(i=>$('o'+i).checked);
@@ -113,7 +113,7 @@ function edgeHandles(lines){const out=[],inside=q=>q[0]>=0&&q[0]<=1&&q[1]>=0&&q[
  return out;}
 async function solve(){const arr=payload();
  if(arr.length<4){overlay=[];handles=[];resid={};rms=null;lens=null;refresh();return;}
- const r=await (await fetch('/api/solve',{method:'POST',body:JSON.stringify({points:arr,lens:lensSel()})})).json();
+ const r=await (await fetch('api/solve',{method:'POST',body:JSON.stringify({points:arr,lens:lensSel()})})).json();
  if(r.ok){overlay=r.overlay;handles=edgeHandles(r.lines);resid={};r.residuals.forEach(e=>resid[e.id]=e.m);rms=r.rms;lens=r.lens;}else{overlay=[];handles=[];rms=null;lens=null;}refresh();}
 // ---- history: every change of points, line points, struck-out lines, line colour and lens can be
 // undone (⌘Z / Ctrl+Z) and redone (⇧⌘Z / Ctrl+Shift+Z / Ctrl+Y)
@@ -163,7 +163,7 @@ function sampleColor(ix,iy){const c=document.createElement('canvas');c.width=c.h
 function setColor(c){lineColor=c;$('swatch').style.display=c?'inline-block':'none';$('clearcolor').style.display=c?'inline-block':'none';if(c)$('swatch').style.background=`rgb(${c.join(',')})`;
  linesImg=null;if($('showlines').checked)loadLines();$('pickbtn').classList.remove('primary');picking=false;cv.style.cursor='crosshair';}
 let linesReq=0;
-async function loadLines(){const n=++linesReq;try{const r=await fetch('/api/lines',{method:'POST',body:JSON.stringify({color:lineColor,erase:eraseList()})});if(!r.ok||n!==linesReq)return;
+async function loadLines(){const n=++linesReq;try{const r=await fetch('api/lines',{method:'POST',body:JSON.stringify({color:lineColor,erase:eraseList()})});if(!r.ok||n!==linesReq)return;
  const url=URL.createObjectURL(await r.blob());const im=new Image();im.onload=()=>{if(n!==linesReq)return;if(linesImg&&linesImg.src.startsWith('blob:'))URL.revokeObjectURL(linesImg.src);linesImg=im;draw();};im.src=url;}catch(e){}}
 $('pickbtn').onclick=()=>{if(erasing)setErasing(false);picking=!picking;$('pickbtn').classList.toggle('primary',picking);cv.style.cursor=picking?'copy':'crosshair';};
 $('clearcolor').onclick=()=>{setColor(null);record();};
@@ -186,14 +186,14 @@ function draw(){ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.heig
 $('showlines').onchange=()=>{if(!linesImg)loadLines();draw();};
 $('autobtn').onclick=async()=>{const b=$('autobtn');b.disabled=true;$('automsg').textContent=T('calp.auto_running');
  const arr=payload();
- try{const r=await (await fetch('/api/auto',{method:'POST',body:JSON.stringify({outside:outside(),lens:lensSel(),color:lineColor,erase:eraseList(),points:arr})})).json();
+ try{const r=await (await fetch('api/auto',{method:'POST',body:JSON.stringify({outside:outside(),lens:lensSel(),color:lineColor,erase:eraseList(),points:arr})})).json();
   if(r.ok&&r.points.length>=4){pts={};r.points.forEach(p=>pts[p.id]={u:p.u*img.width,v:p.v*img.height});cur=nextFree();record();
    const a=Math.round(r.agreement*100);$('automsg').innerHTML=`<span class="${a>=70?'good':a>=45?'':'warn'}">${T('calp.auto_found',{n:r.points.length,a})}</span> `+T('calp.auto_check')+(!fish()&&a<70?' '+T('calp.try_lens'):'')+(!lineColor&&a<70?' '+T('calp.try_color'):'');await solve();}
   else $('automsg').innerHTML='<span class="warn">'+T('calp.auto_none')+'</span>';}
  catch(e){$('automsg').innerHTML='<span class="warn">'+T('calp.auto_none')+'</span>';}
  b.disabled=false;};
 $('save').onclick=async()=>{const arr=payload();
- const r=await (await fetch('/api/save',{method:'POST',body:JSON.stringify({points:arr,lens:lensSel()})})).json();
+ const r=await (await fetch('api/save',{method:'POST',body:JSON.stringify({points:arr,lens:lensSel()})})).json();
  $('msg').innerHTML=r.ok?`<span class="good">${T('calp.saved')}:</span> ${r.path}<br>${T('calp.saved_hint',{rms:r.rms.toFixed(2)})}`:`<span class="warn">${r.error}</span>`;};
 init();
 </script></body></html>

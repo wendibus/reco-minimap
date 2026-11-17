@@ -734,6 +734,33 @@ fn start_job(ui: &Arc<Ui>, dir: &Path, kind: &str, params: &Value) -> Result<u64
 
 // ---------------------------------------------------------------- routes
 
+/// Ports of the pages served by running calibration jobs (from the address they print).
+fn embedded_ports(ui: &Ui) -> Vec<u16> {
+    let jobs = ui.jobs.lock().unwrap();
+    jobs.values()
+        .filter(|j| (j.kind == "calibrate" || j.kind == "scoreboard_calibrate") && matches!(j.status.lock().unwrap().as_str(), "running" | "cancelling"))
+        .flat_map(|j| {
+            j.lines.lock().unwrap().iter().filter_map(|(t, _)| {
+                let rest = &t[t.find("http://127.0.0.1:")? + "http://127.0.0.1:".len()..];
+                rest.chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse().ok()
+            }).collect::<Vec<u16>>()
+        })
+        .collect()
+}
+
+/// Forward one request to a local page and hand its answer back unchanged.
+fn proxy(s: &mut TcpStream, port: u16, method: &str, target: &str, body: &str) -> std::io::Result<()> {
+    let mut up = TcpStream::connect(("127.0.0.1", port))?;
+    up.set_read_timeout(Some(Duration::from_secs(120)))?;
+    write!(up, "{method} {target} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len())?;
+    let mut answer = Vec::new();
+    up.read_to_end(&mut answer)?;
+    if answer.is_empty() {
+        return Err(std::io::Error::other("empty answer"));
+    }
+    s.write_all(&answer)
+}
+
 fn handle(mut s: TcpStream, ui: Arc<Ui>) {
     let (method, path, query, body, head) = match read_request(&mut s) {
         Some(r) => r,
@@ -746,6 +773,19 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
     // answer in the language of the page that asked (it sends it with every request)
     if let Some(l) = b["lang"].as_str().and_then(super::i18n::Lang::parse) {
         super::i18n::set_lang(l);
+    }
+    // a calibration page of a running job, passed through on this port so it can be shown inside the
+    // interface (the Mac app's window only loads pages from the interface's own port)
+    if let Some(rest) = path.strip_prefix("/tool/") {
+        let (port, sub) = rest.split_once('/').unwrap_or((rest, ""));
+        return match port.parse::<u16>().ok().filter(|p| embedded_ports(&ui).contains(p)) {
+            Some(port) => {
+                if proxy(&mut s, port, &method, &format!("/{sub}{}", if query.is_empty() { String::new() } else { format!("?{query}") }), &body).is_err() {
+                    respond(&mut s, "502 Bad Gateway", "text/plain", b"calibration page not reachable");
+                }
+            }
+            None => respond(&mut s, "404 Not Found", "text/plain", b"not found"),
+        };
     }
     match (method.as_str(), path.as_str()) {
         // the React interface (web/, built into webui/ by `npm run build`)

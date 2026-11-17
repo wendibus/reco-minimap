@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="de"><head><meta charset="utf-8"><title>reco-minimap</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="/theme.css"><style>
+<link rel="stylesheet" href="theme.css"><style>
 html,body{height:100%;margin:0}
 #app{display:grid;grid-template-columns:1fr 360px;height:100%}
 #main{display:flex;flex-direction:column;min-width:0;background:var(--stage)}
@@ -65,7 +65,7 @@ input[type=number]{width:100%;box-sizing:border-box;background:var(--control);co
   <p id="t_priv"></p>
  </aside>
 </div>
-<script src="/i18n.js"></script>
+<script src="i18n.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const COLORS = ['#ffd54f', '#4fc3f7', '#ff8a65', '#aed581'];
@@ -145,9 +145,9 @@ const boardSoon = () => { clearTimeout(bt); bt = setTimeout(updateBoard, 140); }
 async function updateBoard() {
   if (!S.corners) return false;
   try {
-    const j = await post('/api/board', { corners: S.corners }); if (!j.ok) throw new Error(j.error);
+    const j = await post('api/board', { corners: S.corners }); if (!j.ok) throw new Error(j.error);
     S.size = j.size; S.valid = true;
-    $('prevImg').src = `/board.jpg?mode=${overlay ? 'max' : 'best'}&ts=${++tsn}`;
+    $('prevImg').src = `board.jpg?mode=${overlay ? 'max' : 'best'}&ts=${++tsn}`;
     $('next').disabled = false; status('');
     return true;
   } catch (e) { S.valid = false; $('next').disabled = true; status(T('sbp.bad_corners') + ' ' + e.message, 'err'); return false; }
@@ -261,13 +261,13 @@ function geo() {
   sync(); draw(); clearTimeout(geoTimer);
   geoTimer = setTimeout(async () => {
     const fields = {}; for (const k in F) if (F[k].rect) fields[k] = F[k];
-    try { G = await post('/api/geometry', { fields }); draw(); } catch (e) {}
+    try { G = await post('api/geometry', { fields }); draw(); } catch (e) {}
   }, 60);
 }
 async function propose() {
   status(T('sbp.proposing'));
   try {
-    const j = await post('/api/propose'); if (!j.ok) throw new Error(j.error);
+    const j = await post('api/propose'); if (!j.ok) throw new Error(j.error);
     let n = 0; for (const k in j.fields) if (F[k]) { Object.assign(F[k], j.fields[k]); n++; }
     status(n ? T('sbp.proposed', { n }) : T('sbp.proposed_none'), n ? 'ok' : 'err');
   } catch (e) { status(e.message, 'err'); }
@@ -285,7 +285,7 @@ function showStep(n) {
 $('next').onclick = async () => {
   if (!(await updateBoard())) return;
   showStep(2);
-  await loadImg(boardImg, `/board.jpg?mode=${overlay ? 'max' : 'best'}&ts=${++tsn}`);
+  await loadImg(boardImg, `board.jpg?mode=${overlay ? 'max' : 'best'}&ts=${++tsn}`);
   fit(); markActive();
   const key = cornersKey();
   if (S.fieldsFor !== key) { for (const k in F) F[k].rect = null; S.fieldsFor = key; await propose(); } else { sync(); geo(); }
@@ -295,10 +295,10 @@ $('back').onclick = () => { showStep(1); fit(); draw(); };
 $('propose').onclick = () => propose();
 $('overlay').onchange = async (e) => {
   overlay = e.target.checked;
-  await loadImg(frameImg, `/frame.jpg?mode=${overlay ? 'max' : 'single'}&ts=${++tsn}`);
+  await loadImg(frameImg, `frame.jpg?mode=${overlay ? 'max' : 'single'}&ts=${++tsn}`);
   if (S.valid) {
-    $('prevImg').src = `/board.jpg?mode=${overlay ? 'max' : 'best'}&ts=${++tsn}`;
-    if (step === 2) await loadImg(boardImg, `/board.jpg?mode=${overlay ? 'max' : 'best'}&ts=${++tsn}`);
+    $('prevImg').src = `board.jpg?mode=${overlay ? 'max' : 'best'}&ts=${++tsn}`;
+    if (step === 2) await loadImg(boardImg, `board.jpg?mode=${overlay ? 'max' : 'best'}&ts=${++tsn}`);
   }
   draw();
 };
@@ -306,8 +306,8 @@ $('manual').onclick = () => { S.manual = []; S.sel = -1; S.corners = null; S.val
 $('rescan').onclick = async () => {
   status(T('sbp.scanning'));
   try {
-    const j = await post('/api/scan', { time: parseFloat($('time').value) || 0 }); if (!j.ok) throw new Error(j.error);
-    await loadImg(frameImg, `/frame.jpg?mode=${overlay ? 'max' : 'single'}&ts=${++tsn}`);
+    const j = await post('api/scan', { time: parseFloat($('time').value) || 0 }); if (!j.ok) throw new Error(j.error);
+    await loadImg(frameImg, `frame.jpg?mode=${overlay ? 'max' : 'single'}&ts=${++tsn}`);
     S.sel = -1; S.corners = null; S.valid = false; $('next').disabled = true; INFO.saved = null; S.fieldsFor = null;
     buildCands(j.candidates);
     if (S.cands.length) selectCand(0); else draw();
@@ -319,11 +319,11 @@ $('save').onclick = async () => {
   for (const k of ['left_score', 'right_score', 'clock']) if (!fields[k]) return status(T('sbp.missing', { f: fieldLabel(k) }), 'err');
   const home = document.querySelector('input[name=home]:checked').value;
   try {
-    const j = await post('/api/save', { corners: S.corners, fields, home }); if (!j.ok) throw new Error(j.error);
+    const j = await post('api/save', { corners: S.corners, fields, home }); if (!j.ok) throw new Error(j.error);
     status(T('sbp.saved_ok'), 'ok');
   } catch (e) { status(e.message, 'err'); }
 };
-$('quit').onclick = async () => { try { await post('/api/quit'); } catch (e) {} status(T('sbp.closed'), 'ok'); };
+$('quit').onclick = async () => { try { await post('api/quit'); } catch (e) {} status(T('sbp.closed'), 'ok'); };
 
 // ---------- mouse and keyboard
 let drag = null, spaceDown = false;
@@ -392,14 +392,14 @@ window.addEventListener('resize', () => { fit(); resize(); });
 
 // ---------- start
 (async () => {
-  INFO = await (await fetch('/api/info')).json();
+  INFO = await (await fetch('api/info')).json();
   if (INFO.lang) setLang(INFO.lang);
   texts(); buildFields();
   if (INFO.fields) for (const k in INFO.fields) if (F[k]) Object.assign(F[k], INFO.fields[k]);
   const hr = document.querySelector(`input[name=home][value=${INFO.home === 'right' ? 'right' : 'left'}]`); if (hr) hr.checked = true;
   $('time').value = Math.round(INFO.time);
   showStep(1);
-  await loadImg(frameImg, `/frame.jpg?mode=max&ts=${++tsn}`);
+  await loadImg(frameImg, `frame.jpg?mode=max&ts=${++tsn}`);
   buildCands(INFO.candidates);
   fit(); draw();
   if (S.cands.length) { selectCand(0); if (INFO.saved) S.fieldsFor = cornersKey(); }

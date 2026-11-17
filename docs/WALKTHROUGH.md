@@ -127,7 +127,7 @@ Calibration teaches the program where the field is in the picture. Three things 
 ### 3a · Calibrate the field
 
 1. Set *Moment in the video* to a time where the **whole field is visible** and not blocked by people (for example during a timeout or warm-up).
-2. Click *Start calibration*. A page opens in your browser showing that frame.
+2. Click *Start calibration*. The calibration page opens right inside the interface, showing that frame (*Close without saving* leaves it).
 3. **Click the landmarks in the order listed on the right** (corners, halfway line, centre, penalty/key corners …). The list is in your language.
    * Landmark names use *far* and *near* for the two sidelines (far = away from the camera) and *left/right* as seen in the picture.
    * You do not have to click everything. Skip points you cannot see with the **space bar**.
@@ -145,7 +145,11 @@ If your venue is not standard size, click only the four corners (and the centre)
 
 **Automatic:** instead of clicking every point you can let the page find the field. Under *Automatic*, tick **which corners are outside the picture** (on a panorama from the sideline usually the two near corners), then click *Find the field automatically*. The page looks for the painted lines and places the field on them (a few seconds; with fisheye on the lens as well) and sets the points it finds. The corner hint matters: without it a smaller field can seem to fit the lines. Check the green lines; if single points are off, set them by hand – clicking the button again refines from the current points. *Show detected lines* colours what the search counts as a line (an empty field with clearly visible lines works best).
 
-**Fisheye (e.g. a full court from one camera):** if the field lines are **curved** in the picture, tick *Fisheye lens* before *Start calibration* (or on the calibration page itself). The page then estimates the lens distortion from your points as well and draws the green lines bent like the real ones. It needs at least 6 points; use 10 or more, spread out to the edges of the picture, where the bend is strongest. Without fisheye, the page suggests it when the error stays high. Processing, tiles and statistics use the straightened mapping automatically.
+**Lens:** choose it on the calibration page (or beforehand in the *Lens* field). **Panorama (e.g. Reco)** is for wide all-round pictures whose straight lines bend towards the sides – it is preselected for very wide pictures. **Fisheye** is for one camera with a curved picture, e.g. a full court. With either, the page estimates the bend from your points as well; it needs at least 6 points – use 10 or more, spread out to the edges of the picture. Processing, tiles and statistics use the straightened mapping automatically.
+
+**Halls with lines of several sports:** click *Pick the line colour* and then a line of your sport (zoom in first) – only lines of that colour count, dark ones as well as bright ones. With *Exclude lines*, clicking a magenta line removes that piece and dragging erases under the brush: strike out everything that is not part of your field (other sports, players, walls) before *Find the field automatically*.
+
+**Correcting by hand:** placed points can be grabbed and moved with the mouse. Blue diamonds at the picture edge show where a field line leaves the picture – drag one onto the real line and that spot counts as an extra point (useful when the corners are outside). **⌘Z** undoes, **⇧⌘Z** redoes (Windows: Ctrl+Z, Ctrl+Y) – for points, the automatic result, struck-out lines, line colour and lens.
 
 ### 3b · Measure player sizes
 

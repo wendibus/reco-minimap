@@ -1,4 +1,34 @@
 {
+  "0.20.0": {
+    "de": [
+      "Die Kalibrierung öffnet sich direkt in der Oberfläche statt in einem eigenen Browserfenster (Spielfeld und Anzeigetafel).",
+      "Panorama-Objektiv für breite Rundumbilder wie von Reco: die Biegung der Linien zu den Seiten wird aus den Punkten mitberechnet.",
+      "Hallen mit Linien mehrerer Sportarten: Linienfarbe per Klick wählen und falsche Linien von Hand ausschließen; die automatische Suche bleibt auf dem Hallenboden.",
+      "Punkte lassen sich mit der Maus verschieben; blaue Rauten am Bildrand ziehen Linien, die aus dem Bild laufen, auf ihre richtige Stelle.",
+      "Rückgängig und Wiederholen mit ⌘Z / ⇧⌘Z (Windows: Strg+Z / Strg+Y)."
+    ],
+    "en": [
+      "The calibration opens right inside the interface instead of a browser window of its own (field and scoreboard).",
+      "Panorama lens for wide all-round pictures as from Reco: the bend of the lines towards the sides is estimated from the points.",
+      "Halls with lines of several sports: pick the line colour with a click and strike out wrong lines by hand; the automatic search stays on the hall floor.",
+      "Points can be moved with the mouse; blue diamonds at the picture edge pull lines that leave the picture onto their real spot.",
+      "Undo and redo with ⌘Z / ⇧⌘Z (Windows: Ctrl+Z / Ctrl+Y)."
+    ],
+    "fr": [
+      "Le calibrage s'ouvre directement dans l'interface au lieu d'une fenêtre de navigateur séparée (terrain et tableau d'affichage).",
+      "Objectif panorama pour les images panoramiques larges comme celles de Reco : la courbure des lignes vers les côtés est calculée à partir des points.",
+      "Salles avec les lignes de plusieurs sports : choisir la couleur des lignes d'un clic et exclure à la main les mauvaises lignes ; la recherche automatique reste sur le sol de la salle.",
+      "Les points se déplacent à la souris ; des losanges bleus au bord de l'image amènent les lignes qui sortent de l'image à leur vraie place.",
+      "Annuler et rétablir avec ⌘Z / ⇧⌘Z (Windows : Ctrl+Z / Ctrl+Y)."
+    ],
+    "es": [
+      "La calibración se abre directamente en la interfaz en lugar de en una ventana del navegador aparte (campo y marcador).",
+      "Objetivo panorama para imágenes panorámicas anchas como las de Reco: la curvatura de las líneas hacia los lados se calcula a partir de los puntos.",
+      "Pabellones con líneas de varios deportes: elegir el color de las líneas con un clic y excluir a mano las líneas erróneas; la búsqueda automática se queda en el suelo del pabellón.",
+      "Los puntos se mueven con el ratón; rombos azules en el borde de la imagen llevan las líneas que salen de la imagen a su sitio real.",
+      "Deshacer y rehacer con ⌘Z / ⇧⌘Z (Windows: Ctrl+Z / Ctrl+Y)."
+    ]
+  },
   "0.19.0": {
     "de": [
       "Automatische Feld-Kalibrierung: ankreuzen, welche Ecken außerhalb des Bildes liegen, und das Feld wird anhand der Spielfeldlinien gefunden – auch mit Fisheye. Die Punkte lassen sich danach von Hand korrigieren.",

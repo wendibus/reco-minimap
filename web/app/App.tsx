@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { HintLayer } from './HintLayer';
 import { JobDialog } from './JobDialog';
-import { api, Btn, LANGS, useApp } from './core';
+import { api, Btn, EMBEDDED_KINDS, embeddedUrl, LANGS, useApp } from './core';
 import { CalibPanel, EvalPanel, LivePanel, RunPanel, SetupPanel, VideoPanel } from './panels';
 import { StatsPanel } from './stats';
 import { unseen, WhatsNew } from './WhatsNew';
@@ -59,6 +59,10 @@ export function App() {
   const lines = [...logLines, ...(last ? last.lines.map((l) => l.t) : [])];
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [lines.length, logOpen]);
 
+  // a running calibration takes the place of the step panel
+  const tool = [...jobs].reverse().find((j) => EMBEDDED_KINDS.has(j.kind) && (j.status === 'running' || j.status === 'cancelling'));
+  const toolUrl = tool ? embeddedUrl(tool) : null;
+
   if (!init) return <main className="preview-page" />;
   const Panel = PANELS[step];
   const stepLabel = (s: Step) => s === 'stats' ? t.ui.stepStats : T('step.' + s);
@@ -95,10 +99,15 @@ export function App() {
         <div className="privacy-lock"><span>●</span> {t.ui.privacy}</div>
       </aside>
       <div className="mm-main">
-        <div className="mm-panel" ref={panelRef}>
+        {tool ? <div className="mm-tool">
+          <div className="mm-tool-head"><h1 className="mm-step-title">{t.job.titles[tool.kind] ?? stepLabel('calib')}</h1>
+            <span className="mm-muted mm-grow">{T('tool.save_hint')}</span>
+            <Btn hint={h.cancelJob} disabled={tool.status === 'cancelling'} onClick={() => void app.cancelJob(tool.id, false)}>{T('tool.close')}</Btn></div>
+          {toolUrl ? <iframe className="mm-tool-frame" src={toolUrl} title={t.job.titles[tool.kind] ?? 'calibration'} /> : <p className="mm-muted">{T('tool.loading')}</p>}
+        </div> : <div className="mm-panel" ref={panelRef}>
           <h1 className="mm-step-title">{stepLabel(step)}</h1>
           <Panel />
-        </div>
+        </div>}
         <footer className={logOpen ? 'mm-log open' : 'mm-log'}>
           <div className="mm-log-head"><button type="button" className="mm-link" data-hint={h.showLog} onClick={() => setLogOpen((v) => !v)}>{logOpen ? '▾' : '▸'} {t.ui.log}</button>
             {last && <span className={last.status === 'done' ? 'ok' : last.status === 'failed' || last.status === 'cancelled' ? 'bad' : 'mm-muted'}>{t.job.titles[last.kind] ?? last.kind} · {T('status.' + (last.status === 'cancelled' || last.status === 'cancelling' ? 'failed' : last.status))}</span>}

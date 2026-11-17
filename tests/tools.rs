@@ -96,7 +96,7 @@ fn fisheye_calibration_roundtrip_maps_both_ways() {
     use reco_minimap::geom::{Projector, Vec2};
     use reco_minimap::lens::Lens;
     let root = tmp("fisheye");
-    let lens = Lens { cx: 0.5, cy: 0.52, k1: -0.3, k2: 0.01, aspect: 16.0 / 9.0 };
+    let lens = Lens { cy: 0.52, k1: -0.3, k2: 0.01, ..Lens::none(16.0 / 9.0) };
     let rm = lens.max_radius();
     // a court seen through a homography and bent by the lens, eight landmarks
     let flat = reco_minimap::geom::Homography::from_points(

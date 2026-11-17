@@ -505,9 +505,17 @@ fn cmd_calibrate(o: &Opts, input: &str) {
     eprintln!("{}", tr!("Panorama {}x{} @ {:.2} fps", "Panorama {}x{} @ {:.2} fps", "Panorama {}x{} à {:.2} i/s", "Panorama {}x{} a {:.2} fps", info.w, info.h, info.fps));
     let profile = profile_from_opts(o);
     eprintln!("{}", tr!("Sportart: {} ({} × {} m)", "Sport: {} ({} × {} m)", "Sport : {} ({} × {} m)", "Deporte: {} ({} × {} m)", profile.id, profile.field.length, profile.field.width));
-    // fisheye: asked for, or the calibration being replaced already had a lens
-    let fisheye = o.has("fisheye") || CourtCalib::load(out).map(|c| c.lens.is_some()).unwrap_or(false);
-    calib::run(input, &info, o.f("time", 5.0), out, !o.has("no-open"), profile, o.s("lang").unwrap_or("de"), fisheye).unwrap_or_else(|e| fail(e));
+    // lens: asked for (--lens, --fisheye), else as in the calibration being replaced, else a panorama
+    // for very wide pictures (a Reco panorama covers about 180°)
+    let lens = match o.s("lens") {
+        Some(l) => reco_minimap::lens::LensModel::parse(l),
+        None if o.has("fisheye") => Some(reco_minimap::lens::LensModel::Division),
+        None => match CourtCalib::load(out) {
+            Ok(c) => c.lens.map(|l| l.model),
+            Err(_) => (info.w as f64 / info.h.max(1) as f64 >= 2.5).then_some(reco_minimap::lens::LensModel::Cylinder),
+        },
+    };
+    calib::run(input, &info, o.f("time", 5.0), out, !o.has("no-open"), profile, o.s("lang").unwrap_or("de"), lens).unwrap_or_else(|e| fail(e));
     eprintln!("{}", tr!("Fertig: {out}", "Done: {out}", "Terminé : {out}", "Listo: {out}"));
 }
 

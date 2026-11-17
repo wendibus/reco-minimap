@@ -1,4 +1,18 @@
 {
+  "0.20.1": {
+    "de": [
+      "Mac-App: Die Kalibrierung öffnet jetzt wirklich im Programmfenster statt im Browser."
+    ],
+    "en": [
+      "Mac app: the calibration now really opens in the program window instead of the browser."
+    ],
+    "fr": [
+      "App Mac : le calibrage s'ouvre maintenant vraiment dans la fenêtre du programme au lieu du navigateur."
+    ],
+    "es": [
+      "App de Mac: la calibración ahora se abre de verdad en la ventana del programa en lugar del navegador."
+    ]
+  },
   "0.20.0": {
     "de": [
       "Die Kalibrierung öffnet sich direkt in der Oberfläche statt in einem eigenen Browserfenster (Spielfeld und Anzeigetafel).",

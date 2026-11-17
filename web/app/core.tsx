@@ -46,7 +46,8 @@ export const BACKGROUND_KINDS = new Set(['live', 'board']);
 export const EMBEDDED_KINDS = new Set(['calibrate', 'scoreboard_calibrate']);
 /** The address of the page an embedded job serves, from its log. */
 export function embeddedUrl(j: JobView): string | null {
-  for (const l of j.lines) { const m = /http:\/\/127\.0\.0\.1:\d+\/\?lang=[a-z]+/.exec(l.t); if (m) return m[0]; }
+  // passed through the interface's own port: the Mac app's window only loads pages from there
+  for (const l of j.lines) { const m = /http:\/\/127\.0\.0\.1:(\d+)\/\?lang=([a-z]+)/.exec(l.t); if (m) return `/tool/${m[1]}/?lang=${m[2]}`; }
   return null;
 }
 

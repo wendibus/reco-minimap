@@ -294,7 +294,7 @@ pub fn guide(lang: super::i18n::Lang) -> &'static str {
 
 fn project_files(dir: &Path) -> Value {
     let court = dir.join("court.json");
-    let court_v = CourtCalib::load(&court.to_string_lossy()).ok().map(|c| json!({"points": c.points.len(), "rms": c.rms_m, "sport": c.sport, "pano": [c.pano_w, c.pano_h], "fisheye": c.lens.is_some()}));
+    let court_v = CourtCalib::load(&court.to_string_lossy()).ok().map(|c| json!({"points": c.points.len(), "rms": c.rms_m, "sport": c.sport, "pano": [c.pano_w, c.pano_h], "lens": c.lens.map(|l| l.model.key())}));
     let rd = |n: &str| std::fs::read_to_string(dir.join(n)).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok());
     let mut outs = Vec::new();
     if let Ok(rdir) = std::fs::read_dir(dir.join("out")) {
@@ -442,9 +442,13 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
     match kind {
         "calibrate" => {
             need(&video, trs!("Video", "video", "vidéo", "vídeo"))?;
-            pushs(&mut a, &["calibrate", &video, "--sport", &get_s(p, "sport"), "--time", &get_s(p, "time"), "--out", "court.json", "--lang", &get_s(p, "lang")]);
-            if p["fisheye"] == true {
-                a.push("--fisheye".into());
+            // the page is shown inside the interface, not in a browser window of its own
+            pushs(&mut a, &["calibrate", &video, "--sport", &get_s(p, "sport"), "--time", &get_s(p, "time"), "--out", "court.json", "--lang", &get_s(p, "lang"), "--no-open"]);
+            // lens: chosen in the interface; empty = as before / a panorama for very wide pictures
+            match p["lens"].as_str().filter(|l| ["none", "fisheye", "panorama"].contains(l)) {
+                Some(l) => pushs(&mut a, &["--lens", l]),
+                None if p["fisheye"] == true => pushs(&mut a, &["--lens", "fisheye"]),
+                None => {}
             }
             if get_s(p, "sport") == "custom" {
                 pushs(&mut a, &["--length", &get_s(p, "length"), "--width", &get_s(p, "width")]);
@@ -457,7 +461,7 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
         }
         "scoreboard_calibrate" => {
             need(&video, trs!("Video", "video", "vidéo", "vídeo"))?;
-            pushs(&mut a, &["scoreboard-calibrate", &video, "--time", &get_s(p, "time"), "--out", "scoreboard.json", "--lang", &get_s(p, "lang")]);
+            pushs(&mut a, &["scoreboard-calibrate", &video, "--time", &get_s(p, "time"), "--out", "scoreboard.json", "--lang", &get_s(p, "lang"), "--no-open"]);
         }
         "selfcheck" | "scales" | "colors" => {
             need(&video, trs!("Video", "video", "vidéo", "vídeo"))?;
@@ -1069,11 +1073,13 @@ mod tests {
         assert!(pair(&build_args("update", Path::new("/x"), &json!({"lang": "xx"})).unwrap(), "--lang").is_none());
         let c = build_args("calibrate", Path::new("/x"), &json!({"video": "/v.mp4", "sport": "basketball", "time": 5, "lang": "es"})).unwrap();
         let sb = build_args("scoreboard_calibrate", Path::new("/x"), &json!({"video": "/v.mp4", "time": 60, "lang": "fr"})).unwrap();
-        assert_eq!(sb, ["scoreboard-calibrate", "/v.mp4", "--time", "60", "--out", "scoreboard.json", "--lang", "fr"]);
+        assert_eq!(sb, ["scoreboard-calibrate", "/v.mp4", "--time", "60", "--out", "scoreboard.json", "--lang", "fr", "--no-open"]);
         assert_eq!(c.iter().filter(|x| *x == "--lang").count(), 1);
-        assert!(!c.iter().any(|x| x == "--fisheye"));
-        let f = build_args("calibrate", Path::new("/x"), &json!({"video": "/v.mp4", "sport": "basketball", "time": 5, "lang": "de", "fisheye": true})).unwrap();
-        assert!(f.iter().any(|x| x == "--fisheye"));
+        assert!(!c.iter().any(|x| x == "--lens"));
+        let f = build_args("calibrate", Path::new("/x"), &json!({"video": "/v.mp4", "sport": "basketball", "time": 5, "lang": "de", "lens": "panorama"})).unwrap();
+        assert_eq!(pair(&f, "--lens").as_deref(), Some("panorama"));
+        let old = build_args("calibrate", Path::new("/x"), &json!({"video": "/v.mp4", "sport": "basketball", "time": 5, "lang": "de", "fisheye": true})).unwrap();
+        assert_eq!(pair(&old, "--lens").as_deref(), Some("fisheye"));
     }
 
     #[test]

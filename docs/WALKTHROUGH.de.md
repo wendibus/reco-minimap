@@ -127,7 +127,7 @@ Die Kalibrierung bringt dem Programm bei, wo das Spielfeld im Bild liegt. Hier p
 ### 3a · Spielfeld kalibrieren
 
 1. Stelle *Zeitpunkt im Video* auf einen Moment, in dem das **ganze Feld sichtbar** und nicht von Personen verdeckt ist (z. B. Auszeit oder Warm-up).
-2. Klicke *Kalibrierung starten*. Im Browser öffnet sich eine Seite mit diesem Bild.
+2. Klicke *Kalibrierung starten*. Die Kalibrierseite öffnet sich direkt in der Oberfläche mit diesem Bild (*Schließen ohne Speichern* verlässt sie).
 3. **Klicke die Punkte in der Reihenfolge der Liste rechts an** (Ecken, Mittellinie, Mittelpunkt, Zonen-/Strafraum-Ecken …). Die Liste ist in deiner Sprache.
    * „hinten“ und „vorn“ bezeichnen die beiden Seitenlinien (hinten = weiter von der Kamera weg), „links/rechts“ wie im Bild.
    * Du musst nicht alles anklicken. Nicht sichtbare Punkte überspringst du mit der **Leertaste**.
@@ -145,7 +145,11 @@ Hat deine Halle kein Standardmaß, klicke nur die vier Ecken (und den Mittelpunk
 
 **Automatisch:** Statt jeden Punkt zu klicken, kann die Seite das Feld selbst suchen. Unter *Automatisch* ankreuzen, **welche Ecken außerhalb des Bildes liegen** (bei einem Panorama von der Seitenlinie meist die beiden vorderen), dann *Feld automatisch finden* klicken. Die Seite sucht die Spielfeldlinien, legt das Feld darauf (wenige Sekunden; mit Fisheye auch die Verzeichnung) und setzt die gefundenen Punkte. Die Ecken-Angabe ist wichtig: Ohne sie kann ein zu kleines Feld scheinbar passen. Danach die grünen Linien prüfen; einzelne Punkte, die danebenliegen, von Hand neu setzen – ein erneuter Klick verfeinert von den aktuellen Punkten aus. *Erkannte Linien zeigen* färbt, was die Suche als Linie zählt (am besten klappt es mit freiem Feld und gut sichtbaren Linien).
 
-**Fisheye (z. B. ein Vollfeld mit einer Kamera):** Sind die Spielfeldlinien im Bild **gebogen**, vor *Kalibrierung starten* *Fisheye-Objektiv* ankreuzen (oder auf der Kalibrierseite selbst). Die Seite berechnet die Verzeichnung dann aus deinen Punkten mit und zeichnet die grünen Linien so gebogen wie die echten. Nötig sind mindestens 6 Punkte; besser 10 oder mehr, bis an die Bildränder verteilt, wo die Biegung am stärksten ist. Ohne Fisheye schlägt die Seite es vor, wenn der Fehler hoch bleibt. Verarbeitung, Kacheln und Statistik nutzen die entzerrte Zuordnung automatisch.
+**Objektiv:** wählst du auf der Kalibrierseite (oder vorher im Feld *Objektiv*). **Panorama (z. B. Reco)** ist für breite Rundumbilder, deren gerade Linien sich zu den Seiten biegen – bei sehr breiten Bildern ist es vorgewählt. **Fisheye** ist für eine Kamera mit gebogenem Bild, z. B. ein Vollfeld. In beiden Fällen berechnet die Seite die Biegung aus deinen Punkten mit; dafür braucht sie mindestens 6 Punkte – besser 10 oder mehr, bis an die Bildränder verteilt. Verarbeitung, Kacheln und Statistik nutzen die entzerrte Zuordnung automatisch.
+
+**Hallen mit Linien mehrerer Sportarten:** *Linienfarbe wählen* klicken und dann eine Linie deiner Sportart (vorher hineinzoomen) – dann zählen nur Linien dieser Farbe, dunkle wie helle. Mit *Linien ausschließen* entfernt ein Klick auf eine magenta Linie dieses Stück, Ziehen radiert unter dem Pinsel: alles wegnehmen, was nicht zu deinem Feld gehört (andere Sportarten, Spieler, Wand), dann *Feld automatisch finden*.
+
+**Von Hand korrigieren:** Gesetzte Punkte lassen sich mit der Maus anfassen und verschieben. Blaue Rauten am Bildrand zeigen, wo eine Feldlinie das Bild verlässt – zieh eine auf die echte Linie, dann zählt die Stelle als zusätzlicher Punkt (hilfreich, wenn die Ecken außerhalb liegen). **⌘Z** macht rückgängig, **⇧⌘Z** wiederholt (Windows: Strg+Z, Strg+Y) – für Punkte, das Ergebnis der Automatik, ausgeschlossene Linien, Linienfarbe und Objektiv.
 
 ### 3b · Spielergrößen messen
 

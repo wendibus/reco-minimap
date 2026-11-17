@@ -29,17 +29,23 @@ canvas#legend{display:block;width:100%;border:.5px solid var(--sep);border-radiu
   <h1 id="t_title"></h1>
   <p id="t_intro"></p>
   <p id="t_sides"></p>
-  <label id="fishbox" style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;cursor:pointer"><input type="checkbox" id="fisheye" style="margin-top:2px"><span><b id="t_fish"></b><br><span id="t_fishhint" style="color:var(--label-2);font-size:11.5px"></span></span></label>
+  <div id="lensbox" style="display:flex;flex-direction:column;gap:4px;font-size:12.5px"><b id="t_lens"></b>
+   <div style="display:flex;gap:12px;flex-wrap:wrap"><label><input type="radio" name="lens" value="none"> <span id="t_lens_none"></span></label><label><input type="radio" name="lens" value="fisheye"> <span id="t_lens_fish"></span></label><label><input type="radio" name="lens" value="panorama"> <span id="t_lens_pano"></span></label></div>
+   <span id="t_lenshint" style="color:var(--label-2);font-size:11.5px"></span></div>
   <div class="auto"><h2 id="t_auto"></h2><p id="t_autohint"></p>
+   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button id="pickbtn"><span id="t_pick"></span></button><span id="swatch" style="display:none;width:22px;height:22px;border-radius:6px;border:.5px solid var(--sep)"></span><button id="clearcolor" style="display:none;min-height:24px;padding:2px 8px">×</button></div>
+   <p id="t_colorhint" style="font-size:11.5px"></p>
    <p id="t_outside" style="font-weight:600;color:var(--label)"></p>
    <div class="corners"><label><input type="checkbox" id="o0"><span id="t_o0"></span></label><label><input type="checkbox" id="o1"><span id="t_o1"></span></label>
     <label><input type="checkbox" id="o3"><span id="t_o3"></span></label><label><input type="checkbox" id="o2"><span id="t_o2"></span></label></div>
    <div class="btns"><button class="primary" id="autobtn"></button><label style="display:flex;gap:6px;align-items:center;font-size:12px;cursor:pointer"><input type="checkbox" id="showlines"><span id="t_showlines"></span></label></div>
+   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button id="erasebtn"><span id="t_erase"></span></button><button id="eraseclear" style="display:none"><span id="t_erase_clear"></span></button></div>
+   <p id="t_erasehint" style="font-size:11.5px;display:none"></p>
    <p id="automsg"></p></div>
   <div id="q"></div>
   <div id="legendbox"><p id="t_legend" style="font-size:12px;margin-bottom:4px"></p><canvas id="legend"></canvas><p id="t_cam" style="font-size:11px;text-align:center"></p></div>
   <div id="list"></div>
-  <div style="display:flex;gap:8px"><button id="undo"></button><button id="skip"></button></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap"><button id="undo" disabled></button><button id="redo" disabled></button><button id="skip"></button></div>
   <button class="primary" id="save" disabled></button>
   <p id="msg"></p>
   <p id="t_scaled" style="font-size:12px"></p>
@@ -49,13 +55,13 @@ canvas#legend{display:block;width:100%;border:.5px solid var(--sep);border-radiu
 <script src="/i18n.js"></script>
 <script>
 const $=id=>document.getElementById(id);
-let info,img=new Image(),linesImg=null,pts={},cur=0,lens=null,scale=1,ox=0,oy=0,overlay=[],resid={},rms=null,mouse={x:0,y:0,in:false};
+let info,img=new Image(),linesImg=null,pts={},lpts=[],handles=[],cur=0,lens=null,scale=1,ox=0,oy=0,overlay=[],resid={},rms=null,mouse={x:0,y:0,in:false};
 const cv=$('cv'),ctx=cv.getContext('2d'),lp=$('loupe'),lctx=lp.getContext('2d');
 function texts(){document.title=T('calp.title');$('t_title').textContent=T('calp.title');$('t_intro').textContent=T('calp.intro');$('t_sides').textContent=T('calp.sides');
- $('t_legend').textContent=T('calp.legend');$('t_cam').textContent='▲ '+T('calp.camera');$('undo').textContent=T('calp.undo');$('skip').textContent=T('calp.skip');$('save').textContent=T('calp.save');$('t_fish').textContent=T('calp.fisheye');$('t_auto').textContent=T('calp.auto');$('t_autohint').textContent=T('calp.auto_hint');$('t_outside').textContent=T('calp.outside');
- ['fl','fr','nr','nl'].forEach((k,i)=>$('t_o'+i).textContent=T('calp.c_'+k));$('autobtn').textContent=T('calp.auto_btn');$('t_showlines').textContent=T('calp.show_lines');$('t_fishhint').textContent=T('calp.fisheye_hint');$('t_priv').textContent=T('calp.privacy');
+ $('t_legend').textContent=T('calp.legend');$('t_cam').textContent='▲ '+T('calp.camera');$('undo').textContent='↶ '+T('calp.undo');$('redo').textContent='↷ '+T('calp.redo');$('undo').title=T('calp.undo_key');$('redo').title=T('calp.redo_key');$('skip').textContent=T('calp.skip');$('save').textContent=T('calp.save');$('t_lens').textContent=T('calp.lens_title');$('t_lens_none').textContent=T('calp.lens_none');$('t_lens_fish').textContent=T('calp.lens_fisheye');$('t_lens_pano').textContent=T('calp.lens_panorama');$('t_pick').textContent=T('calp.pick_color');$('t_colorhint').textContent=T('calp.color_hint');$('t_auto').textContent=T('calp.auto');$('t_autohint').textContent=T('calp.auto_hint');$('t_outside').textContent=T('calp.outside');
+ ['fl','fr','nr','nl'].forEach((k,i)=>$('t_o'+i).textContent=T('calp.c_'+k));$('autobtn').textContent=T('calp.auto_btn');$('t_showlines').textContent=T('calp.show_lines');$('t_erase').textContent=T('calp.erase');$('t_erase_clear').textContent=T('calp.erase_clear');$('t_erasehint').textContent=T('calp.erase_hint');$('t_lenshint').textContent=T('calp.lens_hint');$('t_priv').textContent=T('calp.privacy');
  if(info)$('t_scaled').textContent=T('calp.scaled',{l:info.field[0],w:info.field[1]});}
-async function init(){info=await (await fetch('/api/info')).json();if(info.lang)setLang(info.lang);texts();$('fisheye').checked=!!info.fisheye;$('fisheye').onchange=solve;img.onload=()=>{resize();build();draw();};img.src='/frame.png';requestAnimationFrame(legend);}
+async function init(){info=await (await fetch('/api/info')).json();if(info.lang)setLang(info.lang);texts();setLens(info.lens||'none');saved=snap();document.querySelectorAll('input[name=lens]').forEach(r=>r.onchange=()=>{record();solve();});img.onload=()=>{resize();build();draw();};img.src='/frame.png';requestAnimationFrame(legend);}
 // Small top-down field: every landmark as a dot (green = set), the one to click next blinking.
 // "far" is at the top and the camera at the bottom, as in the landmark names.
 const outside=()=>[0,1,2,3].map(i=>$('o'+i).checked);
@@ -84,27 +90,86 @@ function clampView(){if(!img.width)return;scale=Math.min(Math.max(scale,fitScale
 addEventListener('resize',()=>{resize()});
 function build(){const l=$('list');l.innerHTML='';info.landmarks.forEach((m,i)=>{const d=document.createElement('div');d.className='row';d.id='r'+i;d.innerHTML=`<span class="num">${i+1}</span><span>${landmarkLabel(m.key,info.sport)}</span><span class="res" id="s${i}">–</span>`;d.onclick=()=>{cur=i;refresh();};l.appendChild(d);});refresh();}
 function refresh(){info.landmarks.forEach((m,i)=>{const r=$('r'+i);r.className='row'+(pts[i]?' done':'')+(i===cur?' cur':'');$('s'+i).textContent=pts[i]?(resid[i]!==undefined?resid[i].toFixed(2)+' m':'✓'):'–';});
- const n=Object.keys(pts).length;$('save').disabled=n<4;
+ const n=Object.keys(pts).length+lpts.length;$('save').disabled=n<4;
  let t=n===0?T('calp.none'):n<4?T('calp.need',{n:n,m:4-n}):(rms===null?'…':`${T('calp.rms')}: <b class="${rms<0.5?'good':rms<0.9?'':'warn'}">${rms.toFixed(2)} m</b> – ${T('calp.points',{n:n})}`+(n<8?' · '+T('calp.more'):'')+(rms>=0.9?' · '+T('calp.high'):''))
-  +(fish()&&n<info.fisheye_min?'<br><span style="font-weight:400">'+T('calp.fisheye_need',{n:info.fisheye_min})+'</span>':'')
-  +(lens?'<br><span style="font-weight:400">'+T('calp.lens',{k:lens.k1.toFixed(3)})+'</span>':'')
-  +(!fish()&&rms!==null&&rms>=0.5&&n>=info.fisheye_min?'<br><span style="font-weight:400">'+T('calp.try_fisheye')+'</span>':'');
+  +(fish()&&n<info.lens_min?'<br><span style="font-weight:400">'+T('calp.lens_need',{n:info.lens_min})+'</span>':'')
+  +(lens?'<br><span style="font-weight:400">'+(lens.model==='panorama'?T('calp.lens_pano_info',{f:Math.round(lens.fov)}):T('calp.lens',{k:lens.k1.toFixed(3)}))+'</span>':'')
+  +(!fish()&&rms!==null&&rms>=0.5&&n>=info.lens_min?'<br><span style="font-weight:400">'+T('calp.try_lens')+'</span>':'');
  $('q').innerHTML=t;draw();}
 function toImg(x,y){return[(x-ox)/scale,(y-oy)/scale];}
 function nextFree(){for(let k=1;k<=info.landmarks.length;k++){const j=(cur+k)%info.landmarks.length;if(!pts[j])return j;}return cur;}
-const fish=()=>$('fisheye').checked;
-async function solve(){const arr=Object.entries(pts).map(([i,p])=>({id:+i,u:p.u/img.width,v:p.v/img.height}));
- if(arr.length<4){overlay=[];resid={};rms=null;lens=null;refresh();return;}
- const r=await (await fetch('/api/solve',{method:'POST',body:JSON.stringify({points:arr,fisheye:fish()})})).json();
- if(r.ok){overlay=r.overlay;resid={};r.residuals.forEach(e=>resid[e.id]=e.m);rms=r.rms;lens=r.lens;}else{overlay=[];rms=null;lens=null;}refresh();}
-function place(ix,iy){pts[cur]={u:ix,v:iy};cur=nextFree();refresh();solve();}
-$('undo').onclick=undo;$('skip').onclick=()=>{cur=(cur+1)%info.landmarks.length;refresh();};
-function undo(){const k=Object.keys(pts).map(Number);if(!k.length)return;const last=Math.max(...k);delete pts[last];cur=last;resid={};refresh();solve();}
-addEventListener('keydown',e=>{if(e.key==='Backspace'){e.preventDefault();undo();}else if(e.key===' '){e.preventDefault();cur=(cur+1)%info.landmarks.length;refresh();}else if(e.key==='f'||e.key==='F'){fit();}});
-let drag=null;
-cv.addEventListener('mousedown',e=>{drag={x:e.offsetX,y:e.offsetY,ox,oy,moved:false};});
-addEventListener('mouseup',e=>{if(drag&&!drag.moved&&e.target===cv){const[ix,iy]=toImg(drag.x,drag.y);if(ix>=0&&iy>=0&&ix<img.width&&iy<img.height)place(ix,iy);}drag=null;});
-cv.addEventListener('mousemove',e=>{mouse={x:e.offsetX,y:e.offsetY,in:true};if(drag){const dx=e.offsetX-drag.x,dy=e.offsetY-drag.y;if(Math.hypot(dx,dy)>4)drag.moved=true;if(drag.moved){ox=drag.ox+dx;oy=drag.oy+dy;clampView();}}draw();});
+const lensSel=()=>(document.querySelector('input[name=lens]:checked')||{value:'none'}).value;
+const fish=()=>lensSel()!=='none';
+function setLens(v){document.querySelectorAll('input[name=lens]').forEach(r=>r.checked=r.value===v);}
+// landmarks by index, plus points pulled onto a field line from the picture edge (with their spot in metres)
+function payload(){return Object.entries(pts).map(([i,p])=>({id:+i,u:p.u/img.width,v:p.v/img.height})).concat(lpts.map((p,k)=>({id:'L'+k,court:[p.x,p.y],u:p.u/img.width,v:p.v/img.height})));}
+// where the fitted field lines leave the picture: handles that can be pulled onto the real line
+function edgeHandles(lines){const out=[],inside=q=>q[0]>=0&&q[0]<=1&&q[1]>=0&&q[1]<=1;
+ (lines||[]).forEach(pl=>{for(let k=1;k<pl.length;k++){const a=pl[k-1],b=pl[k];if(inside(a)===inside(b))continue;
+  // the spot on the segment where it crosses the picture edge (bisection keeps the inside end)
+  let lo=0,hi=1;const ina=inside(a);for(let it=0;it<30;it++){const m=(lo+hi)/2;inside([a[0]+(b[0]-a[0])*m,a[1]+(b[1]-a[1])*m])===ina?lo=m:hi=m;}const t=ina?lo:hi;
+  const h={u:Math.min(Math.max(a[0]+(b[0]-a[0])*t,0),1)*img.width,v:Math.min(Math.max(a[1]+(b[1]-a[1])*t,0),1)*img.height,x:a[2]+(b[2]-a[2])*t,y:a[3]+(b[3]-a[3])*t};
+  if(!out.some(o=>Math.hypot(o.u-h.u,o.v-h.v)<img.width*0.012))out.push(h);}});
+ return out;}
+async function solve(){const arr=payload();
+ if(arr.length<4){overlay=[];handles=[];resid={};rms=null;lens=null;refresh();return;}
+ const r=await (await fetch('/api/solve',{method:'POST',body:JSON.stringify({points:arr,lens:lensSel()})})).json();
+ if(r.ok){overlay=r.overlay;handles=edgeHandles(r.lines);resid={};r.residuals.forEach(e=>resid[e.id]=e.m);rms=r.rms;lens=r.lens;}else{overlay=[];handles=[];rms=null;lens=null;}refresh();}
+// ---- history: every change of points, line points, struck-out lines, line colour and lens can be
+// undone (⌘Z / Ctrl+Z) and redone (⇧⌘Z / Ctrl+Shift+Z / Ctrl+Y)
+let hist=[],fut=[],saved=null;
+function snap(){return JSON.stringify({pts,lpts,strokes,lineColor,cur,lens:lensSel()});}
+// after a change: the state before it goes onto the undo stack
+function record(){const s=snap();if(saved!==null&&s!==saved){hist.push(saved);if(hist.length>300)hist.shift();fut=[];}saved=s;histUi();}
+function histUi(){$('undo').disabled=!hist.length;$('redo').disabled=!fut.length;}
+function restore(s){const o=JSON.parse(s),linesWere=JSON.stringify(strokes),colorWas=JSON.stringify(lineColor);
+ pts=o.pts;lpts=o.lpts;strokes=o.strokes;cur=o.cur;hover=null;if(o.lens!==lensSel())setLens(o.lens);
+ if(JSON.stringify(o.lineColor)!==colorWas)setColor(o.lineColor);else if(JSON.stringify(strokes)!==linesWere&&$('showlines').checked)loadLines();
+ saved=s;resid={};eraseUi();refresh();solve();histUi();draw();}
+function undoH(){if(!hist.length)return;fut.push(snap());restore(hist.pop());}
+function redoH(){if(!fut.length)return;hist.push(snap());restore(fut.pop());}
+function place(ix,iy){pts[cur]={u:ix,v:iy};cur=nextFree();record();refresh();solve();}
+$('undo').onclick=undoH;$('redo').onclick=redoH;$('skip').onclick=()=>{cur=(cur+1)%info.landmarks.length;refresh();};
+// Backspace: the line point under the mouse, else the last landmark point
+function removeLast(){if(typeof hover==='string'&&hover[0]==='L'){lpts.splice(+hover.slice(1),1);hover=null;}else{const k=Object.keys(pts).map(Number);if(!k.length)return;const last=Math.max(...k);delete pts[last];cur=last;}resid={};record();refresh();solve();}
+addEventListener('keydown',e=>{const mod=e.metaKey||e.ctrlKey,k=e.key.toLowerCase();
+ if(mod&&k==='z'){e.preventDefault();e.shiftKey?redoH():undoH();return;}
+ if(mod&&k==='y'){e.preventDefault();redoH();return;}
+ if(mod)return;
+ if(erasing&&e.key==='Escape'){setErasing(false);}else if(erasing&&e.key==='Backspace'){e.preventDefault();undoH();}else if(e.key==='Backspace'){e.preventDefault();removeLast();}else if(e.key===' '){e.preventDefault();cur=(cur+1)%info.landmarks.length;refresh();}else if(e.key==='f'||e.key==='F'){fit();}});
+let drag=null,picking=false,lineColor=null,erasing=false,strokes=[],stroke=null,hover=null;
+const GRAB=11; // screen pixels around a point that pick it up
+// the placed point nearest to a screen position, if close enough to grab
+function pointAt(x,y){let best=null,bd=GRAB;const tryp=(key,p)=>{const d=Math.hypot(ox+p.u*scale-x,oy+p.v*scale-y);if(d<=bd){bd=d;best=key;}};
+ for(const[i,p]of Object.entries(pts))tryp(+i,p);lpts.forEach((p,k)=>tryp('L'+k,p));handles.forEach((p,k)=>tryp('H'+k,p));return best;}
+function movePoint(key,u,v){const q={u:Math.min(Math.max(u,0),img.width),v:Math.min(Math.max(v,0),img.height)};
+ if(typeof key==='number')pts[key]=q;else if(key[0]==='L')Object.assign(lpts[+key.slice(1)],q);}
+function setCursor(){cv.style.cursor=erasing?'none':picking?'copy':drag&&drag.point!=null&&drag.moved?'grabbing':hover!=null?'grab':'crosshair';}
+const BRUSH=12; // brush radius in screen pixels
+function eraseList(){return strokes.flat();}
+function eraseUi(){$('erasebtn').classList.toggle('primary',erasing);$('eraseclear').style.display=strokes.length?'inline-block':'none';$('t_erasehint').style.display=erasing?'block':'none';cv.style.cursor=erasing?'none':picking?'copy':'crosshair';}
+function setErasing(on){erasing=on;if(on){picking=false;$('pickbtn').classList.remove('primary');if(!$('showlines').checked){$('showlines').checked=true;}if(!linesImg)loadLines();}eraseUi();draw();}
+$('erasebtn').onclick=()=>setErasing(!erasing);
+$('eraseclear').onclick=()=>{strokes=[];record();eraseUi();loadLines();};
+// fill the gap to the last brush point, so a fast stroke leaves no holes
+function strokeTo(b){const a=stroke[stroke.length-1],asp=img.height/img.width,d=Math.hypot(b[0]-a[0],(b[1]-a[1])*asp),n=Math.ceil(d/(b[2]*0.5));for(let k=1;k<=n;k++)stroke.push([a[0]+(b[0]-a[0])*k/n,a[1]+(b[1]-a[1])*k/n,b[2]]);}
+function brushAt(x,y){const[ix,iy]=toImg(x,y);return[ix/img.width,iy/img.height,BRUSH/scale/img.width];}
+// the line colour: the pixel around the click that differs most from its surroundings (a thin line
+// mixes with the floor, the strongest pixel is the line's own colour)
+function sampleColor(ix,iy){const c=document.createElement('canvas');c.width=c.height=7;const g=c.getContext('2d');g.drawImage(img,Math.round(ix)-3,Math.round(iy)-3,7,7,0,0,7,7);
+ const d=g.getImageData(0,0,7,7).data,px=i=>[d[i*4],d[i*4+1],d[i*4+2]];let bg=[0,0,0],nb=0;
+ for(let y=0;y<7;y++)for(let x=0;x<7;x++)if(x===0||y===0||x===6||y===6){const p=px(y*7+x);bg=bg.map((v,k)=>v+p[k]);nb++;}
+ bg=bg.map(v=>v/nb);let best=null,bd=-1;for(let y=1;y<6;y++)for(let x=1;x<6;x++){const p=px(y*7+x),dd=Math.hypot(p[0]-bg[0],p[1]-bg[1],p[2]-bg[2]);if(dd>bd){bd=dd;best=p;}}return best;}
+function setColor(c){lineColor=c;$('swatch').style.display=c?'inline-block':'none';$('clearcolor').style.display=c?'inline-block':'none';if(c)$('swatch').style.background=`rgb(${c.join(',')})`;
+ linesImg=null;if($('showlines').checked)loadLines();$('pickbtn').classList.remove('primary');picking=false;cv.style.cursor='crosshair';}
+let linesReq=0;
+async function loadLines(){const n=++linesReq;try{const r=await fetch('/api/lines',{method:'POST',body:JSON.stringify({color:lineColor,erase:eraseList()})});if(!r.ok||n!==linesReq)return;
+ const url=URL.createObjectURL(await r.blob());const im=new Image();im.onload=()=>{if(n!==linesReq)return;if(linesImg&&linesImg.src.startsWith('blob:'))URL.revokeObjectURL(linesImg.src);linesImg=im;draw();};im.src=url;}catch(e){}}
+$('pickbtn').onclick=()=>{if(erasing)setErasing(false);picking=!picking;$('pickbtn').classList.toggle('primary',picking);cv.style.cursor=picking?'copy':'crosshair';};
+$('clearcolor').onclick=()=>{setColor(null);record();};
+cv.addEventListener('mousedown',e=>{drag={x:e.offsetX,y:e.offsetY,ox,oy,moved:false,point:!erasing&&!picking?pointAt(e.offsetX,e.offsetY):null};if(erasing&&!e.shiftKey){stroke=[brushAt(e.offsetX,e.offsetY)];}});
+addEventListener('mouseup',e=>{if(drag&&drag.point!=null){const id=drag.point,moved=drag.moved;drag=null;if(moved){record();solve();}else if(typeof id==='number'){cur=id;refresh();}setCursor();draw();return;}if(stroke){const s=drag&&!drag.moved?[[stroke[0][0],stroke[0][1],0]]:stroke;stroke=null;drag=null;strokes.push(s);record();eraseUi();loadLines();return;}if(drag&&!drag.moved&&e.target===cv){const[ix,iy]=toImg(drag.x,drag.y);if(ix>=0&&iy>=0&&ix<img.width&&iy<img.height){if(picking){setColor(sampleColor(ix,iy));record();}else place(ix,iy);}}drag=null;});
+cv.addEventListener('mousemove',e=>{mouse={x:e.offsetX,y:e.offsetY,in:true};if(!drag){hover=!erasing&&!picking?pointAt(e.offsetX,e.offsetY):null;}setCursor();if(drag){const dx=e.offsetX-drag.x,dy=e.offsetY-drag.y;if(Math.hypot(dx,dy)>4)drag.moved=true;if(drag.moved){if(drag.point!=null){if(typeof drag.point==='string'&&drag.point[0]==='H'){const h=handles[+drag.point.slice(1)];lpts.push({u:h.u,v:h.v,x:h.x,y:h.y});handles.splice(+drag.point.slice(1),1);drag.point='L'+(lpts.length-1);}const[ix,iy]=toImg(e.offsetX,e.offsetY);movePoint(drag.point,ix,iy);}else if(stroke)strokeTo(brushAt(e.offsetX,e.offsetY));else{ox=drag.ox+dx;oy=drag.oy+dy;clampView();}}}draw();});
 cv.addEventListener('mouseleave',()=>{mouse.in=false;draw();});
 cv.addEventListener('wheel',e=>{e.preventDefault();const f=e.deltaY<0?1.2:1/1.2;const mx=e.offsetX,my=e.offsetY;const ns=Math.min(Math.max(scale*f,fitScale()),fitScale()*40),k=ns/scale;ox=mx-(mx-ox)*k;oy=my-(my-oy)*k;scale=ns;clampView();draw();},{passive:false});
 function draw(){ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.height);if(!img.width)return;
@@ -112,19 +177,23 @@ function draw(){ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.heig
  if($('showlines').checked&&linesImg&&linesImg.complete){ctx.save();ctx.globalAlpha=0.6;ctx.fillStyle='#000';ctx.fillRect(0,0,img.width,img.height);ctx.globalAlpha=1;ctx.globalCompositeOperation='screen';ctx.imageSmoothingEnabled=true;ctx.drawImage(linesImg,0,0,img.width,img.height);ctx.restore();}
  ctx.strokeStyle='#7CFC00';ctx.lineWidth=2/scale;overlay.forEach(pl=>{ctx.beginPath();pl.forEach(([u,v],k)=>{const x=u*img.width,y=v*img.height;k?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.stroke();});
  ctx.setTransform(1,0,0,1,0,0);
- Object.entries(pts).forEach(([i,p])=>{const x=ox+p.u*scale,y=oy+p.v*scale;ctx.strokeStyle='#ff8c00';ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y,7,0,7);ctx.moveTo(x-12,y);ctx.lineTo(x+12,y);ctx.moveTo(x,y-12);ctx.lineTo(x,y+12);ctx.stroke();ctx.fillStyle='#ff8c00';ctx.font='bold 12px sans-serif';ctx.fillText(+i+1,x+9,y-9);});
+ if(stroke){ctx.fillStyle='rgba(0,0,0,.75)';stroke.forEach(([u,v,r])=>{ctx.beginPath();ctx.arc(ox+u*img.width*scale,oy+v*img.height*scale,r*img.width*scale,0,7);ctx.fill();});}
+ if(erasing&&mouse.in){ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(mouse.x,mouse.y,BRUSH,0,7);ctx.stroke();ctx.strokeStyle='#000';ctx.beginPath();ctx.arc(mouse.x,mouse.y,BRUSH+1.5,0,7);ctx.stroke();}
+ handles.forEach((p,k)=>{const x=ox+p.u*scale,y=oy+p.v*scale,hot=hover==='H'+k,r=hot?9:6;ctx.fillStyle=hot?'#fff':'#00d5ff';ctx.strokeStyle='#003a46';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(x,y-r);ctx.lineTo(x+r,y);ctx.lineTo(x,y+r);ctx.lineTo(x-r,y);ctx.closePath();ctx.fill();ctx.stroke();});
+ lpts.forEach((p,k)=>{const x=ox+p.u*scale,y=oy+p.v*scale,hot=hover==='L'+k||(drag&&drag.point==='L'+k);if(hot){ctx.fillStyle='rgba(0,213,255,.25)';ctx.beginPath();ctx.arc(x,y,GRAB+3,0,7);ctx.fill();}ctx.strokeStyle=hot?'#fff':'#00d5ff';ctx.lineWidth=hot?3:2;ctx.beginPath();ctx.arc(x,y,6,0,7);ctx.moveTo(x-10,y);ctx.lineTo(x+10,y);ctx.moveTo(x,y-10);ctx.lineTo(x,y+10);ctx.stroke();});
+ Object.entries(pts).forEach(([i,p])=>{const x=ox+p.u*scale,y=oy+p.v*scale,hot=+i===hover||(drag&&drag.point===+i);if(hot){ctx.fillStyle='rgba(255,140,0,.25)';ctx.beginPath();ctx.arc(x,y,GRAB+3,0,7);ctx.fill();}ctx.strokeStyle=hot?'#fff':'#ff8c00';ctx.lineWidth=hot?3:2;ctx.beginPath();ctx.arc(x,y,7,0,7);ctx.moveTo(x-12,y);ctx.lineTo(x+12,y);ctx.moveTo(x,y-12);ctx.lineTo(x,y+12);ctx.stroke();ctx.fillStyle='#ff8c00';ctx.font='bold 12px sans-serif';ctx.fillText(+i+1,x+9,y-9);});
  lctx.clearRect(0,0,168,168);if(mouse.in){const[ix,iy]=toImg(mouse.x,mouse.y);lctx.imageSmoothingEnabled=false;lctx.drawImage(img,ix-21,iy-21,42,42,0,0,168,168);lctx.strokeStyle='#ff8c00';lctx.lineWidth=1;lctx.beginPath();lctx.moveTo(84,0);lctx.lineTo(84,168);lctx.moveTo(0,84);lctx.lineTo(168,84);lctx.stroke();}}
-$('showlines').onchange=()=>{if(!linesImg){linesImg=new Image();linesImg.onload=draw;linesImg.src='/lines.jpg';}draw();};
+$('showlines').onchange=()=>{if(!linesImg)loadLines();draw();};
 $('autobtn').onclick=async()=>{const b=$('autobtn');b.disabled=true;$('automsg').textContent=T('calp.auto_running');
- const arr=Object.entries(pts).map(([i,p])=>({id:+i,u:p.u/img.width,v:p.v/img.height}));
- try{const r=await (await fetch('/api/auto',{method:'POST',body:JSON.stringify({outside:outside(),fisheye:fish(),points:arr})})).json();
-  if(r.ok&&r.points.length>=4){pts={};r.points.forEach(p=>pts[p.id]={u:p.u*img.width,v:p.v*img.height});cur=nextFree();
-   const a=Math.round(r.agreement*100);$('automsg').innerHTML=`<span class="${a>=70?'good':a>=45?'':'warn'}">${T('calp.auto_found',{n:r.points.length,a})}</span> `+T('calp.auto_check')+(!fish()&&a<70?' '+T('calp.try_fisheye'):'');await solve();}
+ const arr=payload();
+ try{const r=await (await fetch('/api/auto',{method:'POST',body:JSON.stringify({outside:outside(),lens:lensSel(),color:lineColor,erase:eraseList(),points:arr})})).json();
+  if(r.ok&&r.points.length>=4){pts={};r.points.forEach(p=>pts[p.id]={u:p.u*img.width,v:p.v*img.height});cur=nextFree();record();
+   const a=Math.round(r.agreement*100);$('automsg').innerHTML=`<span class="${a>=70?'good':a>=45?'':'warn'}">${T('calp.auto_found',{n:r.points.length,a})}</span> `+T('calp.auto_check')+(!fish()&&a<70?' '+T('calp.try_lens'):'')+(!lineColor&&a<70?' '+T('calp.try_color'):'');await solve();}
   else $('automsg').innerHTML='<span class="warn">'+T('calp.auto_none')+'</span>';}
  catch(e){$('automsg').innerHTML='<span class="warn">'+T('calp.auto_none')+'</span>';}
  b.disabled=false;};
-$('save').onclick=async()=>{const arr=Object.entries(pts).map(([i,p])=>({id:+i,u:p.u/img.width,v:p.v/img.height}));
- const r=await (await fetch('/api/save',{method:'POST',body:JSON.stringify({points:arr,fisheye:fish()})})).json();
+$('save').onclick=async()=>{const arr=payload();
+ const r=await (await fetch('/api/save',{method:'POST',body:JSON.stringify({points:arr,lens:lensSel()})})).json();
  $('msg').innerHTML=r.ok?`<span class="good">${T('calp.saved')}:</span> ${r.path}<br>${T('calp.saved_hint',{rms:r.rms.toFixed(2)})}`:`<span class="warn">${r.error}</span>`;};
 init();
 </script></body></html>

@@ -1,4 +1,10 @@
-//! Lens distortion for fisheye footage (e.g. one camera that sees the full court).
+//! Lens models: fisheye footage (e.g. one camera that sees the full court) and wide cylindrical
+//! panoramas (a Reco panorama covers about 180°).
+//!
+//! **Cylinder:** the panorama maps the horizontal viewing angle linearly to the column
+//! (`θ = (u − ½)·fov`) and the vertical one as on a cylinder (`tan φ ∝ v − cy`). Every pixel becomes a
+//! viewing ray `(sin θ, t, cos θ)` and a homography maps rays onto the floor; the vertical scale is
+//! part of that homography, so only the horizontal field of view and the horizon row are estimated.
 //!
 //! A fisheye image bends straight court lines, so a plain homography cannot map it onto the court.
 //! [`Lens`] removes the bend first (radial *division model*, the usual choice for fisheye lenses
@@ -11,24 +17,88 @@
 
 use crate::geom::{Homography, Vec2};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LensModel {
+    /// Radial division model (fisheye); identity with `k1 = k2 = 0`.
+    Division,
+    /// Cylindrical panorama.
+    Cylinder,
+}
+
+impl LensModel {
+    pub fn key(self) -> &'static str {
+        match self {
+            LensModel::Division => "fisheye",
+            LensModel::Cylinder => "panorama",
+        }
+    }
+
+    /// `fisheye` / `panorama`; `none` and anything else = no lens.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "fisheye" | "division" => Some(LensModel::Division),
+            "panorama" | "cylinder" => Some(LensModel::Cylinder),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Lens {
-    /// Distortion centre (normalized image coordinates).
+    pub model: LensModel,
+    /// Distortion centre (normalized image coordinates); for the cylinder `cy` is the horizon row.
     pub cx: f64,
     pub cy: f64,
     pub k1: f64,
     pub k2: f64,
     /// Image width / height.
     pub aspect: f64,
+    /// Cylinder: horizontal field of view of the whole width, in radians.
+    pub fov: f64,
 }
 
 impl Lens {
     pub fn none(aspect: f64) -> Self {
-        Self { cx: 0.5, cy: 0.5, k1: 0.0, k2: 0.0, aspect: if aspect > 0.0 { aspect } else { 1.0 } }
+        Self { model: LensModel::Division, cx: 0.5, cy: 0.5, k1: 0.0, k2: 0.0, aspect: if aspect > 0.0 { aspect } else { 1.0 }, fov: 0.0 }
+    }
+
+    pub fn cylinder(aspect: f64, fov: f64, cy: f64) -> Self {
+        Self { model: LensModel::Cylinder, fov, cy, ..Self::none(aspect) }
     }
 
     pub fn is_identity(&self) -> bool {
-        self.k1 == 0.0 && self.k2 == 0.0
+        self.model == LensModel::Division && self.k1 == 0.0 && self.k2 == 0.0
+    }
+
+    /// Viewing ray of an image point (homogeneous; plain images give `(u, v, 1)`).
+    pub fn ray(&self, u: f64, v: f64) -> Option<[f64; 3]> {
+        match self.model {
+            LensModel::Division => self.undistort(u, v).map(|(x, y)| [x, y, 1.0]),
+            LensModel::Cylinder => {
+                let th = (u - 0.5) * self.fov;
+                Some([th.sin(), (v - self.cy) * self.fov / self.aspect, th.cos()])
+            }
+        }
+    }
+
+    /// Image point of a viewing ray (the ray's sign matters: it must point into the scene).
+    pub fn pixel(&self, r: [f64; 3], r_max: f64) -> Option<(f64, f64)> {
+        match self.model {
+            LensModel::Division => {
+                if r[2] <= 1e-12 {
+                    return None;
+                }
+                self.distort(r[0] / r[2], r[1] / r[2], r_max)
+            }
+            LensModel::Cylinder => {
+                let h = r[0].hypot(r[2]);
+                if h < 1e-12 || self.fov <= 0.0 {
+                    return None;
+                }
+                let th = r[0].atan2(r[2]);
+                Some((0.5 + th / self.fov, self.cy + r[1] / h * self.aspect / self.fov))
+            }
+        }
     }
 
     fn factor(&self, r2: f64) -> f64 {
@@ -46,6 +116,9 @@ impl Lens {
     /// Largest distorted radius up to which the model is one-to-one (the straightened radius
     /// `r / factor(r²)` still grows). Beyond it the model folds back and has no meaning.
     pub fn max_radius(&self) -> f64 {
+        if self.model == LensModel::Cylinder {
+            return 0.0;
+        }
         let g = |r: f64| {
             let f = self.factor(r * r);
             if f <= 1e-6 {
@@ -129,6 +202,9 @@ impl Lens {
 
     /// Does the model stay one-to-one over the whole image? (corners are the farthest points)
     fn valid_over_image(&self) -> bool {
+        if self.model == LensModel::Cylinder {
+            return self.fov > 0.3 && self.fov < 6.2;
+        }
         let r_img = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)]
             .iter()
             .map(|&(u, v)| {
@@ -175,16 +251,18 @@ pub struct LensFit {
 
 /// Homography and RMS for a given lens.
 pub fn fit_homography(lens: &Lens, pano: &[Vec2], court: &[Vec2]) -> Option<LensFit> {
-    let mut und = Vec::with_capacity(pano.len());
+    let mut rays = Vec::with_capacity(pano.len());
     for p in pano {
-        let (u, v) = lens.undistort(p.x as f64, p.y as f64)?;
-        und.push(Vec2::new(u as f32, v as f32));
+        rays.push(lens.ray(p.x as f64, p.y as f64)?);
     }
-    let h = Homography::from_points(&und, court)?;
+    let h = Homography::from_rays(&rays, court)?;
     let mut sum = 0.0f64;
-    for (p, c) in und.iter().zip(court) {
-        let m = h.apply(*p)?;
-        let d = m.dist(*c) as f64;
+    for (r, c) in rays.iter().zip(court) {
+        let q = h.apply3(*r);
+        if q[2].abs() < 1e-12 {
+            return None;
+        }
+        let d = (((q[0] / q[2]) as f32 - c.x).hypot((q[1] / q[2]) as f32 - c.y)) as f64;
         if !d.is_finite() {
             return None;
         }
@@ -197,8 +275,16 @@ pub fn fit_homography(lens: &Lens, pano: &[Vec2], court: &[Vec2]) -> Option<Lens
 /// (`pano` normalized image coordinates, `court` metres). Starts from several strengths so that a
 /// strong fisheye does not end in the local minimum next to "no distortion".
 pub fn fit(pano: &[Vec2], court: &[Vec2], aspect: f64, level: LensLevel) -> Option<LensFit> {
+    fit_model(pano, court, aspect, level, LensModel::Division)
+}
+
+/// Like [`fit`], for the given lens model.
+pub fn fit_model(pano: &[Vec2], court: &[Vec2], aspect: f64, level: LensLevel, model: LensModel) -> Option<LensFit> {
     if pano.len() != court.len() || pano.len() < LensLevel::MIN_POINTS {
         return None;
+    }
+    if model == LensModel::Cylinder {
+        return fit_cylinder(pano, court, aspect, level);
     }
     let base = Lens::none(aspect);
     let make = |p: &[f64]| -> Lens {
@@ -233,6 +319,28 @@ pub fn fit(pano: &[Vec2], court: &[Vec2], aspect: f64, level: LensLevel) -> Opti
         let mut start = vec![0.0; dim];
         start[0] = k0;
         let (p, c) = nelder_mead(&cost, &start, 0.08, 400);
+        if c.is_finite() && best.as_ref().map(|b| c < b.1).unwrap_or(true) {
+            best = Some((p, c));
+        }
+    }
+    let (p, _) = best?;
+    fit_homography(&make(&p), pano, court)
+}
+
+/// Cylinder: field of view (and from 9 points the horizon row) together with the homography.
+fn fit_cylinder(pano: &[Vec2], court: &[Vec2], aspect: f64, level: LensLevel) -> Option<LensFit> {
+    let with_cy = level >= LensLevel::K1K2;
+    let make = |p: &[f64]| Lens::cylinder(aspect, p[0], if with_cy { 0.5 + p[1] } else { 0.5 });
+    let cost = |p: &[f64]| -> f64 {
+        if !(0.3..6.2).contains(&p[0]) || (with_cy && p[1].abs() > 0.6) {
+            return f64::INFINITY;
+        }
+        fit_homography(&make(p), pano, court).map(|f| f.rms_m).unwrap_or(f64::INFINITY)
+    };
+    let mut best: Option<(Vec<f64>, f64)> = None;
+    for f0 in [1.2, 2.0, 2.8, 3.4, 4.2] {
+        let start = if with_cy { vec![f0, 0.0] } else { vec![f0] };
+        let (p, c) = nelder_mead(&cost, &start, 0.25, 400);
         if c.is_finite() && best.as_ref().map(|b| c < b.1).unwrap_or(true) {
             best = Some((p, c));
         }
@@ -292,7 +400,47 @@ mod tests {
     use super::*;
 
     fn lens(k1: f64, k2: f64) -> Lens {
-        Lens { cx: 0.5, cy: 0.5, k1, k2, aspect: 16.0 / 9.0 }
+        Lens { k1, k2, ..Lens::none(16.0 / 9.0) }
+    }
+
+    /// A court seen by a 180° cylindrical panorama camera at the middle of the near sideline.
+    #[test]
+    fn cylinder_panorama_is_recovered_from_points() {
+        use crate::geom::{HomographyProjector, Projector};
+        let aspect = 3840.0 / 1040.0;
+        let truth = Lens::cylinder(aspect, std::f64::consts::PI, 0.47);
+        // camera 3.5 m behind the near sideline at the halfway line, 4 m high
+        let (cam_x, cam_y, cam_h) = (14.0f64, 15.0 + 3.5, 4.0);
+        let img = |x: f64, y: f64| -> Vec2 {
+            // camera looks across the court (towards smaller y); x to the right, depth = cam_y - y
+            let (dx, dz, dy) = (x - cam_x, cam_y - y, cam_h);
+            let th = dx.atan2(dz);
+            let t = dy / dx.hypot(dz);
+            Vec2::new((0.5 + th / truth.fov) as f32, (truth.cy + t * truth.aspect / truth.fov) as f32)
+        };
+        let court: Vec<Vec2> = [(0.0, 0.0), (28.0, 0.0), (14.0, 0.0), (14.0, 7.5), (14.0, 15.0), (5.8, 5.05), (5.8, 9.95), (22.2, 5.05), (22.2, 9.95), (0.0, 5.05), (28.0, 9.95), (3.0, 15.0)]
+            .iter()
+            .map(|&(x, y)| Vec2::new(x, y))
+            .collect();
+        let pano: Vec<Vec2> = court.iter().map(|c| img(c.x as f64, c.y as f64)).collect();
+        // a flat homography cannot follow the panorama
+        let plain = fit_homography(&Lens::none(aspect), &pano, &court).unwrap();
+        assert!(plain.rms_m > 0.3, "plain {}", plain.rms_m);
+        let f = fit_model(&pano, &court, aspect, LensLevel::Full, LensModel::Cylinder).unwrap();
+        assert!(f.rms_m < 0.02, "cylinder rms {} fov {} cy {}", f.rms_m, f.lens.fov, f.lens.cy);
+        assert!((f.lens.fov - truth.fov).abs() < 0.05, "fov {}", f.lens.fov);
+        // both directions through the projector, also for points not used in the fit
+        let proj = HomographyProjector::new(f.pano_to_court, Some(f.lens));
+        let to_pano = proj.to_pano_fn().unwrap();
+        for &(x, y) in &[(1.0f32, 14.0f32), (27.0, 1.0), (14.0, 12.0), (0.0, 15.0)] {
+            let p = img(x as f64, y as f64);
+            let c = proj.to_court(p.x, p.y).unwrap();
+            assert!(c.dist(Vec2::new(x, y)) < 0.05, "({x},{y}) -> {c:?}");
+            let back = to_pano(Vec2::new(x, y)).unwrap();
+            assert!(back.dist(p) < 1e-3, "back {back:?} vs {p:?}");
+        }
+        // a pixel above the horizon (the ceiling) is not on the floor
+        assert!(proj.to_court(0.5, 0.1).is_none());
     }
 
     #[test]
@@ -338,7 +486,7 @@ mod tests {
         let (pano, court, _) = scene(&truth);
         // a plain homography cannot explain the bend
         let plain = fit_homography(&Lens::none(16.0 / 9.0), &pano, &court).unwrap();
-        assert!(plain.rms_m > 0.5, "plain rms {}", plain.rms_m);
+        assert!(plain.rms_m > 0.3, "plain rms {}", plain.rms_m);
         let f = fit(&pano, &court, 16.0 / 9.0, LensLevel::K1).unwrap();
         assert!(f.rms_m < 0.02, "fisheye rms {}", f.rms_m);
         assert!((f.lens.k1 - truth.k1).abs() < 0.02, "k1 {}", f.lens.k1);

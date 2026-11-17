@@ -127,7 +127,7 @@ Le calibrage apprend au programme où se trouve le terrain dans l'image. Trois c
 ### 3a · Calibrer le terrain
 
 1. Réglez *Instant dans la vidéo* sur un moment où **tout le terrain est visible** et non masqué par des personnes (p. ex. un temps mort ou l'échauffement).
-2. Cliquez *Lancer le calibrage*. Une page s'ouvre dans le navigateur avec cette image.
+2. Cliquez *Lancer le calibrage*. La page de calibrage s'ouvre directement dans l'interface avec cette image (*Fermer sans enregistrer* la quitte).
 3. **Cliquez les points dans l'ordre de la liste à droite** (coins, ligne médiane, centre, coins des zones …). La liste est dans votre langue.
    * « loin » et « proche » désignent les deux lignes de touche (loin = la plus éloignée de la caméra), « gauche/droite » comme dans l'image.
    * Au-dessus de la liste, un **petit terrain vu de dessus** montre où se trouve le point demandé : il **clignote en orange**. Les points déjà placés sont verts, les autres gris. Dans ce dessin, la caméra est en bas et « loin » en haut.
@@ -145,7 +145,11 @@ Si votre salle n'a pas les dimensions standard, ne cliquez que les quatre coins 
 
 **Automatique :** au lieu de cliquer chaque point, la page peut chercher le terrain elle-même. Sous *Automatique*, cochez **les coins qui sont hors de l'image** (sur un panorama pris depuis la ligne de côté, en général les deux coins proches), puis cliquez *Trouver le terrain automatiquement*. La page cherche les lignes peintes, y place le terrain (quelques secondes ; avec le fisheye aussi la distorsion) et pose les points trouvés. L'indication des coins est importante : sans elle, un terrain trop petit peut sembler correspondre. Vérifiez ensuite les lignes vertes ; replacez à la main les points décalés – un nouveau clic affine à partir des points actuels. *Montrer les lignes détectées* colore ce que la recherche compte comme ligne (cela marche le mieux avec un terrain vide et des lignes bien visibles).
 
-**Fisheye (p. ex. un terrain entier avec une seule caméra) :** si les lignes du terrain sont **courbées** dans l'image, cochez *Objectif fisheye* avant *Lancer le calibrage* (ou directement sur la page de calibrage). La page calcule alors aussi la distorsion de l'objectif à partir de vos points et dessine les lignes vertes courbées comme les vraies. Il faut au moins 6 points ; mieux vaut 10 ou plus, répartis jusqu'aux bords de l'image, là où la courbure est la plus forte. Sans fisheye, la page le propose si l'erreur reste élevée. Le traitement, les tuiles et les statistiques utilisent automatiquement la correspondance redressée.
+**Objectif :** il se choisit sur la page de calibrage (ou avant, dans le champ *Objectif*). **Panorama (p. ex. Reco)** est pour les images panoramiques larges dont les lignes droites se courbent vers les côtés – il est présélectionné pour les images très larges. **Fisheye** est pour une caméra à image courbée, p. ex. un terrain entier. Dans les deux cas, la page calcule aussi la courbure à partir de vos points ; il en faut au moins 6 – plutôt 10 ou plus, répartis jusqu'aux bords de l'image. Le traitement, les tuiles et les statistiques utilisent automatiquement la correspondance redressée.
+
+**Salles avec les lignes de plusieurs sports :** cliquez *Choisir la couleur des lignes* puis une ligne de votre sport (zoomez d'abord) – seules les lignes de cette couleur comptent, sombres comme claires. Avec *Exclure des lignes*, un clic sur une ligne magenta retire ce morceau, glisser efface sous le pinceau : retirez tout ce qui n'appartient pas à votre terrain (autres sports, joueurs, murs), puis *Trouver le terrain automatiquement*.
+
+**Corriger à la main :** les points posés peuvent être saisis et déplacés à la souris. Les losanges bleus au bord de l'image montrent où une ligne du terrain sort de l'image – glissez-en un sur la vraie ligne et cet endroit compte comme point supplémentaire (utile quand les coins sont hors de l'image). **⌘Z** annule, **⇧⌘Z** rétablit (Windows : Ctrl+Z, Ctrl+Y) – pour les points, le résultat automatique, les lignes exclues, la couleur des lignes et l'objectif.
 
 ### 3b · Mesurer la taille des joueurs
 

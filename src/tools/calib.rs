@@ -11,9 +11,9 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use super::video::{grab, grab_png, Frame, VideoInfo};
-use crate::autocal::{self, Hints, LineMap, Placement};
+use crate::autocal::{self, Erase, Hints, LineMap, Placement};
 use crate::geom::{HomographyProjector, Projector, Vec2};
-use crate::lens::{Lens, LensLevel};
+use crate::lens::{Lens, LensLevel, LensModel};
 use crate::sport::SportProfile;
 
 #[derive(Clone, Debug)]
@@ -34,7 +34,7 @@ pub struct CourtCalib {
     pub referees: usize,
     pub points: Vec<CalPoint>,
     pub rms_m: f32,
-    /// Fisheye lens, estimated together with the homography (`None` = plain image).
+    /// Lens (fisheye or panorama), estimated together with the homography (`None` = plain image).
     pub lens: Option<Lens>,
 }
 
@@ -66,7 +66,10 @@ impl CourtCalib {
             "points": self.points.iter().map(|p| json!({"name": p.name, "pano": [p.pano.x, p.pano.y], "court": [p.court.x, p.court.y]})).collect::<Vec<_>>(),
         });
         if let Some(l) = &self.lens {
-            v["lens"] = json!({"model": "division", "cx": l.cx, "cy": l.cy, "k1": l.k1, "k2": l.k2});
+            v["lens"] = match l.model {
+                LensModel::Division => json!({"model": "division", "cx": l.cx, "cy": l.cy, "k1": l.k1, "k2": l.k2}),
+                LensModel::Cylinder => json!({"model": "cylinder", "fov": l.fov, "cy": l.cy}),
+            };
         }
         std::fs::write(path, serde_json::to_string_pretty(&v).unwrap()).map_err(|e| format!("{path}: {e}"))
     }
@@ -87,7 +90,11 @@ impl CourtCalib {
         let (pano_w, pano_h) = (v["pano_w"].as_u64().unwrap_or(0) as u32, v["pano_h"].as_u64().unwrap_or(0) as u32);
         let lens = v["lens"].as_object().map(|_| {
             let f = |k: &str, d: f64| v["lens"][k].as_f64().unwrap_or(d);
-            Lens { cx: f("cx", 0.5), cy: f("cy", 0.5), k1: f("k1", 0.0), k2: f("k2", 0.0), aspect: if pano_h > 0 { pano_w as f64 / pano_h as f64 } else { 16.0 / 9.0 } }
+            let aspect = if pano_h > 0 { pano_w as f64 / pano_h as f64 } else { 16.0 / 9.0 };
+            match v["lens"]["model"].as_str() {
+                Some("cylinder") => Lens::cylinder(aspect, f("fov", std::f64::consts::PI), f("cy", 0.5)),
+                _ => Lens { cx: f("cx", 0.5), cy: f("cy", 0.5), k1: f("k1", 0.0), k2: f("k2", 0.0), ..Lens::none(aspect) },
+            }
         });
         Ok(Self {
             pano_w,
@@ -104,25 +111,36 @@ impl CourtCalib {
 }
 
 /// Pano->court mapping and RMS error (metres) for the given (landmark index, pano point) pairs.
-/// With `fisheye` the lens is estimated as well, as far as the number of points allows; with fewer
+/// With a lens model the lens is estimated as well, as far as the number of points allows; with fewer
 /// than [`LensLevel::MIN_POINTS`] the plain homography is used.
-fn solve(pairs: &[(usize, Vec2)], profile: &SportProfile, fisheye: bool, aspect: f64) -> Option<(HomographyProjector, Vec<(usize, f32)>, f32)> {
-    let pano: Vec<Vec2> = pairs.iter().map(|p| p.1).collect();
-    let court: Vec<Vec2> = pairs.iter().map(|p| Vec2::new(profile.landmarks[p.0].x, profile.landmarks[p.0].y)).collect();
-    let proj = match LensLevel::for_points(pairs.len()).filter(|_| fisheye) {
-        Some(level) => {
-            let f = crate::lens::fit(&pano, &court, aspect, level)?;
+/// One clicked point: a named landmark of the field, or a point somewhere on a field line (pulled in
+/// from the picture edge), with its spot on the field in metres and in the picture.
+#[derive(Clone, Debug)]
+struct Pair {
+    /// What the page calls it: the landmark index, or its own id for a line point.
+    id: Value,
+    name: String,
+    court: Vec2,
+    pano: Vec2,
+}
+
+fn solve(pairs: &[Pair], model: Option<LensModel>, aspect: f64) -> Option<(HomographyProjector, Vec<(Value, f32)>, f32)> {
+    let pano: Vec<Vec2> = pairs.iter().map(|p| p.pano).collect();
+    let court: Vec<Vec2> = pairs.iter().map(|p| p.court).collect();
+    let proj = match LensLevel::for_points(pairs.len()).zip(model) {
+        Some((level, model)) => {
+            let f = crate::lens::fit_model(&pano, &court, aspect, level, model)?;
             HomographyProjector::new(f.pano_to_court, Some(f.lens))
         }
         None => HomographyProjector::calibrate(&pano, &court)?,
     };
     let mut res = Vec::new();
     let mut sum = 0.0;
-    for (k, (i, p)) in pairs.iter().enumerate() {
-        let c = proj.to_court(p.x, p.y)?;
+    for (k, p) in pairs.iter().enumerate() {
+        let c = proj.to_court(p.pano.x, p.pano.y)?;
         let e = c.dist(court[k]);
         sum += e * e;
-        res.push((*i, e));
+        res.push((p.id.clone(), e));
     }
     Some((proj, res, (sum / pairs.len() as f32).sqrt()))
 }
@@ -134,52 +152,90 @@ struct Shared {
     video: String,
     profile: SportProfile,
     lang: String,
-    /// Start with the fisheye model switched on (existing calibration with a lens, or `--fisheye`).
-    fisheye: bool,
-    /// The frame for the automatic calibration and its line pixels (found on first use).
+    /// Lens model the page starts with (existing calibration, `--lens`, or a wide panorama).
+    lens: Option<LensModel>,
+    /// The frame for the automatic calibration and its line pixels for the last line colour.
     frame: Option<Frame>,
-    lines: std::sync::OnceLock<LineMap>,
+    lines: std::sync::Mutex<Option<(Option<[u8; 3]>, Arc<LineMap>)>>,
     done: AtomicBool,
 }
 
 impl Shared {
-    fn line_map(&self) -> Option<&LineMap> {
+    fn line_map(&self, color: Option<[u8; 3]>) -> Option<Arc<LineMap>> {
         let f = self.frame.as_ref()?;
-        Some(self.lines.get_or_init(|| LineMap::from_rgb(&f.rgb, f.w, f.h)))
+        let mut g = self.lines.lock().ok()?;
+        if let Some((c, m)) = g.as_ref() {
+            if *c == color {
+                return Some(m.clone());
+            }
+        }
+        let m = Arc::new(LineMap::from_rgb(&f.rgb, f.w, f.h, color));
+        *g = Some((color, m.clone()));
+        Some(m)
     }
 }
 
-/// Placement (corners in the straightened image, lens strength) that the clicked points describe, as
-/// the starting point for the automatic calibration.
-fn placement_from_points(pairs: &[(usize, Vec2)], profile: &SportProfile, fisheye: bool, aspect: f64) -> Option<Placement> {
-    let pano: Vec<Vec2> = pairs.iter().map(|p| p.1).collect();
-    let court: Vec<Vec2> = pairs.iter().map(|p| Vec2::new(profile.landmarks[p.0].x, profile.landmarks[p.0].y)).collect();
-    let (h, k1) = match LensLevel::for_points(pairs.len()).filter(|_| fisheye) {
-        Some(_) => {
-            let f = crate::lens::fit(&pano, &court, aspect, LensLevel::K1)?;
-            (f.pano_to_court, f.lens.k1)
-        }
-        None => (crate::geom::Homography::from_points(&pano, &court)?, 0.0),
-    };
-    let inv = h.inverse()?;
+/// Placement (corners in the picture and lens) that the clicked points describe, as the starting
+/// point for the automatic calibration.
+fn placement_from_points(pairs: &[Pair], profile: &SportProfile, model: Option<LensModel>, aspect: f64) -> Option<Placement> {
+    let (proj, _, _) = solve(pairs, model, aspect)?;
+    let to_pano = proj.to_pano_fn()?;
     let (l, w) = (profile.field.length, profile.field.width);
-    let c = |x: f32, y: f32| inv.apply(Vec2::new(x, y));
-    Some(Placement { corners: [c(0.0, 0.0)?, c(l, 0.0)?, c(l, w)?, c(0.0, w)?], k1 })
+    let c = |x: f32, y: f32| to_pano(Vec2::new(x, y));
+    let lens = proj.lens.unwrap_or_else(|| match model {
+        // too few points for the lens: start the panorama search from a typical field of view
+        Some(LensModel::Cylinder) => Lens::cylinder(aspect, std::f64::consts::PI, 0.5),
+        _ => Lens::none(aspect),
+    });
+    if proj.lens.is_none() && model == Some(LensModel::Cylinder) {
+        return None; // corners of a flat fit do not carry over to the panorama model
+    }
+    Some(Placement { corners: [c(0.0, 0.0)?, c(l, 0.0)?, c(l, w)?, c(0.0, w)?], lens })
+}
+
+/// `[r, g, b]` from a JSON array.
+fn color_of(v: &Value) -> Option<[u8; 3]> {
+    let a = v.as_array()?;
+    Some([a.first()?.as_u64()?.min(255) as u8, a.get(1)?.as_u64()?.min(255) as u8, a.get(2)?.as_u64()?.min(255) as u8])
+}
+
+/// Hand corrections of the line picture: `"erase": [[u, v, r], ...]`, r = 0 for a click on a line
+/// piece, else the brush radius as a share of the picture width.
+fn erase_of(v: &Value) -> Vec<Erase> {
+    v["erase"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|e| {
+                    let (u, w, r) = (e[0].as_f64()? as f32, e[1].as_f64()? as f32, e[2].as_f64().unwrap_or(0.0) as f32);
+                    let c = Vec2::new(u, w);
+                    Some(if r > 0.0 { Erase::Brush(c, r.min(0.2)) } else { Erase::Piece(c) })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The line map for a request body (`color`, `erase`).
+fn lines_for(st: &Shared, v: &Value) -> Option<Arc<LineMap>> {
+    let map = st.line_map(color_of(&v["color"]))?;
+    let erase = erase_of(v);
+    Some(if erase.is_empty() { map } else { Arc::new(map.without(&erase)) })
 }
 
 /// Automatic calibration: the landmarks of the fitted field that lie in the picture.
-fn auto_json(st: &Shared, body: &str, fisheye: bool, aspect: f64) -> Value {
+fn auto_json(st: &Shared, body: &str, model: Option<LensModel>, aspect: f64) -> Value {
     let v: Value = serde_json::from_str(body).unwrap_or(Value::Null);
     let mut outside = [false; 4];
     for (i, o) in outside.iter_mut().enumerate() {
         *o = v["outside"][i].as_bool().unwrap_or(false);
     }
-    let Some(map) = st.line_map() else { return json!({"ok": false, "error": "no frame"}) };
+    let Some(map) = lines_for(st, &v) else { return json!({"ok": false, "error": "no frame"}) };
     let p = &st.profile;
-    let start = parse_points(body, p.landmarks.len()).filter(|x| x.len() >= 4).and_then(|x| placement_from_points(&x, p, fisheye, aspect));
+    let start = parse_points(body, p).filter(|x| x.len() >= 4).and_then(|x| placement_from_points(&x, p, model, aspect));
     let field = (p.field.length, p.field.width);
-    let Some(r) = autocal::fit(map, &p.lines, field, aspect, Hints { outside, fisheye }, start) else { return json!({"ok": false}) };
-    let Some(m) = autocal::Mapper::new(&r.placement, field, aspect) else { return json!({"ok": false}) };
+    let Some(r) = autocal::fit(&map, &p.lines, field, aspect, Hints { outside, lens: model }, start) else { return json!({"ok": false}) };
+    let Some(m) = autocal::Mapper::new(&r.placement, field) else { return json!({"ok": false}) };
     let pts: Vec<Value> = p
         .landmarks
         .iter()
@@ -189,27 +245,46 @@ fn auto_json(st: &Shared, body: &str, fisheye: bool, aspect: f64) -> Value {
             (q.x > 0.003 && q.y > 0.003 && q.x < 0.997 && q.y < 0.997).then(|| json!({"id": i, "u": q.x, "v": q.y}))
         })
         .collect();
-    json!({"ok": true, "points": pts, "agreement": r.agreement, "k1": r.placement.k1})
+    json!({"ok": true, "points": pts, "agreement": r.agreement})
 }
 
-/// Does the request ask for the fisheye model?
-fn wants_fisheye(body: &str) -> bool {
-    serde_json::from_str::<Value>(body).ok().and_then(|v| v["fisheye"].as_bool()).unwrap_or(false)
+/// The lens model the request asks for (`"lens": "fisheye" | "panorama" | "none"`; older pages send
+/// `"fisheye": true`).
+fn lens_choice(body: &str) -> Option<LensModel> {
+    let v = serde_json::from_str::<Value>(body).ok()?;
+    match v["lens"].as_str() {
+        Some(s) => LensModel::parse(s),
+        None => (v["fisheye"] == true).then_some(LensModel::Division),
+    }
 }
 
 fn lens_json(p: &HomographyProjector) -> Value {
-    p.lens.map(|l| json!({"k1": l.k1, "k2": l.k2, "cx": l.cx, "cy": l.cy})).unwrap_or(Value::Null)
+    p.lens.map(|l| json!({"model": l.model.key(), "k1": l.k1, "k2": l.k2, "cy": l.cy, "fov": l.fov.to_degrees()})).unwrap_or(Value::Null)
 }
 
-fn parse_points(body: &str, n_landmarks: usize) -> Option<Vec<(usize, Vec2)>> {
+/// `?c=r,g,b` of the line picture.
+fn line_color_query(full_path: &str) -> Option<[u8; 3]> {
+    let q = full_path.split_once('?')?.1;
+    let c = q.split('&').find_map(|kv| kv.strip_prefix("c="))?;
+    let v: Vec<u8> = c.split(',').filter_map(|x| x.parse().ok()).collect();
+    (v.len() == 3).then(|| [v[0], v[1], v[2]])
+}
+
+/// `points`: `{id, u, v}` for a landmark (id = its index), `{id, court: [x, y], u, v}` for a point on
+/// a field line.
+fn parse_points(body: &str, profile: &SportProfile) -> Option<Vec<Pair>> {
     let v: Value = serde_json::from_str(body).ok()?;
     let mut out = Vec::new();
     for p in v["points"].as_array()? {
-        let id = p["id"].as_u64()? as usize;
-        if id >= n_landmarks {
-            return None;
+        let pano = Vec2::new(p["u"].as_f64()? as f32, p["v"].as_f64()? as f32);
+        if let Some(c) = p["court"].as_array() {
+            let court = Vec2::new(c.first()?.as_f64()? as f32, c.get(1)?.as_f64()? as f32);
+            out.push(Pair { id: p["id"].clone(), name: "line_point".into(), court, pano });
+        } else {
+            let id = p["id"].as_u64()? as usize;
+            let l = profile.landmarks.get(id)?;
+            out.push(Pair { id: json!(id), name: l.key.clone(), court: Vec2::new(l.x, l.y), pano });
         }
-        out.push((id, Vec2::new(p["u"].as_f64()? as f32, p["v"].as_f64()? as f32)));
     }
     Some(out)
 }
@@ -257,34 +332,45 @@ pub(crate) fn read_request(s: &mut TcpStream) -> Option<(String, String, String)
 fn handle(mut s: TcpStream, st: &Shared) {
     let Some((method, full_path, body)) = read_request(&mut s) else { return };
     let (method, path) = (method.as_str(), full_path.split('?').next().unwrap_or(""));
-    let n_lm = st.profile.landmarks.len();
-    let (fisheye, aspect) = (wants_fisheye(&body), st.info.w as f64 / st.info.h.max(1) as f64);
+    let (model, aspect) = (lens_choice(&body), st.info.w as f64 / st.info.h.max(1) as f64);
 
     match (method, path) {
         ("GET", "/") => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("calib.html").as_bytes()),
         ("GET", "/theme.css") => respond(&mut s, "200 OK", "text/css; charset=utf-8", include_str!("theme.css").as_bytes()),
         ("GET", "/i18n.js") => respond(&mut s, "200 OK", "application/javascript; charset=utf-8", include_str!("i18n.js").as_bytes()),
         ("GET", "/frame.png") => respond(&mut s, "200 OK", "image/png", &st.png),
-        ("GET", "/lines.jpg") => match st.line_map().map(|m| super::scoreboard::encode_jpeg(m.w, m.h, &m.mask_rgb())) {
+        ("GET", "/lines.jpg") => match st.line_map(line_color_query(&full_path)).map(|m| super::scoreboard::encode_jpeg(m.w, m.h, &m.mask_rgb())) {
             Some(Ok(jpg)) => respond(&mut s, "200 OK", "image/jpeg", &jpg),
             _ => respond(&mut s, "404 Not Found", "text/plain", b"no frame"),
         },
-        ("POST", "/api/auto") => respond(&mut s, "200 OK", "application/json", auto_json(st, &body, fisheye, aspect).to_string().as_bytes()),
+        ("POST", "/api/lines") => match lines_for(st, &serde_json::from_str(&body).unwrap_or(Value::Null)).map(|m| super::scoreboard::encode_jpeg(m.w, m.h, &m.mask_rgb())) {
+            Some(Ok(jpg)) => respond(&mut s, "200 OK", "image/jpeg", &jpg),
+            _ => respond(&mut s, "404 Not Found", "text/plain", b"no frame"),
+        },
+        ("POST", "/api/auto") => respond(&mut s, "200 OK", "application/json", auto_json(st, &body, model, aspect).to_string().as_bytes()),
         ("GET", "/api/info") => {
-            let v = json!({"w": st.info.w, "h": st.info.h, "sport": st.profile.id, "fisheye": st.fisheye, "fisheye_min": LensLevel::MIN_POINTS, "field": [st.profile.field.length, st.profile.field.width], "lang": st.lang,
+            let v = json!({"w": st.info.w, "h": st.info.h, "sport": st.profile.id, "lens": st.lens.map(|m| m.key()).unwrap_or("none"), "lens_min": LensLevel::MIN_POINTS, "field": [st.profile.field.length, st.profile.field.width], "lang": st.lang,
                            "landmarks": st.profile.landmarks.iter().map(|l| json!({"key": l.key, "x": l.x, "y": l.y})).collect::<Vec<_>>(),
                            // field markings in metres for the legend that shows where the current landmark lies
                            "lines": st.profile.lines.iter().map(|pl| pl.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>()).collect::<Vec<_>>()});
             respond(&mut s, "200 OK", "application/json", v.to_string().as_bytes());
         }
         ("POST", "/api/solve") => {
-            let r = match parse_points(&body, n_lm).filter(|p| p.len() >= 4).and_then(|p| solve(&p, &st.profile, fisheye, aspect)) {
+            let r = match parse_points(&body, &st.profile).filter(|p| p.len() >= 4).and_then(|p| solve(&p, model, aspect)) {
                 Some((proj, res, rms)) => match proj.to_pano_fn() {
                     Some(to_pano) => {
-                        // straight lines bend through a fisheye: a fine step keeps the drawn curves smooth
+                        // straight lines bend through a lens: a fine step keeps the drawn curves smooth
                         let step = if proj.lens.is_some() { 0.25 } else { 0.5 };
                         let overlay: Vec<Vec<[f32; 2]>> = st.profile.densified_lines(step).iter().map(|pl| pl.iter().filter_map(|c| to_pano(*c)).map(|p| [p.x, p.y]).collect()).collect();
-                        json!({"ok": true, "rms": rms, "lens": lens_json(&proj), "residuals": res.iter().map(|(i, m)| json!({"id": i, "m": m})).collect::<Vec<_>>(), "overlay": overlay})
+                        // the same lines with their field coordinates, so the page can offer the spots
+                        // where a line leaves the picture as handles: [u, v, x, y] per vertex
+                        let lines: Vec<Vec<[f32; 4]>> = st
+                            .profile
+                            .densified_lines(step)
+                            .iter()
+                            .map(|pl| pl.iter().filter_map(|c| to_pano(*c).map(|p| [p.x, p.y, c.x, c.y])).collect())
+                            .collect();
+                        json!({"ok": true, "rms": rms, "lens": lens_json(&proj), "residuals": res.iter().map(|(i, m)| json!({"id": i, "m": m})).collect::<Vec<_>>(), "overlay": overlay, "lines": lines})
                     }
                     None => json!({"ok": false}),
                 },
@@ -293,7 +379,7 @@ fn handle(mut s: TcpStream, st: &Shared) {
             respond(&mut s, "200 OK", "application/json", r.to_string().as_bytes());
         }
         ("POST", "/api/save") => {
-            let r = match parse_points(&body, n_lm).filter(|p| p.len() >= 4).and_then(|p| solve(&p, &st.profile, fisheye, aspect).map(|r| (p, r))) {
+            let r = match parse_points(&body, &st.profile).filter(|p| p.len() >= 4).and_then(|p| solve(&p, model, aspect).map(|r| (p, r))) {
                 Some((pairs, (proj, _res, rms))) => {
                     let cal = CourtCalib {
                         pano_w: st.info.w,
@@ -304,7 +390,7 @@ fn handle(mut s: TcpStream, st: &Shared) {
                         referees: st.profile.referees,
                         rms_m: rms,
                         lens: proj.lens,
-                        points: pairs.iter().map(|(i, p)| CalPoint { name: st.profile.landmarks[*i].key.clone(), pano: *p, court: Vec2::new(st.profile.landmarks[*i].x, st.profile.landmarks[*i].y) }).collect(),
+                        points: pairs.iter().map(|p| CalPoint { name: p.name.clone(), pano: p.pano, court: p.court }).collect(),
                     };
                     match cal.save(&st.out_path, &st.video) {
                         Ok(()) => {
@@ -328,14 +414,14 @@ pub(crate) fn open_browser(url: &str) {
 }
 
 /// Serve the calibration page until the user saves.
-pub fn run(input: &str, info: &VideoInfo, t: f64, out_path: &str, open: bool, profile: SportProfile, lang: &str, fisheye: bool) -> Result<(), String> {
+pub fn run(input: &str, info: &VideoInfo, t: f64, out_path: &str, open: bool, profile: SportProfile, lang: &str, lens: Option<LensModel>) -> Result<(), String> {
     let png = grab_png(input, t)?;
     // the automatic calibration works on the decoded frame; without it the page still works by hand
     let frame = grab(input, info, t).ok();
     let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
-    let st = Arc::new(Shared { png, info: info.clone(), out_path: out_path.to_string(), video: input.to_string(), profile, lang: lang.to_string(), fisheye, frame, lines: std::sync::OnceLock::new(), done: AtomicBool::new(false) });
+    let st = Arc::new(Shared { png, info: info.clone(), out_path: out_path.to_string(), video: input.to_string(), profile, lang: lang.to_string(), lens, frame, lines: std::sync::Mutex::new(None), done: AtomicBool::new(false) });
     let url = format!("http://127.0.0.1:{port}/?lang={lang}");
     eprintln!("{}", tr!("Kalibrierung: {url}\n(Seite öffnet sich automatisch; sonst URL im Browser öffnen. Strg+C zum Abbrechen.)", "Calibration: {url}\n(The page opens by itself; otherwise open the URL in a browser. Ctrl+C to cancel.)", "Calibrage : {url}\n(La page s'ouvre toute seule ; sinon ouvrir l'URL dans un navigateur. Ctrl+C pour annuler.)", "Calibración: {url}\n(La página se abre sola; si no, abre la URL en un navegador. Ctrl+C para cancelar.)"));
     if open {

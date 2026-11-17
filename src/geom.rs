@@ -142,6 +142,58 @@ impl Homography {
         })
     }
 
+    /// Least-squares DLT from homogeneous source points (e.g. viewing rays of a panorama, which can
+    /// point sideways where a flat image coordinate would not exist) to plane points.
+    ///
+    /// Normalized and solved for all nine entries (smallest eigenvector of `AᵀA`): for floor rays of
+    /// a panorama the entry that [`from_points`](Self::from_points) fixes to 1 is close to 0.
+    pub fn from_rays(src: &[[f64; 3]], dst: &[Vec2]) -> Option<Self> {
+        if src.len() != dst.len() || src.len() < 4 {
+            return None;
+        }
+        let n = dst.len() as f64;
+        let (mx, my) = (dst.iter().map(|d| d.x as f64).sum::<f64>() / n, dst.iter().map(|d| d.y as f64).sum::<f64>() / n);
+        let md = dst.iter().map(|d| ((d.x as f64 - mx).powi(2) + (d.y as f64 - my).powi(2)).sqrt()).sum::<f64>() / n;
+        if md < 1e-12 {
+            return None;
+        }
+        let sc = std::f64::consts::SQRT_2 / md;
+        let mut m = [[0f64; 9]; 9];
+        for (r, d) in src.iter().zip(dst) {
+            let len = (r[0] * r[0] + r[1] * r[1] + r[2] * r[2]).sqrt();
+            if len < 1e-12 {
+                return None;
+            }
+            let [a, b, c] = [r[0] / len, r[1] / len, r[2] / len];
+            let (x, y) = ((d.x as f64 - mx) * sc, (d.y as f64 - my) * sc);
+            let rows = [[a, b, c, 0.0, 0.0, 0.0, -x * a, -x * b, -x * c], [0.0, 0.0, 0.0, a, b, c, -y * a, -y * b, -y * c]];
+            for row in rows {
+                for i in 0..9 {
+                    for j in 0..9 {
+                        m[i][j] += row[i] * row[j];
+                    }
+                }
+            }
+        }
+        let hn = smallest_eigenvector(m);
+        // undo the normalization of the plane points: H = T⁻¹ · Hn
+        let ti = [[1.0 / sc, 0.0, mx], [0.0, 1.0 / sc, my], [0.0, 0.0, 1.0]];
+        let mut h = [0f64; 9];
+        for i in 0..3 {
+            for j in 0..3 {
+                h[i * 3 + j] = (0..3).map(|k| ti[i][k] * hn[k * 3 + j]).sum();
+            }
+        }
+        let norm = h.iter().map(|v| v * v).sum::<f64>().sqrt();
+        if !norm.is_finite() || norm < 1e-15 {
+            return None;
+        }
+        for v in h.iter_mut() {
+            *v /= norm;
+        }
+        Some(Self { h })
+    }
+
     pub fn apply(&self, p: Vec2) -> Option<Vec2> {
         let (x, y) = (p.x as f64, p.y as f64);
         let h = &self.h;
@@ -155,6 +207,12 @@ impl Homography {
             return None;
         }
         Some(Vec2::new(u as f32, v as f32))
+    }
+
+    /// The homogeneous product `H · r`.
+    pub fn apply3(&self, r: [f64; 3]) -> [f64; 3] {
+        let h = &self.h;
+        [h[0] * r[0] + h[1] * r[1] + h[2] * r[2], h[3] * r[0] + h[4] * r[1] + h[5] * r[2], h[6] * r[0] + h[7] * r[1] + h[8] * r[2]]
     }
 
     pub fn inverse(&self) -> Option<Self> {
@@ -182,6 +240,53 @@ impl Homography {
         }
         Some(Self { h: out })
     }
+}
+
+/// Eigenvector of the smallest eigenvalue of a symmetric 9×9 matrix (cyclic Jacobi rotations).
+fn smallest_eigenvector(mut a: [[f64; 9]; 9]) -> [f64; 9] {
+    let mut v = [[0f64; 9]; 9];
+    for (i, row) in v.iter_mut().enumerate() {
+        row[i] = 1.0;
+    }
+    for _ in 0..60 {
+        let off: f64 = (0..9).flat_map(|i| (0..9).filter(move |&j| j != i).map(move |j| (i, j))).map(|(i, j)| a[i][j] * a[i][j]).sum();
+        if off < 1e-22 {
+            break;
+        }
+        for p in 0..9 {
+            for q in p + 1..9 {
+                if a[p][q].abs() < 1e-300 {
+                    continue;
+                }
+                let theta = (a[q][q] - a[p][p]) / (2.0 * a[p][q]);
+                let t = theta.signum() / (theta.abs() + (theta * theta + 1.0).sqrt());
+                let t = if theta == 0.0 { 1.0 } else { t };
+                let c = 1.0 / (t * t + 1.0).sqrt();
+                let s = t * c;
+                for k in 0..9 {
+                    let (akp, akq) = (a[k][p], a[k][q]);
+                    a[k][p] = c * akp - s * akq;
+                    a[k][q] = s * akp + c * akq;
+                }
+                for k in 0..9 {
+                    let (apk, aqk) = (a[p][k], a[q][k]);
+                    a[p][k] = c * apk - s * aqk;
+                    a[q][k] = s * apk + c * aqk;
+                }
+                for row in v.iter_mut() {
+                    let (vp, vq) = (row[p], row[q]);
+                    row[p] = c * vp - s * vq;
+                    row[q] = s * vp + c * vq;
+                }
+            }
+        }
+    }
+    let k = (0..9).min_by(|&i, &j| a[i][i].total_cmp(&a[j][j])).unwrap_or(8);
+    let mut out = [0f64; 9];
+    for (i, o) in out.iter_mut().enumerate() {
+        *o = v[i][k];
+    }
+    out
 }
 
 fn solve8(mut a: [[f64; 8]; 8], mut b: [f64; 8]) -> Option<[f64; 8]> {
@@ -216,13 +321,17 @@ fn solve8(mut a: [[f64; 8]; 8], mut b: [f64; 8]) -> Option<[f64; 8]> {
     Some(x)
 }
 
-/// Planar calibration: panorama (normalized) -> court metres, optionally behind a fisheye lens
-/// (the lens straightens the image first, see [`crate::lens`]).
+/// Calibration: panorama (normalized) -> court metres. Without a lens a plain homography; with a lens
+/// (fisheye or cylindrical panorama, see [`crate::lens`]) every pixel becomes a viewing ray first and
+/// the homography maps rays onto the court.
 #[derive(Clone, Copy, Debug)]
 pub struct HomographyProjector {
     pub pano_to_court: Homography,
     pub lens: Option<crate::lens::Lens>,
     lens_r_max: f64,
+    /// Sign of the homogeneous scale for rays that hit the floor (rays are only defined up to scale;
+    /// the other sign is the opposite direction).
+    z_sign: f64,
 }
 
 impl HomographyProjector {
@@ -232,21 +341,27 @@ impl HomographyProjector {
         Some(Self::new(Homography::from_points(pano_pts, court_pts)?, None))
     }
 
-    /// Homography from the straightened image; `lens` `None` (or the identity) = plain image.
+    /// Homography from viewing rays; `lens` `None` (or the identity) = plain image.
     pub fn new(pano_to_court: Homography, lens: Option<crate::lens::Lens>) -> Self {
         let lens = lens.filter(|l| !l.is_identity());
-        Self { pano_to_court, lens, lens_r_max: lens.map(|l| l.max_radius()).unwrap_or(0.0) }
+        // the bottom middle of the picture shows floor in every set-up this tool is used with
+        let probe = lens.and_then(|l| l.ray(0.5, 0.95)).unwrap_or([0.5, 0.95, 1.0]);
+        let z = pano_to_court.apply3(probe)[2];
+        Self { pano_to_court, lens, lens_r_max: lens.map(|l| l.max_radius()).unwrap_or(0.0), z_sign: if z < 0.0 { -1.0 } else { 1.0 } }
     }
 
     /// Court metres -> normalized panorama coordinates (the inverse of [`Projector::to_court`]).
     pub fn to_pano_fn(&self) -> Option<impl Fn(Vec2) -> Option<Vec2>> {
         let inv = self.pano_to_court.inverse()?;
-        let (lens, rm) = (self.lens, self.lens_r_max);
-        Some(move |c: Vec2| {
-            let p = inv.apply(c)?;
-            match lens {
-                None => Some(p),
-                Some(l) => l.distort(p.x as f64, p.y as f64, rm).map(|(u, v)| Vec2::new(u as f32, v as f32)),
+        let (h, lens, rm, zs) = (self.pano_to_court, self.lens, self.lens_r_max, self.z_sign);
+        Some(move |c: Vec2| match lens {
+            None => inv.apply(c),
+            Some(l) => {
+                let mut r = inv.apply3([c.x as f64, c.y as f64, 1.0]);
+                if h.apply3(r)[2] * zs < 0.0 {
+                    r = [-r[0], -r[1], -r[2]];
+                }
+                l.pixel(r, rm).map(|(u, v)| Vec2::new(u as f32, v as f32))
             }
         })
     }
@@ -257,8 +372,13 @@ impl Projector for HomographyProjector {
         match &self.lens {
             None => self.pano_to_court.apply(Vec2::new(u, v)),
             Some(l) => {
-                let (x, y) = l.undistort(u as f64, v as f64)?;
-                self.pano_to_court.apply(Vec2::new(x as f32, y as f32))
+                let q = self.pano_to_court.apply3(l.ray(u as f64, v as f64)?);
+                // rays above the horizon never meet the floor
+                if q[2] * self.z_sign <= 1e-12 {
+                    return None;
+                }
+                let p = Vec2::new((q[0] / q[2]) as f32, (q[1] / q[2]) as f32);
+                (p.x.is_finite() && p.y.is_finite()).then_some(p)
             }
         }
     }

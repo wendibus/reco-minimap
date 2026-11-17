@@ -1,8 +1,8 @@
 reco-minimap – Minimap (Court, Spieler, Schiris, Ball) aus einem Reco-Panorama
 
-  reco-minimap calibrate <video> [--sport football|futsal|basketball|handball|hockey|rugby|lacrosse|american_football|volleyball|custom] [--time 5] [--out court.json] [--fisheye]
+  reco-minimap calibrate <video> [--sport football|futsal|basketball|handball|hockey|rugby|lacrosse|american_football|volleyball|custom] [--time 5] [--out court.json] [--lens none|fisheye|panorama]
                          (custom: --length 40 --width 20 --team-size 5 --referees 2)
-                         --fisheye: Fisheye-Objektiv: Verzeichnung aus den Punkten mitberechnen (ab 6 Punkten)
+                         --lens: Objektiv – fisheye (gebogenes Bild) oder panorama (breites Rundumbild wie Reco); Verzeichnung wird ab 6 Punkten mitberechnet. Ohne Angabe: Panorama bei sehr breiten Bildern
   reco-minimap selfcheck <video> --model <ordner|.onnx> [--samples 12] [--annotate <ordner>]
   reco-minimap scales    <video> --model <ordner|.onnx> [--court court.json] [--samples 12] [--out scales.json]
   reco-minimap live      <quelle> --model <..> --court court.json --teams teams.json   Live-Minimap für OBS/Spieldock (Browser-Overlay)

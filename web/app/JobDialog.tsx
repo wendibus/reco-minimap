@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BACKGROUND_KINDS, clock, showFile, useApp, type JobView } from './core';
+import { BACKGROUND_KINDS, EMBEDDED_KINDS, clock, showFile, useApp, type JobView } from './core';
 
 const SHOW_AFTER_SECONDS = 0.8;
 
@@ -16,9 +16,10 @@ export function JobDialog() {
   const seen = useRef<Set<number>>(new Set());
 
   const fg = jobs.filter((j) => !BACKGROUND_KINDS.has(j.kind));
-  const current = [...fg].reverse().find((j) => j.status === 'running' || j.status === 'cancelling') ?? null;
+  // a calibration shows its own page inside the interface instead of a progress window
+  const current = [...fg].reverse().find((j) => (j.status === 'running' || j.status === 'cancelling') && !EMBEDDED_KINDS.has(j.kind)) ?? null;
   // a finished job stays open when it failed, was cancelled, or the user was watching it
-  const finished = !current ? [...fg].reverse().find((j) => !dismissed.has(j.id) && seen.current.has(j.id) && (j.status === 'failed' || j.status === 'cancelled' || ((j.kind === 'run' || j.kind === 'clip') && !(j.outer && j.outer.index < j.outer.count)))) ?? null : null;
+  const finished = !current ? [...fg].reverse().find((j) => !dismissed.has(j.id) && (seen.current.has(j.id) || (EMBEDDED_KINDS.has(j.kind) && j.status === 'failed')) && (j.status === 'failed' || j.status === 'cancelled' || ((j.kind === 'run' || j.kind === 'clip') && !(j.outer && j.outer.index < j.outer.count)))) ?? null : null;
 
   useEffect(() => {
     if (!current) return undefined;

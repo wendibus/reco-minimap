@@ -127,7 +127,7 @@ La calibración le enseña al programa dónde está el campo en la imagen. Aquí
 ### 3a · Calibrar el campo
 
 1. Pon *Momento del vídeo* en un instante en que **se vea todo el campo** y no lo tapen personas (p. ej. un tiempo muerto o el calentamiento).
-2. Haz clic en *Iniciar calibración*. Se abre una página en el navegador con esa imagen.
+2. Haz clic en *Iniciar calibración*. La página de calibración se abre directamente en la interfaz con esa imagen (*Cerrar sin guardar* la abandona).
 3. **Haz clic en los puntos en el orden de la lista de la derecha** (esquinas, línea central, centro, esquinas de las zonas …). La lista está en tu idioma.
    * «lejos» y «cerca» designan las dos líneas de banda (lejos = la más alejada de la cámara), «izquierda/derecha» como en la imagen.
    * Sobre la lista, un **pequeño campo visto desde arriba** muestra dónde está el punto que se pide: **parpadea en naranja**. Los puntos ya puestos están en verde, los pendientes en gris. En ese dibujo la cámara está abajo y «lejos» arriba.
@@ -145,7 +145,11 @@ Si tu pabellón no tiene medidas estándar, marca solo las cuatro esquinas (y el
 
 **Automático:** en lugar de marcar cada punto, la página puede buscar el campo sola. En *Automático*, marca **qué esquinas quedan fuera de la imagen** (en un panorama desde la banda, normalmente las dos cercanas) y pulsa *Buscar el campo automáticamente*. La página busca las líneas pintadas, coloca el campo sobre ellas (unos segundos; con ojo de pez también la distorsión) y pone los puntos encontrados. La indicación de las esquinas es importante: sin ella, un campo demasiado pequeño puede parecer encajar. Después revisa las líneas verdes; vuelve a poner a mano los puntos desviados; pulsar de nuevo afina desde los puntos actuales. *Mostrar líneas detectadas* colorea lo que la búsqueda cuenta como línea (funciona mejor con el campo vacío y líneas bien visibles).
 
-**Ojo de pez (p. ej. un campo completo con una sola cámara):** si las líneas del campo se ven **curvadas** en la imagen, marca *Objetivo ojo de pez* antes de *Iniciar calibración* (o en la propia página de calibración). La página calcula entonces también la distorsión del objetivo a partir de tus puntos y dibuja las líneas verdes curvadas como las reales. Hacen falta al menos 6 puntos; mejor 10 o más, repartidos hasta los bordes de la imagen, donde la curvatura es mayor. Sin ojo de pez, la página lo propone si el error sigue alto. El procesamiento, las teselas y las estadísticas usan automáticamente la correspondencia corregida.
+**Objetivo:** se elige en la página de calibración (o antes, en el campo *Objetivo*). **Panorama (p. ej. Reco)** es para imágenes panorámicas anchas cuyas líneas rectas se curvan hacia los lados; viene preseleccionado en imágenes muy anchas. **Ojo de pez** es para una cámara con imagen curvada, p. ej. un campo completo. En ambos casos la página calcula también la curvatura a partir de tus puntos; necesita al menos 6, mejor 10 o más, repartidos hasta los bordes de la imagen. El procesamiento, los mosaicos y las estadísticas usan automáticamente la correspondencia corregida.
+
+**Pabellones con líneas de varios deportes:** haz clic en *Elegir el color de las líneas* y luego en una línea de tu deporte (antes haz zoom): solo cuentan las líneas de ese color, oscuras o claras. Con *Excluir líneas*, un clic en una línea magenta quita ese trozo y arrastrar borra bajo el pincel: quita todo lo que no pertenece a tu campo (otros deportes, jugadores, paredes) y luego *Buscar el campo automáticamente*.
+
+**Corregir a mano:** los puntos colocados se pueden agarrar y mover con el ratón. Los rombos azules en el borde de la imagen muestran dónde una línea del campo sale de la imagen: arrastra uno a la línea real y ese lugar cuenta como punto adicional (útil cuando las esquinas quedan fuera). **⌘Z** deshace, **⇧⌘Z** rehace (Windows: Ctrl+Z, Ctrl+Y): para puntos, el resultado automático, las líneas excluidas, el color de línea y el objetivo.
 
 ### 3b · Medir el tamaño de los jugadores
 

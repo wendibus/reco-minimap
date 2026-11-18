@@ -1,4 +1,42 @@
 {
+  "0.21.0": {
+    "de": [
+      "Live-Torschützen: Meldet die Anzeigetafel Punkte, bestimmt ein Puffer der letzten Sekunden den Werfer – „2 Punkte durch #13“ erscheint mit dem Versatz der Tafel automatisch im Ticker (Freiwürfe zuverlässig, Feldkörbe noch unsicher).",
+      "Spielerstatistik je Rückennummer: Minuten, Punkte, 3er/2er/Freiwürfe, Fehlwürfe und +/− der Mannschaft während der Spielzeit – mit dem Hinweis, dass sie elektronisch ermittelt ist und Fehler enthalten kann.",
+      "Die Statistik ist in Reiter aufgeteilt: Überblick, Spieler, Würfe, Team, Videos.",
+      "Videos aus mehreren Momenten: Highlights, alles von Heim oder Gast oder je Spieler ein eigenes Video, benannt als Jahr.Monat.Tag_Spieler13.mp4 (weiteres Spiel am selben Tag: _2).",
+      "Personen, die länger als 8 s außerhalb des Spielfelds stehen (Bank, Zuschauer), werden ignoriert; Schiedsrichter lassen sich in der Minimap ausblenden und werden trotzdem erkannt.",
+      "Kalibrierung: „An Linien einschnappen“ zieht fast richtige Linien auf die echten Spielfeldlinien direkt daneben; per Befehl: court-snap.",
+      "Die Anzeigetafel wird robuster gelesen; Spielzeiten werden nicht mehr doppelt gezählt."
+    ],
+    "en": [
+      "Live scorers: when the scoreboard reports points, a buffer of the last seconds picks the shooter – “2 points by #13” appears in the ticker automatically, delayed like the board (free throws reliable, field goals still uncertain).",
+      "Player statistics per jersey number: minutes, points, 3PT/2PT/FT made, misses and the team's +/− while on court – marked as determined electronically and possibly wrong.",
+      "The statistics are split into tabs: Overview, Players, Shots, Team, Videos.",
+      "Videos of several moments: highlights, everything of home or away, or one video per player, named Year.Month.Day_Player13.mp4 (another game that day: _2).",
+      "People standing outside the field for more than 8 s (bench, spectators) are ignored; referees can be hidden from the minimap and are still detected.",
+      "Calibration: “Snap to the lines” pulls nearly right lines onto the real field lines right next to them; on the command line: court-snap.",
+      "The scoreboard is read more robustly; playing time is no longer counted twice."
+    ],
+    "fr": [
+      "Marqueurs en direct : quand le tableau d'affichage indique des points, un tampon des dernières secondes désigne le tireur – « 2 points par #13 » apparaît automatiquement dans le ticker, avec le décalage du tableau (lancers francs fiables, paniers encore incertains).",
+      "Statistiques par numéro : minutes, points, paniers à 3/2 points et lancers francs réussis, tirs manqués et +/− de l'équipe pendant le temps de jeu – avec la mention qu'elles sont déterminées électroniquement et peuvent contenir des erreurs.",
+      "Les statistiques sont réparties en onglets : Aperçu, Joueurs, Tirs, Équipe, Vidéos.",
+      "Vidéos de plusieurs moments : temps forts, tout de l'équipe à domicile ou à l'extérieur, ou une vidéo par joueur, nommée Année.Mois.Jour_Joueur13.mp4 (autre match le même jour : _2).",
+      "Les personnes hors du terrain plus de 8 s (banc, spectateurs) sont ignorées ; les arbitres peuvent être masqués sur la minimap et restent détectés.",
+      "Calibrage : « Aimanter aux lignes » tire des lignes presque justes sur les vraies lignes juste à côté ; en ligne de commande : court-snap.",
+      "Le tableau d'affichage est lu de façon plus robuste ; le temps de jeu n'est plus compté deux fois."
+    ],
+    "es": [
+      "Anotadores en directo: cuando el marcador indica puntos, un búfer de los últimos segundos determina el tirador – «2 puntos de #13» aparece automáticamente en el ticker, con el retraso del marcador (tiros libres fiables, canastas aún inseguras).",
+      "Estadísticas por dorsal: minutos, puntos, triples/dobles/tiros libres anotados, fallos y +/− del equipo mientras está en pista – con el aviso de que se determinan electrónicamente y pueden contener errores.",
+      "Las estadísticas se dividen en pestañas: Resumen, Jugadores, Tiros, Equipo, Vídeos.",
+      "Vídeos de varios momentos: mejores jugadas, todo de local o visitante, o un vídeo por jugador, llamado Año.Mes.Día_Jugador13.mp4 (otro partido ese día: _2).",
+      "Las personas fuera del campo más de 8 s (banquillo, público) se ignoran; los árbitros se pueden ocultar en el minimapa y se siguen detectando.",
+      "Calibración: «Ajustar a las líneas» lleva líneas casi correctas a las líneas reales justo al lado; por comando: court-snap.",
+      "El marcador se lee de forma más robusta; el tiempo de juego ya no se cuenta dos veces."
+    ]
+  },
   "0.20.1": {
     "de": [
       "Mac-App: Die Kalibrierung öffnet jetzt wirklich im Programmfenster statt im Browser."

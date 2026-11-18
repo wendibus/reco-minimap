@@ -53,6 +53,11 @@
 .mm-table td:last-child { width: 36px; }
 .mm-table th { color: var(--label-2); font-size: 11px; font-weight: 600; }
 .mm-table tbody tr + tr td { border-top: .5px solid var(--sep); }
+.mm-box-note { margin: 0 0 10px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 10%, transparent); font-size: 12.5px; }
+.mm-box-team + .mm-box-team { margin-top: 14px; }
+.mm-box th:not(:first-child), .mm-box td:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.mm-box td:last-child { width: auto; }
+.mm-box tr.mm-weak td { color: var(--label-2); }
 .mm-model { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; margin-bottom: 6px; padding: 8px 10px; border: .5px solid var(--sep); border-radius: 9px; background: var(--content); }
 .mm-model.sel { border-color: transparent; background: color-mix(in srgb, var(--accent) 12%, var(--content)); box-shadow: inset 3px 0 0 var(--accent); }
 .mm-error-banner { background: var(--sys-red-fill); }
@@ -132,3 +137,12 @@
 .mm-news { margin: 8px 0 12px; padding-left: 20px; line-height: 1.45; }
 .mm-news li { margin: 4px 0; }
 .mm-news-version { margin: 10px 0 0; font-size: 13px; }
+
+.mm-stats-tabs { margin: 0 0 12px; flex-wrap: wrap; }
+.mm-reel-presets { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.mm-reel-preset { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: .5px solid var(--sep); border-radius: 8px; cursor: pointer; font-size: 12.5px; }
+.mm-reel-preset.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.mm-reel-preset input { margin: 0; }
+.mm-reel-list { list-style: none; margin: 0 0 8px; padding: 0; columns: 2 220px; }
+.mm-reel-list li { display: flex; align-items: center; gap: 6px; padding: 3px 0; break-inside: avoid; font-size: 12.5px; }
+.mm-reel-name { font-weight: 600; }

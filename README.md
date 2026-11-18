@@ -360,6 +360,7 @@ Step 7 of the interface, or on the command line:
 ```bash
 reco-minimap stats out/game.jsonl --court court.json --json out/game.stats.json
 reco-minimap clip game.mp4 --at 312.4,1290 --before 6 --after 4 --out out/clips
+reco-minimap reel game.mp4 --at 312.4,1290,1305 --label Highlights --out out/videos
 ```
 
 The statistics count **attempts**; whether a shot went in is not visible to the detection directly. The **score is estimated** from how play restarts after a score, and every scoring event lists its evidence so you can check it in a clip.
@@ -376,7 +377,9 @@ The statistics count **attempts**; whether a shot went in is not visible to the 
 | Score (estimated) | basketball: a 2- or 3-point attempt followed within 10 s by an inbound of the other team from the end line under that basket (free throws are not counted); football, futsal, handball, hockey, lacrosse: a kick-off / throw-off / centre pass / face-off by the other team shortly after an attempt (not at the start of the video or after the change of ends). *likely* when both teams fit, *possible* otherwise. Volleyball, rugby and American football: not possible from positions |
 | Score from the scoreboard | basketball with `run --scoreboard`: the score read from the hall's board in the panorama; every +1/+2/+3 goes to the fitting attempt just before it, the shooter with a probability and whether the number was read or inferred, otherwise the team only; *points per player* |
 | Playing time per player | time on the field per jersey number and team; every continuously tracked trail counts for the number read most often on it (needs *Read and show jersey numbers*); names from the squad of step 4 |
-| Key moments | attempts, game situations, confirmed substitutions; tick them and cut short clips into `out/clips/` |
+| Player statistics | basketball with a scoreboard: per jersey number minutes, points, made 3PT/2PT/FT, misses (detected attempts only) and +/− (team points for minus against while on the court); the shooter as in live mode; marked as determined electronically and possibly wrong |
+| Key moments | attempts, game situations, confirmed substitutions; tick them and cut short clips into `out/clips/`, or join the selection into one video |
+| Videos | several moments joined into one video: highlights, everything of home or away, or one video per player (`YYYY.MM.DD_Player13.mp4`, a second game that day gets `_2`) into `out/videos/` |
 
 ## Live mode and OBS
 
@@ -454,7 +457,9 @@ Important: the minimap needs the **same full panorama you calibrated on**. The A
 | `stats <states.jsonl>` | Numbers about a run: slots, jumps, ball states, substitutions |
 | `ticker <states.jsonl> [--out FILE] [--export DIR]` | The live ticker this result would have produced (`liveticker.json` with a summary) |
 | `scoreboard-calibrate <video> [--time 60] [--out scoreboard.json]` | Locate the scoreboard in the panorama (basketball) → `scoreboard.json`; `run … --scoreboard scoreboard.json` reads it while processing |
-| `scoreboard <video> [--scoreboard f] [--json out.jsonl]` | Read score, game clock and period from the board |
+| `scoreboard <video> [--scoreboard f] [--json out.jsonl]` | Read score, game clock, periods and breaks from the board; game logic (scores only go up by 1–3, the clock only runs down, a break timer runs without stops) bridges misreads and hidden stretches; `--raw` keeps the raw readings |
+| `scoreboard-check <raw.jsonl> [--reference report.json]` | Course of the game from raw readings; with a match report (play-by-play JSON) a comparison: period scores, missing / extra scores, clock differences |
+| `scorers <result.jsonl> [--raw raw.jsonl] [--reference report.json]` | Replays a result as if live: every score change on the board with its shooter (free throw: the player alone at the line; field goal: the shot attempt, else the player nearest the basket), the delay behind the board, and with a match report how many shooters were right |
 | `import-model <path> --to <dir>` | Verify and copy a Reco Trainer model |
 | `fetch-ocr` | Download the number-reading model |
 | `fetch-model` | Download the model of Reco camera (default model, all sports) |

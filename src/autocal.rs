@@ -499,6 +499,9 @@ struct Problem<'a> {
     pts: Vec<Vec2>,
     field: (f32, f32),
     hints: Hints,
+    /// Snapping: where the start placement draws each sample, and how far (pixels at 960 px width)
+    /// the lines may move from there.
+    anchor: Option<(Vec<Option<Vec2>>, f32)>,
 }
 
 impl Problem<'_> {
@@ -536,6 +539,15 @@ impl Problem<'_> {
         }
         if n < self.pts.len() / 5 {
             return 2.0 + pen;
+        }
+        if let Some((start, limit)) = &self.anchor {
+            // only lines right next to the drawn ones count: a placement that moves any visible
+            // line further than `limit` is rejected
+            let (sx, sy) = (self.map.w as f32 / self.map.px_scale(), self.map.h as f32 / self.map.px_scale());
+            let moved = self.pts.iter().zip(start).filter_map(|(c, a)| Some((m.to_image(*c)?, (*a)?))).map(|(q, a)| ((q.x - a.x) * sx).hypot((q.y - a.y) * sy)).fold(0.0f32, f32::max);
+            if moved > *limit {
+                pen += 1.0 + (moved - limit) as f64 / *limit as f64;
+            }
         }
         sum / n as f64 + pen + 0.3 * (1.0 - n as f64 / self.pts.len() as f64)
     }
@@ -598,24 +610,8 @@ fn start_lenses(model: Option<LensModel>, aspect: f64) -> Vec<Lens> {
 /// Fit the field (`length`, `width` in metres, its `lines` as polylines) to the line map.
 /// `start`: an optional placement to refine (e.g. from points the user already clicked).
 pub fn fit(map: &LineMap, lines: &[Vec<Vec2>], field: (f32, f32), aspect: f64, hints: Hints, start: Option<Placement>) -> Option<AutoResult> {
-    let sample = |step: f32| -> Vec<Vec2> {
-        let mut v = Vec::new();
-        for pl in lines {
-            for (i, p) in pl.iter().enumerate() {
-                if i > 0 {
-                    let q = pl[i - 1];
-                    let n = ((p.dist(q) / step).ceil() as usize).max(1);
-                    v.extend((0..n).map(|k| q.lerp(*p, k as f32 / n as f32)));
-                }
-            }
-            if let Some(last) = pl.last() {
-                v.push(*last);
-            }
-        }
-        v
-    };
-    let coarse = Problem { map, pts: sample(1.0), field, hints };
-    let fine = Problem { map, pts: sample(0.3), field, hints };
+    let coarse = Problem { map, pts: sample_lines(lines, 1.0), field, hints, anchor: None };
+    let fine = Problem { map, pts: sample_lines(lines, 0.3), field, hints, anchor: None };
 
     // coarse search over field shapes seen from a sideline camera, one thread per starting lens
     let lin = |a: f32, b: f32, n: usize| (0..n).map(move |i| a + (b - a) * i as f32 / (n - 1) as f32);
@@ -680,6 +676,69 @@ pub fn fit(map: &LineMap, lines: &[Vec<Vec2>], field: (f32, f32), aspect: f64, h
         return None; // a corner hint is violated or almost nothing fits
     }
     Some(AutoResult { placement: p, agreement: fine.agreement(&p, 2.0) })
+}
+
+/// Points along the field lines, `step` metres apart.
+fn sample_lines(lines: &[Vec<Vec2>], step: f32) -> Vec<Vec2> {
+    let mut v = Vec::new();
+    for pl in lines {
+        for (i, p) in pl.iter().enumerate() {
+            if i > 0 {
+                let q = pl[i - 1];
+                let n = ((p.dist(q) / step).ceil() as usize).max(1);
+                v.extend((0..n).map(|k| q.lerp(*p, k as f32 / n as f32)));
+            }
+        }
+        if let Some(last) = pl.last() {
+            v.push(*last);
+        }
+    }
+    v
+}
+
+/// Result of [`snap`].
+#[derive(Clone, Copy, Debug)]
+pub struct SnapResult {
+    pub placement: Placement,
+    /// Share of the visible line samples on detected line pixels (within 2 px) before and after.
+    pub before: f64,
+    pub after: f64,
+    /// Largest shift of a visible field line, in pixels at 960 px picture width.
+    pub moved_px: f32,
+}
+
+/// Pull a placement that is already nearly right (e.g. from clicked points) onto the painted lines
+/// right next to it. Only a local search: no line moves further than `max_px` (pixels at 960 px
+/// width), corners stay on their side of the picture edge. `None` when nothing fits better.
+pub fn snap(map: &LineMap, lines: &[Vec<Vec2>], field: (f32, f32), start: Placement, model: Option<LensModel>, max_px: f32) -> Option<SnapResult> {
+    let m0 = Mapper::new(&start, field)?;
+    let (l, w) = field;
+    let mut outside = [false; 4];
+    for (o, c) in outside.iter_mut().zip([Vec2::new(0.0, 0.0), Vec2::new(l, 0.0), Vec2::new(l, w), Vec2::new(0.0, w)]) {
+        *o = !m0.to_image(c).map(|q| q.x > 0.005 && q.y > 0.005 && q.x < 0.995 && q.y < 0.995).unwrap_or(false);
+    }
+    let pts = sample_lines(lines, 0.25);
+    let anchor: Vec<Option<Vec2>> = pts.iter().map(|c| m0.to_image(*c)).collect();
+    let pr = Problem { map, pts, field, hints: Hints { outside, lens: model }, anchor: Some((anchor, max_px)) };
+    let before = pr.agreement(&start, 2.0);
+    let mut p = start;
+    // coarse-to-fine distance caps; the caps stay small so only the neighbouring lines pull
+    for (cap, step) in [(8.0f32, 0.004f64), (4.0, 0.002), (2.5, 0.001), (2.5, 0.0005)] {
+        p = refine(&pr, p, cap, step);
+    }
+    let after = pr.agreement(&p, 2.0);
+    // the shape rules of the coarse search may already be broken by the start (a 180° panorama looks
+    // flat): only nothing may get worse than it was
+    if pr.cost(&p, 2.5) >= pr.cost(&start, 2.5) || after < before + 0.005 {
+        return None;
+    }
+    let m1 = Mapper::new(&p, field)?;
+    let (sw, sh) = (map.w as f32 / map.px_scale(), map.h as f32 / map.px_scale());
+    let moved_px = pr.pts.iter().filter_map(|c| Some((m0.to_image(*c)?, m1.to_image(*c)?))).filter(|(a, _)| a.x >= 0.0 && a.y >= 0.0 && a.x <= 1.0 && a.y <= 1.0).map(|(a, b)| ((a.x - b.x) * sw).hypot((a.y - b.y) * sh)).fold(0.0f32, f32::max);
+    if moved_px > max_px * 1.05 {
+        return None;
+    }
+    Some(SnapResult { placement: p, before, after, moved_px })
 }
 
 fn refine(pr: &Problem, p: Placement, cap: f32, step: f64) -> Placement {
@@ -827,6 +886,25 @@ mod tests {
         let err = worst_landmark_error(&prof, &r.placement, &truth, w as f32, h as f32);
         assert!(err < 6.0, "landmarks off by {err} px, agreement {}, got {:?}", r.agreement, r.placement);
         assert!(r.agreement > 0.8, "agreement {}", r.agreement);
+    }
+
+    /// A calibration a few pixels off snaps onto the painted lines; one far off is left alone.
+    #[test]
+    fn snaps_a_nearly_right_court_onto_the_lines() {
+        let prof = SportProfile::basketball();
+        let (w, h) = (1280, 720);
+        let aspect = w as f64 / h as f64;
+        let truth = Placement { corners: [Vec2::new(0.27, 0.36), Vec2::new(0.74, 0.37), Vec2::new(1.12, 1.06), Vec2::new(-0.1, 1.04)], lens: Lens::none(aspect) };
+        let map = LineMap::from_rgb(&render(&prof, &truth, w, h), w, h, None);
+        let off = |d: f32| Placement { corners: [Vec2::new(0.27 + d, 0.36 + d * 0.5), Vec2::new(0.74 + d * 0.6, 0.37 - d * 0.4), Vec2::new(1.12, 1.06), Vec2::new(-0.1, 1.04)], ..truth };
+        let start = off(0.004);
+        let before = worst_landmark_error(&prof, &start, &truth, w as f32, h as f32);
+        let r = snap(&map, &prof.lines, field(&prof), start, None, 8.0).expect("snapped");
+        let after = worst_landmark_error(&prof, &r.placement, &truth, w as f32, h as f32);
+        assert!(after < before * 0.5 && after < 2.5, "landmarks off by {before} px before, {after} px after");
+        assert!(r.after > r.before, "agreement {} -> {}", r.before, r.after);
+        // 40 px off: no line lies close enough, the snap must not jump to some other line
+        assert!(snap(&map, &prof.lines, field(&prof), off(0.04), None, 8.0).map(|r| r.moved_px <= 8.4).unwrap_or(true));
     }
 
     #[test]

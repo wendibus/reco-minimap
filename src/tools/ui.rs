@@ -494,8 +494,9 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
             if p["scenes"].as_bool() == Some(true) {
                 pushs(&mut a, &["--scenes"]);
             }
-            // the calibrated hall scoreboard is read along unless switched off (run only: its own video stream)
-            if kind == "run" && dir.join("scoreboard.json").exists() && p["scoreboard"].as_bool() != Some(false) {
+            // the calibrated hall scoreboard is read along unless switched off (run: its own video stream of
+            // the board region; live: from the analysed frames, with who scored for basketball)
+            if dir.join("scoreboard.json").exists() && p["scoreboard"].as_bool() != Some(false) {
                 pushs(&mut a, &["--scoreboard", "scoreboard.json"]);
             }
             direction_args(&mut a, p);
@@ -507,6 +508,10 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
             }
             if fig["no_referees"].as_bool() == Some(true) {
                 pushs(&mut a, &["--referees", "0"]);
+            }
+            // referees recognised (so they never count as players) but not drawn
+            if fig["hide_referees"].as_bool() == Some(true) {
+                pushs(&mut a, &["--hide-referees"]);
             }
             let nm = &p["numbers"];
             if nm["enabled"].as_bool() == Some(true) {
@@ -640,6 +645,16 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
                     pushs(&mut a, &[&format!("--{k}"), &v.to_string()]);
                 }
             }
+        }
+        "reel" => {
+            // several moments joined into one video each (highlights, a team, one per player), into out/videos/
+            need(&video, trs!("Video", "video", "vidéo", "vídeo"))?;
+            let plan = p["plan"].as_array().filter(|a| !a.is_empty()).ok_or(trs!("kein Moment gewählt", "no moment chosen", "aucun moment choisi", "ningún momento elegido"))?;
+            let vdir = dir.join("out").join("videos");
+            std::fs::create_dir_all(&vdir).map_err(|e| e.to_string())?;
+            let pf = vdir.join(".plan.json");
+            std::fs::write(&pf, serde_json::to_string(plan).unwrap_or_default()).map_err(|e| e.to_string())?;
+            pushs(&mut a, &["reel", &video, "--plan", "out/videos/.plan.json", "--out", "out/videos"]);
         }
         "ticker" => {
             let f = get_s(p, "file");

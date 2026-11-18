@@ -94,7 +94,7 @@ function frame(now) {
   if (msg) {
     const lead = (now - recv) / 1000 + (msg.age_ms || 0) / 1000 + LEAD;
     const seen = new Set(), r = 0.45 * K * g.s * (NUMBERS ? 1.35 : 1);
-    const agents = msg.referees.map(a => Object.assign({ref: true}, a)).concat(msg.players);
+    const agents = (cfg.hide_referees ? [] : msg.referees.map(a => Object.assign({ref: true}, a))).concat(msg.players);
     const pos = new Map();
     for (const a of agents) {
       const t = predict(a, lead, 0.8); seen.add(a.id);

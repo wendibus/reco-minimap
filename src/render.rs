@@ -31,6 +31,8 @@ pub struct Theme {
     /// Stripe colours of the home / away keeper; `None` = black or white, whichever contrasts with the team colour.
     pub home_keeper: Option<Rgb>,
     pub away_keeper: Option<Rgb>,
+    /// Draw the referees (they are recognised either way, so they never count as players).
+    pub show_referees: bool,
 }
 
 impl Default for Theme {
@@ -51,6 +53,7 @@ impl Default for Theme {
             keeper_stripes: true,
             home_keeper: None,
             away_keeper: None,
+            show_referees: true,
         }
     }
 }
@@ -276,7 +279,8 @@ impl Renderer {
         let mut c = Canvas::new(w, h, self.theme.floor, self.theme.background_alpha);
         self.draw_court(&mut c);
         let holder = if let BallState::Held { track } = s.ball.state { Some(track) } else { None };
-        for a in s.referees.iter().chain(s.players.iter()) {
+        let refs = if self.theme.show_referees { &s.referees[..] } else { &[] };
+        for a in refs.iter().chain(s.players.iter()) {
             self.agent(&mut c, a, holder == Some(a.id));
         }
         // ball only when it is free: small orange dot

@@ -1,6 +1,7 @@
 reco-minimap – Minimap (Court, Spieler, Schiris, Ball) aus einem Reco-Panorama
 
   reco-minimap calibrate <video> [--sport football|futsal|basketball|handball|hockey|rugby|lacrosse|american_football|volleyball|custom] [--time 5] [--out court.json] [--lens none|fisheye|panorama]
+  reco-minimap court-snap <video> --court court.json [--time 5] [--color r,g,b] [--max 8] [--out court.json]   vorhandene Kalibrierung auf die echten Linien direkt daneben einschnappen (speichert nur mit --out)
                          (custom: --length 40 --width 20 --team-size 5 --referees 2)
                          --lens: Objektiv – fisheye (gebogenes Bild) oder panorama (breites Rundumbild wie Reco); Verzeichnung wird ab 6 Punkten mitberechnet. Ohne Angabe: Panorama bei sehr breiten Bildern
   reco-minimap selfcheck <video> --model <ordner|.onnx> [--samples 12] [--annotate <ordner>]
@@ -24,7 +25,10 @@ reco-minimap – Minimap (Court, Spieler, Schiris, Ball) aus einem Reco-Panorama
   reco-minimap stats     <states.jsonl>            Zahlen-Report zu einem run-Ergebnis (Slots, Sprünge, Ball)
   reco-minimap ticker    <states.jsonl> [--out f] [--export ordner]   Live-Ticker, den dieses Ergebnis ergeben hätte (liveticker.json + Zusammenfassung); auch: run/live --ticker-json <datei>
   reco-minimap scoreboard-calibrate <video> [--time 60] [--out scoreboard.json] [--no-open]   Anzeigetafel im Panorama kalibrieren (Basketball)
-  reco-minimap scoreboard <video> [--scoreboard scoreboard.json] [--start s] [--duration s] [--json out.jsonl]   Spielstand, Spieluhr und Viertel ablesen
+  reco-minimap scoreboard <video> [--scoreboard scoreboard.json] [--start s] [--duration s] [--json out.jsonl] [--raw roh.jsonl]   Spielstand, Spieluhr, Viertel und Pausen ablesen (Spiellogik: Punkte nur steigend, Uhr nur rückwärts)
+  reco-minimap scoreboard-check <roh.jsonl> [--reference spielbericht.json] [--verbose]   Spielverlauf aus Rohablesungen, Abgleich mit einem Spielbericht
+  reco-minimap scorers <ergebnis.jsonl> [--raw roh.jsonl] [--reference spielbericht.json] [--json out.jsonl]   Ergebnis wie live abspielen: wer hat gepunktet (Freiwurf: allein an der Linie, Korb: Wurfversuch oder nächster am Korb), Abgleich mit einem Spielbericht
+  reco-minimap reel <video> --plan plan.json | --at t1,t2 --label Name [--before 6 --after 4] [--out videos]   mehrere Momente zu einem Video zusammenschneiden; Datei JJJJ.MM.TT_Name.mp4 (weiteres Spiel am selben Tag: _2)
   reco-minimap review-identities <states.jsonl> --annotations review.json --out reviewed.jsonl   Kader und manuelle Korrekturen anwenden
   reco-minimap snapshot  <states.jsonl> --court court.json --teams teams.json --at 12:34 [--trail 5] [--out scene.json] [--svg scene.svg]
                          einen Moment aus einem Lauf als Taktikboard-Szene (JSON, siehe docs/BOARD.md) und/oder SVG herausschneiden
@@ -60,6 +64,8 @@ Gemeinsame Optionen:
   --shirt-match     Farbprobe an die bekannten Trikotfarben anlehnen: hilft bei kräftigen, klar verschiedenen Farben
                     (z.B. Rot gegen Blau) und bei Spielfeldflächen in Teamfarbe; bei Hell gegen Dunkel weglassen
   --referees N      Zahl der Schiedsrichter-Plätze (Standard aus der Kalibrierung); 0 = Spiel ohne Schiedsrichter
+  --hide-referees   Schiedsrichter erkennen (damit sie nicht als Spieler zählen), aber in Minimap und Live-Overlay nicht zeichnen
+  --off-court S     wer länger als S Sekunden außerhalb der Linien steht (Bank, Kampfgericht), zählt nicht als Spieler (Standard 8; 0 = aus)
   --torso 0.18,0.50 Teil der Spieler-Box (oben,unten als Bruchteil der Höhe), in dem das Trikot liegt; für Figuren mit
                     anderen Proportionen anpassen (colors, run, live)
   --thr-ball 0.30 --thr-player 0.60 --thr-ref 0.50
@@ -96,9 +102,10 @@ Spielsituationen (run/live):
   --home-attacks l|r  Spielrichtung: Tor/Korb, auf das Heim zu Beginn spielt (links/rechts wie in der Minikarte); Würfe, Freiwürfe,
                     Ecken und Strafwürfe zählen dann für das angreifende Team (auch bei stats und ticker); --switch-at mm:ss Seitenwechsel
 
-Anzeigetafel (Basketball, run):
+Anzeigetafel (Basketball, run, live):
   --scoreboard scoreboard.json   Spielstand von der Tafel im Panorama ablesen (erst `scoreboard-calibrate`); in `stats` geht jeder
                     Treffer (+1/+2/+3) an den passenden Wurfversuch davor: Werfer mit Wahrscheinlichkeit, sonst nur ans Team
+                    Basketball live (`run`, `live`): jede Punkteänderung wird nach ~4 s mit Werfer gemeldet (Ticker: „2 Punkte durch #11“); `live` liest die Tafel aus dem Bild (--board-fps 2)
 
 run-Optionen:
   --ref-color #hex  Schiri-Trikotfarbe (z.B. #000000 oder gelb): erkennt Schiris über die Farbe, auch wenn das Modell sie nicht findet

@@ -17,10 +17,16 @@ type Stats = Json & {
     // method "scoreboard" (basketball with a calibrated hall scoreboard)
     period?: number | null; clock?: number | null; board?: BoardEvent[];
     players?: Record<'home' | 'away', BoardPoints[]>; no_number?: Record<'home' | 'away', number>; team_only?: Record<'home' | 'away', number> };
+  box_score?: BoxScore | null;
   direction?: { source: 'given' | 'estimated' | 'unknown'; home_start: 'l' | 'r' | null; switch_at: number | null; agree: number; total: number; reassigned: number };
   moments: { t: number; type: 'attempt' | 'scene' | 'sub'; kind?: string; team: Team; zone?: string; out?: number | null; in?: number | null }[];
 };
 
+type BoxLine = { points: number; ft: number; two: number; three: number; missed: { ft: number; two: number; three: number }; on_court: { for: number; against: number; plus_minus: number } };
+type BoxScore = { electronic: boolean; home: (BoxLine & { number: number; seconds: number })[]; away: (BoxLine & { number: number; seconds: number })[];
+  without_number: Record<'home' | 'away', BoxLine>; team_only: Record<'home' | 'away', number>; points: Record<'home' | 'away', number>; attempts_seen: number; scores: number; made?: Made[] };
+type StatsTab = 'overview' | 'players' | 'shots' | 'team' | 'videos';
+type Made = { t: number; team: 'home' | 'away'; points: number; kind: string; number: number | null };
 type PlayerTime = { number: number; seconds: number; share: number; inferred_share?: number };
 type ScoreEvent = { t: number; team: Team; points: number; kind: string; evidence: string[]; restart_t: number; confidence: 'likely' | 'possible' };
 type BoardEvent = { t: number; team: Team; points: number; from: number; to: number; basis: 'attempt' | 'team_only' | 'correction' | 'jump'; probability: number; candidates: number; cancelled: boolean;
@@ -143,6 +149,8 @@ export function StatsPanel() {
   const [layer, setLayer] = useState<'home' | 'away' | 'ball'>('home');
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const [tableView, setTableView] = useState(false);
+  const [tab, setTab] = useState<StatsTab>(() => { try { return (localStorage.getItem('mm.statsTab') as StatsTab) || 'overview'; } catch { return 'overview'; } });
+  const pickTab = (k: StatsTab) => { setTab(k); try { localStorage.setItem('mm.statsTab', k); } catch { /* private window */ } };
 
   useEffect(() => { if (!outs.some((o) => o.path === file)) setFile(outs[0]?.path ?? ''); }, [files.out]); // eslint-disable-line react-hooks/exhaustive-deps
   const load = async () => {
@@ -173,10 +181,18 @@ export function StatsPanel() {
   const dur = stats.t1 - stats.t0;
   const basket = stats.sport === 'basketball';
 
+  const roster = { home: rosterNames(project.run?.numbers?.roster_home), away: rosterNames(project.run?.numbers?.roster_away) };
+  const hasShots = sec.shots || sec.zones || (sec.periods && stats.attempts.length > 0);
+  const hasTeam = sec.possession || sec.thirds || sec.heat || !!stats.shape;
+  const tabs = ([['overview', ts.tabOverview], ['players', ts.tabPlayers], ...(hasShots ? [['shots', ts.tabShots]] : []), ...(hasTeam ? [['team', ts.tabTeam]] : []), ['videos', ts.tabVideos]] as [StatsTab, string][]);
+  const cur: StatsTab = tabs.some(([k]) => k === tab) ? tab : 'overview';
+
   return <>
     <TipLayer />
     {picker}
-    <TickerSimCard file={file} />
+    <div className="segmented mm-stats-tabs" role="tablist">{tabs.map(([k, label]) => <button key={k} type="button" role="tab" aria-selected={cur === k} data-hint={ts.tabHint} className={cur === k ? 'active' : ''} onClick={() => pickTab(k)}>{label}</button>)}</div>
+
+    {cur === 'overview' && <>
     <div className="mm-tiles">
       {stats.score?.supported && (stats.score.method === 'scoreboard' || stats.score.events.length > 0) && <Tile label={ts.scoreTile} value={`${stats.score.home}:${stats.score.away}`} sub={stats.score.method === 'scoreboard' ? ts.scoreBoardSub + (stats.score.period ? ' · ' + ts.gamePeriod(stats.score.period) : '') : stats.score.likely ? ts.scoreLikely(stats.score.likely.home, stats.score.likely.away) : undefined} />}
       {sec.shots && <><Tile label={`${ts.attempts} · ${ts.home}`} value={stats.totals.home} swatch={colors.home} /><Tile label={`${ts.attempts} · ${ts.away}`} value={stats.totals.away} swatch={colors.away} /></>}
@@ -185,6 +201,25 @@ export function StatsPanel() {
       <Tile label={ts.duration} value={clock(dur)} sub={`${clock(stats.t0)} – ${clock(stats.t1)}`} />
     </div>
 
+    {stats.score && (stats.score.method === 'scoreboard'
+      ? <><BoardScoreCard s={stats} colors={colors} names={teamName} kindLabel={kindLabel} /></>
+      : <ScoreCard s={stats} colors={colors} names={teamName} kindLabel={kindLabel} />)}
+    {sec.periods && stats.attempts.length > 0 && <Card title={ts.periods} hint={ts.periodsHint}>
+      <Periods s={stats} colors={colors} names={teamName} label={ts.period} />
+      <div className="mm-diff"><span className="mm-muted">{ts.diff}</span>{stats.periods.map((p) => { const d = p.home - p.away; return <span key={p.index} className="mm-chip">{ts.period(p.index)}: {d > 0 ? `+${d}` : d}</span>; })}</div>
+    </Card>}
+
+    <TickerSimCard file={file} />
+    </>}
+
+    {cur === 'players' && <>
+    {stats.box_score ? <BoxScoreCard b={stats.box_score} colors={colors} names={teamName} roster={roster} /> : <>
+      {stats.score?.method === 'scoreboard' && <PointsCard s={stats} colors={colors} names={teamName} roster={roster} />}
+      {stats.players && <PlayersCard p={stats.players} span={dur} colors={colors} names={teamName} roster={roster} />}
+    </>}
+    </>}
+
+    {cur === 'shots' && <>
     {sec.shots && <Card title={basket ? ts.shotChart : ts.shotMap}>
       <div className="mm-row mm-gap mm-wrap">{segmented}<span className="mm-grow" /><button type="button" className="secondary-button" data-hint={ts.table} onClick={() => setTableView((v) => !v)}>{tableView ? ts.chart : ts.table}</button></div>
       {shown.length === 0 ? <p className="mm-muted">{basket ? ts.noAttemptsBasket : ts.noAttempts}</p> : tableView
@@ -223,11 +258,9 @@ export function StatsPanel() {
       </div>
     </Card>}
 
-    {sec.periods && stats.attempts.length > 0 && <Card title={ts.periods} hint={ts.periodsHint}>
-      <Periods s={stats} colors={colors} names={teamName} label={ts.period} />
-      <div className="mm-diff"><span className="mm-muted">{ts.diff}</span>{stats.periods.map((p) => { const d = p.home - p.away; return <span key={p.index} className="mm-chip">{ts.period(p.index)}: {d > 0 ? `+${d}` : d}</span>; })}</div>
-    </Card>}
+    </>}
 
+    {cur === 'team' && <>
     {(sec.possession || sec.thirds) && <Card title={ts.possession}>
       {sec.possession && stats.possession.frames_held > 0 && <div className="mm-stack" role="img" aria-label={ts.possession}>
         <span style={{ flex: stats.possession.home, background: colors.home }} {...tipHandlers(`${ts.home} ${Math.round(stats.possession.home * 100)} %`)} />
@@ -242,18 +275,18 @@ export function StatsPanel() {
       <Field s={stats}>{heatCells(stats, stats.heat[layer], stats.heat.nx, stats.heat.ny, layer === 'ball' ? 'var(--ball)' : 'var(--accent)', (n) => `${Math.round(n / Math.max(1, stats.heat[layer].reduce((a, b) => a + b, 0)) * 1000) / 10} %`)}</Field>
     </Card>}
 
-    {stats.score && (stats.score.method === 'scoreboard'
-      ? <><BoardScoreCard s={stats} colors={colors} names={teamName} kindLabel={kindLabel} /><PointsCard s={stats} colors={colors} names={teamName} roster={{ home: rosterNames(project.run?.numbers?.roster_home), away: rosterNames(project.run?.numbers?.roster_away) }} /></>
-      : <ScoreCard s={stats} colors={colors} names={teamName} kindLabel={kindLabel} />)}
-    {stats.players && <PlayersCard p={stats.players} span={dur} colors={colors} names={teamName} roster={{ home: rosterNames(project.run?.numbers?.roster_home), away: rosterNames(project.run?.numbers?.roster_away) }} />}
-
     {stats.shape && <ShapeCard s={stats} shape={stats.shape} colors={colors} names={teamName} />}
 
+    </>}
+
+    {cur === 'videos' && <>
+    <VideoCard s={stats} names={teamName} colors={colors} roster={roster} />
     <Card title={ts.moments} hint={ts.momentsHint}>
       {stats.moments.length === 0 ? <p className="mm-muted">{ts.noMoments}</p> : <>
         <div className="mm-row mm-gap mm-wrap">
           <Btn hint={t.hints.clipsAll} onClick={() => setPicked(picked.size === stats.moments.length ? new Set() : new Set(stats.moments.map((_, i) => i)))}>{picked.size === stats.moments.length ? ts.noneSel : ts.all}</Btn>
           <Btn primary hint={t.hints.clips} disabled={!picked.size || !project.video} onClick={() => void runJob('clip', { ...common(), at: [...picked].map((i) => stats.moments[i].t) })}>{ts.clips(picked.size)}</Btn>
+          <Btn hint={ts.reelJoinHint} disabled={!picked.size || !project.video} onClick={() => void runJob('reel', { ...common(), plan: [{ label: ts.reelSelection, moments: [...picked].map((i) => ({ t: stats.moments[i].t })) }] })}>{ts.reelJoin(picked.size)}</Btn>
           <span className="mm-grow" /><button type="button" className="mm-link" data-hint={t.hints.showFolder} onClick={() => void api('/api/reveal', { path: `${dir}/out/clips`, open: false }).then((r) => !r.ok && log(T('status.error', { m: r.error })))}>{ts.showClips}</button>
         </div>
         <ul className="mm-moments">{stats.moments.map((m, i) => <li key={i}>
@@ -266,6 +299,7 @@ export function StatsPanel() {
         </li>)}</ul>
       </>}
     </Card>
+    </>}
   </>;
 }
 
@@ -483,6 +517,74 @@ function PointsCard({ s, colors, names, roster }: { s: Stats; colors: Record<Tea
 }
 
 /** Time on the field per jersey number, one column per team. */
+// ---------------------------------------------------------------- videos of several moments
+type Preset = 'highlights' | 'home' | 'away' | 'players_home' | 'players_away';
+type ReelPlan = { label: string; moments: { t: number; before?: number; after?: number }[] }[];
+function VideoCard({ s, names, colors, roster }: { s: Stats; names: Record<Team, string>; colors: Record<Team, string>; roster: Record<'home' | 'away', Record<number, string>> }) {
+  const { t, project, runJob, common, dir, log } = useApp();
+  const ts = t.stats;
+  const made = s.box_score?.made ?? [];
+  const [preset, setPreset] = useState<Preset>('highlights');
+  // a basket shows on the board a few seconds after it fell: more time before than after
+  const fromMade = (x: Made) => ({ t: x.t, before: 10, after: 3 });
+  const teamLabel = (k: 'home' | 'away') => (k === 'home' ? project.live?.home_name : project.live?.away_name) || names[k];
+  const plan: ReelPlan = useMemo(() => {
+    const ofTeam = (k: 'home' | 'away') => [...made.filter((x) => x.team === k).map(fromMade), ...s.moments.filter((m) => m.team === k && m.type !== 'sub').map((m) => ({ t: m.t }))];
+    if (preset === 'highlights') return [{ label: ts.reelHighlights, moments: made.length ? made.map(fromMade) : s.moments.filter((m) => m.type !== 'sub').map((m) => ({ t: m.t })) }];
+    if (preset === 'home' || preset === 'away') return [{ label: teamLabel(preset), moments: ofTeam(preset) }];
+    const k = preset === 'players_home' ? 'home' : 'away';
+    const nums = [...new Set(made.filter((x) => x.team === k && x.number != null).map((x) => x.number as number))].sort((a, b) => a - b);
+    return nums.map((n) => ({ label: ts.reelPlayer + n, moments: made.filter((x) => x.team === k && x.number === n).map(fromMade) }));
+  }, [preset, s, made]); // eslint-disable-line react-hooks/exhaustive-deps
+  const usable = plan.filter((r) => r.moments.length > 0);
+  const presets: [Preset, string][] = [['highlights', ts.reelHighlightsAll], ['home', ts.reelTeamAll(teamLabel('home'))], ['away', ts.reelTeamAll(teamLabel('away'))],
+    ...(made.length ? [['players_home', ts.reelPlayersAll(teamLabel('home'))], ['players_away', ts.reelPlayersAll(teamLabel('away'))]] as [Preset, string][] : [])];
+  const team = preset.endsWith('home') ? 'home' : preset.endsWith('away') ? 'away' : null;
+  return <Card title={ts.videosTitle} hint={ts.videosHint}>
+    <div className="mm-reel-presets" role="radiogroup">{presets.map(([k, label]) => <label key={k} className={'mm-reel-preset' + (preset === k ? ' active' : '')}>
+      <input type="radio" name="reel-preset" checked={preset === k} onChange={() => setPreset(k)} />{label}</label>)}</div>
+    {usable.length === 0 ? <p className="mm-muted">{preset.startsWith('players') ? ts.reelNoPlayers : ts.reelNone}</p> : <ul className="mm-reel-list">
+      {usable.map((r) => <li key={r.label}>
+        {team && <i className="mm-sw" style={{ background: colors[team] }} />}
+        <span className="mm-reel-name">{r.label}{preset.startsWith('players') && team && roster[team][Number(r.label.replace(/\D/g, ''))] ? <span className="mm-muted"> · {roster[team][Number(r.label.replace(/\D/g, ''))]}</span> : null}</span>
+        <span className="mm-muted">{ts.reelMoments(r.moments.length)}</span>
+      </li>)}
+    </ul>}
+    <p className="mm-hint">{ts.reelNameHint}</p>
+    <div className="mm-row mm-gap mm-wrap">
+      <Btn primary hint={ts.reelMakeHint} disabled={!usable.length || !project.video} onClick={() => void runJob('reel', { ...common(), plan: usable })}>{ts.reelMake(usable.length)}</Btn>
+      <span className="mm-grow" /><button type="button" className="mm-link" data-hint={ts.reelShow} onClick={() => void api('/api/reveal', { path: `${dir}/out/videos`, open: false }).then((r) => !r.ok && log(T('status.error', { m: r.error })))}>{ts.reelShow}</button>
+    </div>
+  </Card>;
+}
+
+function BoxScoreCard({ b, colors, names, roster }: { b: BoxScore; colors: Record<Team, string>; names: Record<Team, string>; roster: Record<'home' | 'away', Record<number, string>> }) {
+  const { t } = useApp();
+  const ts = t.stats, c = ts.boxCols;
+  const seen = b.attempts_seen > 0;
+  const missed = (l: BoxLine) => seen ? `${l.missed.three}/${l.missed.two}/${l.missed.ft}` : '–';
+  const pm = (v: number) => (v > 0 ? '+' : v < 0 ? '−' : '±') + Math.abs(v);
+  const row = (label: React.ReactNode, l: BoxLine, seconds: number | null, key: string | number, weak = false) => <tr key={key} className={weak ? 'mm-weak' : undefined}>
+    <td>{label}</td><td>{seconds == null ? '' : clock(seconds)}</td><td><strong>{l.points}</strong></td><td>{l.three}</td><td>{l.two}</td><td>{l.ft}</td>
+    <td title={ts.boxMissedHint}>{missed(l)}</td>
+    <td title={seconds == null ? '' : ts.boxOnCourt(l.on_court.for, l.on_court.against)}>{seconds == null ? '' : pm(l.on_court.plus_minus)}</td></tr>;
+  return <Card title={ts.boxTitle} hint={ts.boxHint}>
+    <p className="mm-box-note" role="note">⚠︎ {ts.boxNote}</p>
+    {!seen && <p className="mm-muted">{ts.boxNoAttempts}</p>}
+    {(['home', 'away'] as const).map((k) => {
+      const w = b.without_number[k];
+      return <div key={k} className="mm-box-team">
+        <h3><i className="mm-sw" style={{ background: colors[k] }} />{names[k]} <span className="mm-muted">{b.points[k]} {c.pts}</span></h3>
+        <table className="mm-table mm-box"><thead><tr><th>{c.player}</th><th>{c.min}</th><th>{c.pts}</th><th>{c.three}</th><th>{c.two}</th><th>{c.ft}</th><th title={ts.boxMissedHint}>{c.missed}</th><th>{c.pm}</th></tr></thead>
+          <tbody>
+            {b[k].map((p) => row(<>#{p.number}{roster[k][p.number] ? ' ' + roster[k][p.number] : ''}</>, p, p.seconds, p.number))}
+            {(w.points > 0 || w.missed.two + w.missed.three + w.missed.ft > 0) && row(ts.boxWithout, w, null, 'without', true)}
+          </tbody></table>
+        {b.team_only[k] > 0 && <p className="mm-muted">{ts.boxTeamOnly(b.team_only[k])}</p>}
+      </div>;
+    })}
+  </Card>;
+}
 function PlayersCard({ p, span, colors, names, roster }: { p: NonNullable<Stats['players']>; span: number; colors: Record<Team, string>; names: Record<Team, string>; roster: Record<'home' | 'away', Record<number, string>> }) {
   const { t } = useApp();
   const ts = t.stats;

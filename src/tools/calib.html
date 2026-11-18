@@ -38,7 +38,7 @@ canvas#legend{display:block;width:100%;border:.5px solid var(--sep);border-radiu
    <p id="t_outside" style="font-weight:600;color:var(--label)"></p>
    <div class="corners"><label><input type="checkbox" id="o0"><span id="t_o0"></span></label><label><input type="checkbox" id="o1"><span id="t_o1"></span></label>
     <label><input type="checkbox" id="o3"><span id="t_o3"></span></label><label><input type="checkbox" id="o2"><span id="t_o2"></span></label></div>
-   <div class="btns"><button class="primary" id="autobtn"></button><label style="display:flex;gap:6px;align-items:center;font-size:12px;cursor:pointer"><input type="checkbox" id="showlines"><span id="t_showlines"></span></label></div>
+   <div class="btns"><button class="primary" id="autobtn"></button><button id="snapbtn" disabled></button><label style="display:flex;gap:6px;align-items:center;font-size:12px;cursor:pointer"><input type="checkbox" id="showlines"><span id="t_showlines"></span></label></div>
    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button id="erasebtn"><span id="t_erase"></span></button><button id="eraseclear" style="display:none"><span id="t_erase_clear"></span></button></div>
    <p id="t_erasehint" style="font-size:11.5px;display:none"></p>
    <p id="automsg"></p></div>
@@ -59,7 +59,7 @@ let info,img=new Image(),linesImg=null,pts={},lpts=[],handles=[],cur=0,lens=null
 const cv=$('cv'),ctx=cv.getContext('2d'),lp=$('loupe'),lctx=lp.getContext('2d');
 function texts(){document.title=T('calp.title');$('t_title').textContent=T('calp.title');$('t_intro').textContent=T('calp.intro');$('t_sides').textContent=T('calp.sides');
  $('t_legend').textContent=T('calp.legend');$('t_cam').textContent='▲ '+T('calp.camera');$('undo').textContent='↶ '+T('calp.undo');$('redo').textContent='↷ '+T('calp.redo');$('undo').title=T('calp.undo_key');$('redo').title=T('calp.redo_key');$('skip').textContent=T('calp.skip');$('save').textContent=T('calp.save');$('t_lens').textContent=T('calp.lens_title');$('t_lens_none').textContent=T('calp.lens_none');$('t_lens_fish').textContent=T('calp.lens_fisheye');$('t_lens_pano').textContent=T('calp.lens_panorama');$('t_pick').textContent=T('calp.pick_color');$('t_colorhint').textContent=T('calp.color_hint');$('t_auto').textContent=T('calp.auto');$('t_autohint').textContent=T('calp.auto_hint');$('t_outside').textContent=T('calp.outside');
- ['fl','fr','nr','nl'].forEach((k,i)=>$('t_o'+i).textContent=T('calp.c_'+k));$('autobtn').textContent=T('calp.auto_btn');$('t_showlines').textContent=T('calp.show_lines');$('t_erase').textContent=T('calp.erase');$('t_erase_clear').textContent=T('calp.erase_clear');$('t_erasehint').textContent=T('calp.erase_hint');$('t_lenshint').textContent=T('calp.lens_hint');$('t_priv').textContent=T('calp.privacy');
+ ['fl','fr','nr','nl'].forEach((k,i)=>$('t_o'+i).textContent=T('calp.c_'+k));$('autobtn').textContent=T('calp.auto_btn');$('snapbtn').textContent=T('calp.snap_btn');$('snapbtn').title=T('calp.snap_hint');$('t_showlines').textContent=T('calp.show_lines');$('t_erase').textContent=T('calp.erase');$('t_erase_clear').textContent=T('calp.erase_clear');$('t_erasehint').textContent=T('calp.erase_hint');$('t_lenshint').textContent=T('calp.lens_hint');$('t_priv').textContent=T('calp.privacy');
  if(info)$('t_scaled').textContent=T('calp.scaled',{l:info.field[0],w:info.field[1]});}
 async function init(){info=await (await fetch('api/info')).json();if(info.lang)setLang(info.lang);texts();setLens(info.lens||'none');saved=snap();document.querySelectorAll('input[name=lens]').forEach(r=>r.onchange=()=>{record();solve();});img.onload=()=>{resize();build();draw();};img.src='frame.png';requestAnimationFrame(legend);}
 // Small top-down field: every landmark as a dot (green = set), the one to click next blinking.
@@ -111,7 +111,7 @@ function edgeHandles(lines){const out=[],inside=q=>q[0]>=0&&q[0]<=1&&q[1]>=0&&q[
   const h={u:Math.min(Math.max(a[0]+(b[0]-a[0])*t,0),1)*img.width,v:Math.min(Math.max(a[1]+(b[1]-a[1])*t,0),1)*img.height,x:a[2]+(b[2]-a[2])*t,y:a[3]+(b[3]-a[3])*t};
   if(!out.some(o=>Math.hypot(o.u-h.u,o.v-h.v)<img.width*0.012))out.push(h);}});
  return out;}
-async function solve(){const arr=payload();
+async function solve(){const arr=payload();$('snapbtn').disabled=arr.length<4;
  if(arr.length<4){overlay=[];handles=[];resid={};rms=null;lens=null;refresh();return;}
  const r=await (await fetch('api/solve',{method:'POST',body:JSON.stringify({points:arr,lens:lensSel()})})).json();
  if(r.ok){overlay=r.overlay;handles=edgeHandles(r.lines);resid={};r.residuals.forEach(e=>resid[e.id]=e.m);rms=r.rms;lens=r.lens;}else{overlay=[];handles=[];rms=null;lens=null;}refresh();}
@@ -192,6 +192,14 @@ $('autobtn').onclick=async()=>{const b=$('autobtn');b.disabled=true;$('automsg')
   else $('automsg').innerHTML='<span class="warn">'+T('calp.auto_none')+'</span>';}
  catch(e){$('automsg').innerHTML='<span class="warn">'+T('calp.auto_none')+'</span>';}
  b.disabled=false;};
+// snapping: the drawn lines are pulled onto the painted lines right next to them; the points move along
+$('snapbtn').onclick=async()=>{const b=$('snapbtn');b.disabled=true;$('automsg').textContent=T('calp.auto_running');
+ try{const r=await (await fetch('api/snap',{method:'POST',body:JSON.stringify({lens:lensSel(),color:lineColor,erase:eraseList(),points:payload()})})).json();
+  if(r.ok){r.points.forEach(p=>{const q={u:p.u*img.width,v:p.v*img.height};if(typeof p.id==='number')pts[p.id]=q;else if(typeof p.id==='string'&&p.id[0]==='L')Object.assign(lpts[+p.id.slice(1)],q);});record();
+   $('automsg').innerHTML=`<span class="good">${T('calp.snap_done',{a:Math.round(r.before*100),b:Math.round(r.after*100),px:r.moved_px.toFixed(0)})}</span> `+T('calp.snap_check');await solve();}
+  else $('automsg').innerHTML='<span class="warn">'+T('calp.snap_none')+'</span>';}
+ catch(e){$('automsg').innerHTML='<span class="warn">'+T('calp.snap_none')+'</span>';}
+ b.disabled=payload().length<4;};
 $('save').onclick=async()=>{const arr=payload();
  const r=await (await fetch('api/save',{method:'POST',body:JSON.stringify({points:arr,lens:lensSel()})})).json();
  $('msg').innerHTML=r.ok?`<span class="good">${T('calp.saved')}:</span> ${r.path}<br>${T('calp.saved_hint',{rms:r.rms.toFixed(2)})}`:`<span class="warn">${r.error}</span>`;};

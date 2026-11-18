@@ -604,6 +604,7 @@ pub fn report_with(profile: &SportProfile, frames: &[Value], given: Option<Direc
         "direction": direction,
         "players": super::stats_players::players(frames),
         "score": super::stats_players::score(profile, frames, &att, dir),
+        "box_score": super::stats_players::box_score(profile, frames, &att),
         "moments": moments,
     })
 }

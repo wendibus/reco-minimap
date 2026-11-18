@@ -147,6 +147,8 @@ If your venue is not standard size, click only the four corners (and the centre)
 
 **Lens:** choose it on the calibration page (or beforehand in the *Lens* field). **Panorama (e.g. Reco)** is for wide all-round pictures whose straight lines bend towards the sides – it is preselected for very wide pictures. **Fisheye** is for one camera with a curved picture, e.g. a full court. With either, the page estimates the bend from your points as well; it needs at least 6 points – use 10 or more, spread out to the edges of the picture. Processing, tiles and statistics use the straightened mapping automatically.
 
+**Snap to the lines:** when the green lines are nearly right but not exact, *Snap to the lines* pulls them onto the real field lines right next to them – a few pixels at most, so no line of another sport pulls – and moves your points along. The message shows how much of the lines lies on detected lines before and after. In halls with several sports pick the line colour first. ⌘Z undoes it. A saved calibration can also be sharpened on the command line: `reco-minimap court-snap video.mp4 --court court.json --out court.json`.
+
 **Halls with lines of several sports:** click *Pick the line colour* and then a line of your sport (zoom in first) – only lines of that colour count, dark ones as well as bright ones. With *Exclude lines*, clicking a magenta line removes that piece and dragging erases under the brush: strike out everything that is not part of your field (other sports, players, walls) before *Find the field automatically*.
 
 **Correcting by hand:** placed points can be grabbed and moved with the mouse. Blue diamonds at the picture edge show where a field line leaves the picture – drag one onto the real line and that spot counts as an extra point (useful when the corners are outside). **⌘Z** undoes, **⇧⌘Z** redoes (Windows: Ctrl+Z, Ctrl+Y) – for points, the automatic result, struck-out lines, line colour and lens.
@@ -347,9 +349,21 @@ The detection does not see directly whether a shot went in. It does see how play
 
 With a calibrated scoreboard the score is read instead of estimated: the card shows the score, the period and every change with time, team and points. Each +1/+2/+3 is matched to the attempt just before it that fits (free throw for +1, 2-point attempt for +2, 3-point attempt for +3, by the same team, up to 20 s earlier). The shooter of that attempt gets the points, with a probability and whether the jersey number was **read** on that player or **inferred** along the trail. Without a fitting attempt the points go to the team only. *Points per player* adds them up. The board shows changes about one to two seconds late; this is taken into account. Corrections on the board (score going down) cancel the last credit.
 
+### Player statistics (basketball with scoreboard)
+
+A table per team, one line per jersey number: **minutes** on the court, **points** with made **3-pointers, 2-pointers and free throws**, **misses** (3/2/FT) and **+/−**: the team's points minus the opponent's while that player was on the court (hover for the score of that time). The points come from the scoreboard; the shooter is found the same way as live: a +1 goes to the player standing alone at the free-throw line, a +2/+3 to the detected shot attempt or else to the scoring team's player nearest the basket before it. Misses are only the attempts the detection saw without points after them, so usually fewer than in reality; without any detected attempt the column shows –. Points whose shooter had no readable number are listed as *without a detected number*.
+
+**Everything here is determined electronically and may contain errors** – the card says so, too. It does not replace an official score sheet.
+
 ### Playing time per player
 
 Time on the field per jersey number, for home and away, with the share of the video length. Every continuously tracked trail counts for the number read most often on it; trails without a number are listed as *no number read*. This needs *Read and show jersey numbers* while processing. Names come from the squad in step 4 (`7:Anna`).
+
+### Tabs and videos
+
+The statistics are split into tabs: **Overview** (key figures, score, periods), **Players** (box score), **Shots** (shot chart, zones), **Team** (possession, heat map, shape) and **Videos**. The tab you chose last is remembered.
+
+In **Videos** several moments are joined into one video automatically, overlapping moments merge. Choose *Highlights (all baskets)*, *Everything of home* / *away*, or *Per player home* / *away (separate)* – the latter makes one video per jersey number from the baskets the scoreboard and the number reading assigned (electronically determined, may contain errors). Files go to `out/videos/` named `Year.Month.Day_Name.mp4`, e.g. `2026.11.15_Player13.mp4`; with a second game the same day the name gets `_2`. The date comes from the video's recording time, else the file date.
 
 ### Key moments and clips
 

@@ -88,6 +88,14 @@ function mount(root, o) {
       if (ev.kind === 'confirmed') return { text: T('ticker.sub', { team: tb, out: who(ev.team, ev.out), in: who(ev.team, ev.in) }), weak: false };
       return { text: T('ticker.sub_possible', { team: tb, out: who(ev.team, ev.out) }), weak: true, tag: T('ticker.unconfirmed') };
     }
+    if (ev.type === 'score') {
+      // points from the scoreboard; the shooter from the tracking (an update replaces the entry, see draw)
+      if (ev.retracted || !(ev.points > 0)) return null;
+      const by = ev.number != null ? who(ev.team, ev.number) : '';
+      const key = ev.kind === 'free_throw' ? (by ? 'ticker.ft_by' : 'ticker.ft_team') : (by ? 'ticker.score_by' : 'ticker.score_team');
+      const tag = ev.pending ? T('ticker.score_pending') : by && ev.confidence < 0.5 ? T('ticker.score_unsure') : '';
+      return { text: T(key, { team: tb, n: ev.points, who: by }), weak: !by || ev.confidence < 0.5, tag };
+    }
     if (ev.type === 'scene') {
       let k = sceneKey(ev.kind, cfg.sport);
       if (k === 'free_throw' && ev.phase === 'attempt') k = 'free_throw_attempt';
@@ -100,9 +108,11 @@ function mount(root, o) {
 
   function draw() {
     R.th.textContent = teamName('home'); R.ta.textContent = teamName('away');
-    const rows = []; let shown = 0;
+    const rows = []; let shown = 0; const scored = new Set();
     for (let i = events.length - 1; i >= 0; i--) {
       const ev = events[i]; if (retracted.includes(ev.seq)) continue;
+      // a score and its later updates share `sid`: only the newest is shown
+      if (ev.type === 'score') { if (scored.has(ev.sid)) continue; scored.add(ev.sid); }
       const d = describe(ev); if (!d) continue;
       if (o.max && shown >= o.max) break;
       shown++;

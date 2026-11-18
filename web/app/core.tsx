@@ -61,7 +61,7 @@ function mergeDefaults(t: Json, d: Json) {
 const defaults = (): Json => ({
   lang: LANG, sport: 'basketball', custom: { length: 40, width: 20, team_size: 5, referees: 2 }, model_id: '', video: '', calib_time: 60, scoreboard_time: 60, lens: '',
   colors: { draw_home: '#ffffff', draw_away: '#2f6bff', ref_color: '#000000' }, segments: [{ name: T('run.segname') + '1', start: 0, duration: 0 }],
-  figures: { torso_top: 0.18, torso_bottom: 0.5, shirt_match: false, no_referees: false },
+  figures: { torso_top: 0.18, torso_bottom: 0.5, shirt_match: false, no_referees: false, hide_referees: false },
   run: { every: 5, outputs: { minimap: true, alpha: false, pip: false, json: true }, alpha_bg: 0.6, min_alpha: 1, ep: 'auto', units: 'all', scenes: false, scoreboard: true, workers: 1, numbers: { enabled: false, hires: '', roster_home: '', roster_away: '' } },
   live: { source: '', size: '1920x1080', fps: 25, port: 8765, realtime: false, adaptive: false, ticker_names: 'numbers', home_name: '', away_name: '', network: false, ticker_approve: false, ticker_export: false, ticker_push: '', ticker_key: '' },
 });

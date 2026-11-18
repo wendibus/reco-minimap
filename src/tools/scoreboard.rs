@@ -18,7 +18,7 @@ use serde_json::{json, Value};
 
 use super::calib::{open_browser, read_request, respond};
 use super::video::{FrameReader, VideoInfo};
-use crate::scoreboard::detect::Detector;
+use crate::scoreboard::cells::CellReader;
 use crate::scoreboard::find::{self, Burst, BurstBuilder, Candidate};
 use crate::scoreboard::quad::{self, Quad};
 use crate::scoreboard::{Board, Channel, Config, DetectCfg, FieldCfg, HomeSide, Reading};
@@ -38,7 +38,7 @@ fn f64s<const N: usize>(v: &Value) -> Option<[f64; N]> {
 }
 
 fn field_json(f: &FieldCfg) -> Value {
-    json!({"rect": f.rect, "digits": f.digits, "gap_ratio": f.gap_ratio, "slant": f.slant})
+    json!({"rect": f.rect, "digits": f.digits, "gap_ratio": f.gap_ratio, "slant": f.slant, "colon": f.colon})
 }
 
 fn field_from(v: &Value) -> Option<FieldCfg> {
@@ -47,6 +47,7 @@ fn field_from(v: &Value) -> Option<FieldCfg> {
         digits: v["digits"].as_u64()? as usize,
         gap_ratio: v["gap_ratio"].as_f64().unwrap_or(0.25),
         slant: v["slant"].as_f64().unwrap_or(0.0),
+        colon: v["colon"].as_f64().unwrap_or(0.0),
     })
 }
 
@@ -78,6 +79,9 @@ pub fn to_json(c: &Config) -> Value {
     }
     if let Some(p) = &c.period {
         v["period"] = field_json(p);
+    }
+    if let Some(t) = c.time {
+        v["time"] = json!(t);
     }
     v
 }
@@ -114,6 +118,7 @@ pub fn from_json(v: &Value) -> Result<Config, String> {
         clock: field_from(&v["clock"]).ok_or_else(|| bad("clock"))?,
         period: field_from(&v["period"]),
         home: if v["home"] == "right" { HomeSide::Right } else { HomeSide::Left },
+        time: v["time"].as_f64(),
     };
     c.validate().map_err(|e| format!("scoreboard.json: {e}"))?;
     Ok(c)
@@ -156,10 +161,9 @@ pub fn readings_in(frames: &[Value]) -> Vec<Reading> {
 /// ffmpeg that decodes only `region` of the video, every frame, as RGB24.
 fn spawn_crop(input: &str, region: [usize; 4], start: f64, duration: Option<f64>) -> Result<Child, String> {
     let mut c = Command::new("ffmpeg");
+    // no hardware decoding here: for a small crop the copy of every full frame back from the GPU
+    // makes it several times slower than decoding in software
     c.args(["-v", "error", "-nostdin"]);
-    if super::video::HW_DECODE.load(Ordering::Relaxed) {
-        c.args(["-hwaccel", "auto"]);
-    }
     if start > 0.0 {
         c.args(["-ss", &format!("{start}")]);
     }
@@ -170,6 +174,58 @@ fn spawn_crop(input: &str, region: [usize; 4], start: f64, duration: Option<f64>
     let [x, y, w, h] = region;
     c.args(["-an", "-sn", "-vf", &format!("crop={w}:{h}:{x}:{y}"), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
     c.stdout(Stdio::piped()).stderr(Stdio::inherit()).spawn().map_err(|e| tr!("ffmpeg nicht gefunden ({e})", "ffmpeg not found ({e})", "ffmpeg introuvable ({e})", "no se encuentra ffmpeg ({e})"))
+}
+
+/// The digit reader for `region`. When the reading does not start at the calibration frame, the
+/// board's position there (a few seconds around it) becomes the reference for its drift.
+fn reader(input: &str, info: &VideoInfo, cfg: &Config, region: [usize; 4], start: f64) -> Result<CellReader, String> {
+    let (w, h) = (info.w as usize, info.h as usize);
+    let mut r = CellReader::new(cfg, w, h, region, info.fps);
+    if let Some(tc) = cfg.time.filter(|tc| (tc - start).abs() > 5.0) {
+        let mut probe = CellReader::new(cfg, w, h, region, info.fps);
+        let mut child = spawn_crop(input, region, (tc - 5.0).max(0.0), Some(12.0))?;
+        if let Some(mut out) = child.stdout.take() {
+            let mut buf = vec![0u8; region[2] * region[3] * 3];
+            while out.read_exact(&mut buf).is_ok() {
+                probe.push_frame(&buf);
+            }
+        }
+        let _ = child.wait();
+        if let Some(e) = probe.reference_now() {
+            r.set_reference(e);
+        }
+    }
+    Ok(r)
+}
+
+/// The scoreboard read from the analysed frames themselves (live sources, where no second video
+/// stream of the board region exists). `fps`: frames per second that reach [`FrameBoard::push`].
+pub struct FrameBoard {
+    reader: CellReader,
+    region: [usize; 4],
+    fps: f64,
+}
+
+impl FrameBoard {
+    pub fn new(cfg: &Config, w: usize, h: usize, fps: f64) -> Self {
+        let region = cfg.region(w, h, 8);
+        Self { reader: CellReader::new(cfg, w, h, region, fps.max(1.0)), region, fps: fps.max(1.0) }
+    }
+
+    /// One analysed frame at video time `t`; a reading at the end of every window.
+    pub fn push(&mut self, frame: &super::video::Frame, t: f64) -> Option<Reading> {
+        let [x, y, w, h] = self.region;
+        if x + w > frame.w as usize || y + h > frame.h as usize {
+            return None;
+        }
+        let (cw, ch, rgb) = frame.crop_rgb(x as i64, y as i64, (x + w) as i64, (y + h) as i64);
+        if cw != w || ch != h {
+            return None;
+        }
+        let raw = self.reader.push_frame(&rgb)?;
+        let tm = t - (self.reader.window_frames() as f64 - 1.0) / 2.0 / self.fps;
+        Some(self.reader.reading(tm, &raw))
+    }
 }
 
 /// The scoreboard read alongside the processing: a thread with its own ffmpeg stream of the board
@@ -190,11 +246,11 @@ impl Stream {
         let region = cfg.region(w, h, 8);
         let mut child = spawn_crop(input, region, start, duration)?;
         let mut out = child.stdout.take().ok_or("no ffmpeg stdout")?;
-        let mut det = Detector::new_region(cfg, w, h, region, info.fps);
+        let mut det = reader(input, info, cfg, region, start)?;
         let (tx, rx) = channel();
         let progress = Arc::new(AtomicU64::new((start.max(0.0) * 1000.0) as u64));
         let (finished, stop) = (Arc::new(AtomicBool::new(false)), Arc::new(AtomicBool::new(false)));
-        let (p2, f2, s2, fps, home) = (progress.clone(), finished.clone(), stop.clone(), info.fps.max(1.0), cfg.home);
+        let (p2, f2, s2, fps) = (progress.clone(), finished.clone(), stop.clone(), info.fps.max(1.0));
         let handle = std::thread::spawn(move || {
             let mut buf = vec![0u8; region[2] * region[3] * 3];
             let mut i = 0usize;
@@ -206,8 +262,12 @@ impl Stream {
                     break Ok(i);
                 }
                 let t = start + i as f64 / fps;
-                if det.push_frame(&buf) && tx.send(Reading::from_state(t, &det.state, home)).is_err() {
-                    break Ok(i);
+                if let Some(raw) = det.push_frame(&buf) {
+                    // the reading belongs to the middle of its window
+                    let tm = t - (det.window_frames() as f64 - 1.0) / 2.0 / fps;
+                    if tx.send(det.reading(tm, &raw)).is_err() {
+                        break Ok(i);
+                    }
                 }
                 i += 1;
                 p2.store((t * 1000.0) as u64, Ordering::Relaxed);
@@ -255,15 +315,15 @@ pub fn read_video(input: &str, info: &VideoInfo, cfg: &Config, start: f64, durat
     let region = cfg.region(w, h, 8);
     let mut child = spawn_crop(input, region, start, duration)?;
     let mut out = child.stdout.take().ok_or("no ffmpeg stdout")?;
-    let mut det = Detector::new_region(cfg, w, h, region, info.fps);
+    let mut det = reader(input, info, cfg, region, start)?;
     let mut buf = vec![0u8; region[2] * region[3] * 3];
     let mut v = Vec::new();
     let fps = info.fps.max(1.0);
     let mut i = 0usize;
     while out.read_exact(&mut buf).is_ok() {
         let t = start + i as f64 / fps;
-        if det.push_frame(&buf) {
-            v.push(Reading::from_state(t, &det.state, cfg.home));
+        if let Some(raw) = det.push_frame(&buf) {
+            v.push(det.reading(t - (det.window_frames() as f64 - 1.0) / 2.0 / fps, &raw));
         }
         if i % 250 == 0 {
             on_progress(t);
@@ -403,6 +463,7 @@ fn save_from(body: &str, sess: &mut Session, info: &VideoInfo, prev: Option<&Con
         clock: take("clock", trs!("Spielzeit", "game clock", "temps de jeu", "tiempo de juego"))?,
         period: f.remove("period"),
         home: if v["home"] == "right" { HomeSide::Right } else { HomeSide::Left },
+        time: Some(sess.time),
     };
     cfg.validate()?;
     save(&cfg, out)
@@ -521,7 +582,7 @@ mod tests {
 
     #[test]
     fn config_roundtrip_and_reading_formats() {
-        let f = |x: f64, n: usize| FieldCfg { rect: [x, 10.0, 60.0, 40.0], digits: n, gap_ratio: 0.3, slant: 0.05 };
+        let f = |x: f64, n: usize| FieldCfg { rect: [x, 10.0, 60.0, 40.0], digits: n, gap_ratio: 0.3, slant: 0.05, colon: 0.0 };
         let c = Config {
             frame: [3840, 1080],
             board: Some(Board { corners: [[100.0, 50.0], [400.0, 55.0], [398.0, 120.0], [102.0, 118.0]], size: [1600, 360] }),
@@ -531,6 +592,7 @@ mod tests {
             clock: f(150.0, 4),
             period: None,
             home: HomeSide::Right,
+            time: Some(812.5),
         };
         let back = from_json(&to_json(&c)).unwrap();
         assert_eq!(back, c);
@@ -540,4 +602,90 @@ mod tests {
         assert_eq!(parse_reading(&reading_json(&r)), Some(r));
         assert!(from_json(&json!({"frame": [10, 10]})).is_err());
     }
+}
+
+// ---------------------------------------------------------------- comparison with a match report
+
+/// A score state from a match report (play-by-play): after which event, in which period, at
+/// which clock (seconds remaining).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RefState {
+    pub period: u32,
+    pub clock: u32,
+    pub home: u32,
+    pub away: u32,
+}
+
+/// Score states of a match report in the `reco-minimap-reference-events-v1` format
+/// (`events: [[period, "MM:SS", team, player, type, score_home, score_away], ...]`), plus the
+/// cumulative score at the end of each period (`period_scores`), when given.
+pub fn load_reference(path: &str) -> Result<(Vec<RefState>, Vec<(u32, u32)>), String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
+    let v: Value = serde_json::from_str(&text).map_err(|e| format!("{path}: {e}"))?;
+    let mut states: Vec<RefState> = Vec::new();
+    for e in v["events"].as_array().ok_or_else(|| format!("{path}: no events"))? {
+        let a = match e.as_array() {
+            Some(a) if a.len() >= 7 => a,
+            _ => continue,
+        };
+        let clock = a[1].as_str().and_then(|s| {
+            let (m, s) = s.split_once(':')?;
+            Some(m.trim().parse::<u32>().ok()? * 60 + s.trim().parse::<u32>().ok()?)
+        });
+        let (Some(period), Some(clock), Some(home), Some(away)) = (a[0].as_u64(), clock, a[5].as_u64(), a[6].as_u64()) else { continue };
+        let s = RefState { period: period as u32, clock, home: home as u32, away: away as u32 };
+        if states.last().map(|l| (l.home, l.away) != (s.home, s.away)).unwrap_or(true) {
+            states.push(s);
+        }
+    }
+    let mut ends = Vec::new();
+    let (mut h, mut a) = (0u32, 0u32);
+    for p in v["period_scores"].as_array().into_iter().flatten() {
+        if let (Some(ph), Some(pa)) = (p[0].as_u64(), p[1].as_u64()) {
+            h += ph as u32;
+            a += pa as u32;
+            ends.push((h, a));
+        }
+    }
+    Ok((states, ends))
+}
+
+/// Result of comparing the scoreboard course with a match report.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Comparison {
+    /// Score states of the report that were found in the same period, with the clock difference
+    /// (read − report, seconds).
+    pub found: Vec<(RefState, Option<i64>)>,
+    /// Score states of the report that never appeared.
+    pub missing: Vec<RefState>,
+    /// Score states that were read but are not in the report (only between the first and last
+    /// state of the report, as the report may be partial).
+    pub extra: Vec<(u32, u32, Option<u32>)>,
+    /// Score at the end of each period: (read, report).
+    pub period_ends: Vec<(u32, Option<(u32, u32)>, (u32, u32))>,
+}
+
+pub fn compare(tl: &crate::scoreboard::timeline::Timeline, states: &[RefState], ends: &[(u32, u32)]) -> Comparison {
+    let mut c = Comparison::default();
+    let read: Vec<(u32, u32, Option<u32>, Option<u32>)> = tl.changes.iter().map(|ch| (ch.score_home, ch.score_away, ch.period, ch.clock)).collect();
+    for s in states {
+        match read.iter().find(|r| (r.0, r.1) == (s.home, s.away)) {
+            Some(r) if r.2 == Some(s.period) => c.found.push((*s, r.3.map(|k| k as i64 - s.clock as i64))),
+            Some(_) | None => c.missing.push(*s),
+        }
+    }
+    if let (Some(first), Some(last)) = (states.first(), states.last()) {
+        let inside = |h: u32, a: u32| h + a > first.home + first.away && h + a <= last.home + last.away;
+        for r in &read {
+            if inside(r.0, r.1) && !states.iter().any(|s| (s.home, s.away) == (r.0, r.1)) {
+                c.extra.push((r.0, r.1, r.2));
+            }
+        }
+    }
+    for (i, e) in ends.iter().enumerate() {
+        let p = i as u32 + 1;
+        let last = tl.states.iter().rev().find(|s| s.period == Some(p)).and_then(|s| Some((s.home?, s.away?)));
+        c.period_ends.push((p, last, *e));
+    }
+    c
 }

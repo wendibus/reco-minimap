@@ -160,7 +160,8 @@ export function CalibPanel() {
       <h3>{T('cal.figures')}</h3><p className="mm-hint">{T('cal.torso_hint')}</p>
       <div className="mm-grid3"><Num k="figures.torso_top" label={T('cal.torso_top')} step={0.05} min={0} max={0.95} /><Num k="figures.torso_bottom" label={T('cal.torso_bottom')} step={0.05} min={0.05} max={1} /></div>
       <Check k="figures.shirt_match" label={T('cal.shirt_match')} /><p className="mm-hint">{T('cal.shirt_match_hint')}</p>
-      <Check k="figures.no_referees" label={T('cal.no_referees')} />
+      <Check k="figures.hide_referees" label={T('cal.hide_referees')} /><p className="mm-hint">{T('cal.hide_referees_hint')}</p>
+      <Check k="figures.no_referees" label={T('cal.no_referees')} /><p className="mm-hint">{T('cal.no_referees_hint')}</p>
     </Card>
     {project.sport === 'basketball' && <Card title={T('sb.title')} hint={T('sb.hint')}>
       <div className="mm-row mm-gap"><span className="mm-muted">{T('sb.time')}</span><div style={{ width: 90 }}><Num k="scoreboard_time" label="" /></div>

@@ -256,6 +256,8 @@ fn game_config(o: &Opts, profile: &SportProfile, home: [u8; 3], away: [u8; 3]) -
     }
     let mut cfg = Config::for_sport(&profile, home, away);
     cfg.referee_from_color = profile.referees > 0;
+    // people outside the lines for longer than this are left out (bench, table); 0 = off
+    cfg.off_court_s = o.f("off-court", cfg.off_court_s).max(0.0);
     cfg
 }
 
@@ -374,13 +376,17 @@ fn main() {
     let input = o.pos.first().cloned().unwrap_or_else(|| fail(trs!("<video> fehlt (siehe --help)", "<video> is missing (see --help)", "<vidéo> manquante (voir --help)", "falta <vídeo> (ver --help)")));
     match args[0].as_str() {
         "calibrate" => cmd_calibrate(&o, &input),
+        "court-snap" => cmd_court_snap(&o, &input),
         "scoreboard-calibrate" => cmd_scoreboard_calibrate(&o, &input),
         "scoreboard" => cmd_scoreboard(&o, &input),
+        "scoreboard-check" => cmd_scoreboard_check(&o, &input),
+        "scorers" => cmd_scorers(&o, &input),
         "selfcheck" => cmd_selfcheck(&o, &input),
         "scales" => cmd_scales(&o, &input),
         "stats" => cmd_stats(&o, &input),
         "ticker" => cmd_ticker(&o, &input),
         "clip" => cmd_clip(&o, &input),
+        "reel" => cmd_reel(&o, &input),
         "review-identities" => {
             let annotations = o.s("annotations").unwrap_or_else(|| fail(trs!("--annotations fehlt", "--annotations is missing", "--annotations manquant", "falta --annotations")));
             let output = o.s("out").unwrap_or_else(|| fail(trs!("--out fehlt", "--out is missing", "--out manquant", "falta --out")));
@@ -519,6 +525,28 @@ fn cmd_calibrate(o: &Opts, input: &str) {
     eprintln!("{}", tr!("Fertig: {out}", "Done: {out}", "Terminé : {out}", "Listo: {out}"));
 }
 
+/// `court-snap <video> --court court.json [--time 5] [--color r,g,b] [--max 12] [--out court.json]`:
+/// pull an existing calibration onto the painted lines right next to the drawn ones.
+fn cmd_court_snap(o: &Opts, input: &str) {
+    let info = open_info(o, input);
+    let court = o.s("court").unwrap_or("court.json");
+    let color = o.s("color").and_then(|c| {
+        let v: Vec<u8> = c.split(',').filter_map(|x| x.trim().parse().ok()).collect();
+        (v.len() == 3).then(|| [v[0], v[1], v[2]])
+    });
+    let max = o.f("max", calib::SNAP_PX as f64) as f32;
+    match calib::snap_file(input, &info, o.f("time", 5.0), court, o.s("out"), color, max) {
+        Ok((before, after, moved)) => {
+            println!("{}", tr!("Linien auf erkannten Linien: {:.0} % → {:.0} %, größte Verschiebung {:.1} px", "Lines on detected lines: {:.0} % → {:.0} %, largest shift {:.1} px", "Lignes sur les lignes détectées : {:.0} % → {:.0} %, plus grand décalage {:.1} px", "Líneas sobre las detectadas: {:.0} % → {:.0} %, mayor desplazamiento {:.1} px", before * 100.0, after * 100.0, moved));
+            match o.s("out") {
+                Some(out) => println!("{}", tr!("Gespeichert: {out}", "Saved: {out}", "Enregistré : {out}", "Guardado: {out}")),
+                None => println!("{}", tr!("Nichts gespeichert (--out angeben).", "Nothing saved (give --out).", "Rien enregistré (indiquer --out).", "No se guardó nada (indica --out).")),
+            }
+        }
+        Err(e) => fail(e),
+    }
+}
+
 /// `scoreboard-calibrate <video> [--time 60] [--out scoreboard.json]`: find the hall scoreboard and its digit blocks on a local web page.
 fn cmd_scoreboard_calibrate(o: &Opts, input: &str) {
     let info = open_info(o, input);
@@ -539,14 +567,133 @@ fn cmd_scoreboard(o: &Opts, input: &str) {
         prog.report(end.filter(|e| *e > start).map(|e| (t - start) / (e - start)), None, &tr!("Video bei {}", "video at {}", "vidéo à {}", "vídeo en {}", fmt_clock(t)));
     })
     .unwrap_or_else(|e| fail(e));
-    let lines: Vec<String> = rs.iter().map(|r| reco_minimap::tools::scoreboard::reading_json(r).to_string()).collect();
+    // raw readings (two per second, unsure parts empty) -> the course of the game
+    if let Some(p) = o.s("raw") {
+        let lines: Vec<String> = rs.iter().map(|r| reco_minimap::tools::scoreboard::reading_json(r).to_string()).collect();
+        std::fs::write(p, lines.join("\n") + "\n").unwrap_or_else(|e| fail(format!("{p}: {e}")));
+    }
+    let tl = reco_minimap::scoreboard::timeline::resolve(&rs, &reco_minimap::scoreboard::timeline::TimelineCfg::default());
+    let clean = reco_minimap::scoreboard::timeline::changed_readings(&tl);
+    let lines: Vec<String> = clean.iter().map(|r| reco_minimap::tools::scoreboard::reading_json(r).to_string()).collect();
     match o.s("json") {
         Some(p) => std::fs::write(p, lines.join("\n") + "\n").unwrap_or_else(|e| fail(format!("{p}: {e}"))),
         None => lines.iter().for_each(|l| println!("{l}")),
     }
-    let changes = reco_minimap::scoring::score_changes(&rs);
-    let last = |f: fn(&reco_minimap::scoreboard::Reading) -> Option<u32>| rs.iter().rev().find_map(f).map(|v| v.to_string()).unwrap_or_else(|| "–".into());
-    eprintln!("{}", tr!("{} Ablesungen, {} Punkteänderungen, zuletzt {}:{} (Heim:Gast)", "{} readings, {} score changes, last {}:{} (home:away)", "{} lectures, {} changements de score, dernier {}:{} (domicile:visiteurs)", "{} lecturas, {} cambios de marcador, último {}:{} (local:visitante)", rs.len(), changes.len(), last(|r| r.home), last(|r| r.away)));
+    let last = tl.states.last();
+    let fmt = |v: Option<u32>| v.map(|v| v.to_string()).unwrap_or_else(|| "–".into());
+    let periods = tl.segments.iter().filter(|s| matches!(s.kind, reco_minimap::scoreboard::timeline::SegmentKind::Period(_))).count();
+    let breaks = tl.segments.len() - periods;
+    eprintln!("{}", tr!("{} Ablesungen, {} Punkteänderungen, {} Viertel, {} Pausen, zuletzt {}:{} (Heim:Gast)", "{} readings, {} score changes, {} periods, {} breaks, last {}:{} (home:away)", "{} lectures, {} changements de score, {} périodes, {} pauses, dernier {}:{} (domicile:visiteurs)", "{} lecturas, {} cambios de marcador, {} periodos, {} descansos, último {}:{} (local:visitante)", rs.len(), tl.changes.len(), periods, breaks, fmt(last.and_then(|l| l.home)), fmt(last.and_then(|l| l.away))));
+}
+
+/// `scoreboard-check <readings.jsonl> [--reference report.json] [--json timeline.json]`: fit the course of the game
+/// (scores only up, clock only down, periods and breaks) to raw scoreboard readings and compare it with a match report.
+fn cmd_scoreboard_check(o: &Opts, input: &str) {
+    use reco_minimap::scoreboard::timeline::{self, SegmentKind};
+    let text = std::fs::read_to_string(input).unwrap_or_else(|e| fail(format!("{input}: {e}")));
+    let raw: Vec<reco_minimap::scoreboard::Reading> = text.lines().filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok()).filter_map(|v| reco_minimap::tools::scoreboard::parse_reading(&v)).collect();
+    let tl = timeline::resolve(&raw, &timeline::TimelineCfg::default());
+    let clk = |c: Option<u32>| c.map(|c| format!("{}:{:02}", c / 60, c % 60)).unwrap_or_else(|| "–".into());
+    for s in &tl.segments {
+        let kind = match s.kind {
+            SegmentKind::Period(p) => tr!("Viertel {}", "Period {}", "Période {}", "Periodo {}", p),
+            SegmentKind::Break => trs!("Pause", "Break", "Pause", "Descanso").to_string(),
+        };
+        println!("{:>8} – {:>8}  {kind:<10} {} → {}, {}", fmt_clock(s.t0), fmt_clock(s.t1), clk(Some(s.clock0)), clk(Some(s.clock1)), tr!("Uhr stand {:.0} s", "clock stopped {:.0} s", "horloge arrêtée {:.0} s", "reloj parado {:.0} s", s.stopped_s));
+    }
+    for c in &tl.changes {
+        println!("{:>8}  P{} {:>5}  {:>3}:{:<3} (+{} {})", fmt_clock(c.t), c.period.map(|p| p.to_string()).unwrap_or_else(|| "?".into()), clk(c.clock), c.score_home, c.score_away, c.to as i64 - c.from as i64, if c.home { trs!("Heim", "home", "domicile", "local") } else { trs!("Gast", "away", "visiteurs", "visitante") });
+    }
+    if let Some(p) = o.s("json") {
+        let v: Vec<serde_json::Value> = timeline::changed_readings(&tl).iter().map(reco_minimap::tools::scoreboard::reading_json).collect();
+        std::fs::write(p, v.iter().map(|x| x.to_string()).collect::<Vec<_>>().join("\n") + "\n").unwrap_or_else(|e| fail(format!("{p}: {e}")));
+    }
+    if let Some(r) = o.s("reference") {
+        let (states, ends) = reco_minimap::tools::scoreboard::load_reference(r).unwrap_or_else(|e| fail(e));
+        let c = reco_minimap::tools::scoreboard::compare(&tl, &states, &ends);
+        println!();
+        for (p, read, want) in &c.period_ends {
+            let r = read.map(|(h, a)| format!("{h}:{a}")).unwrap_or_else(|| "–".into());
+            println!("{} {p}: {r} ({})  {}", trs!("Ende Viertel", "End of period", "Fin de période", "Fin del periodo"), tr!("Bericht {}:{}", "report {}:{}", "rapport {}:{}", "informe {}:{}", want.0, want.1), if read == &Some(*want) { "✓" } else { "✗" });
+        }
+        for s in &c.missing {
+            println!("{} P{} {} {}:{}", trs!("fehlt:", "missing:", "manquant :", "falta:"), s.period, clk(Some(s.clock)), s.home, s.away);
+        }
+        for (h, a, p) in &c.extra {
+            println!("{} P{} {h}:{a}", trs!("zusätzlich:", "extra:", "en trop :", "de más:"), p.map(|p| p.to_string()).unwrap_or_else(|| "?".into()));
+        }
+        if o.has("verbose") {
+            for (s, d) in &c.found {
+                println!("  P{} {} {}:{}  {}", s.period, clk(Some(s.clock)), s.home, s.away, d.map(|d| format!("{d:+} s")).unwrap_or_else(|| "–".into()));
+            }
+        }
+        let diffs: Vec<i64> = c.found.iter().filter_map(|(_, d)| *d).collect();
+        let within = diffs.iter().filter(|d| d.abs() <= 3).count();
+        println!("{}", tr!("Spielstände aus dem Bericht gefunden: {}/{}, Uhr auf ±3 s: {}/{}", "Report scores found: {}/{}, clock within ±3 s: {}/{}", "Scores du rapport trouvés : {}/{}, horloge à ±3 s : {}/{}", "Marcadores del informe encontrados: {}/{}, reloj a ±3 s: {}/{}", c.found.len(), states.len(), within, diffs.len()));
+    }
+}
+
+/// Replays a result as if live: frames and board readings in time order through the live scorer;
+/// prints who scored, optionally compared with a match report.
+fn cmd_scorers(o: &Opts, input: &str) {
+    use reco_minimap::live_score::{reference_scorers, ScoreEvent};
+    let text = std::fs::read_to_string(input).unwrap_or_else(|e| fail(format!("{input}: {e}")));
+    let frames: Vec<serde_json::Value> = text.lines().filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok()).filter(|v| v["players"].is_array()).collect();
+    let mut readings: Vec<reco_minimap::scoreboard::Reading> = match o.s("raw") {
+        Some(p) => std::fs::read_to_string(p).unwrap_or_else(|e| fail(format!("{p}: {e}"))).lines().filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok()).filter_map(|v| reco_minimap::tools::scoreboard::parse_reading(&v)).collect(),
+        None => reco_minimap::tools::scoreboard::readings_in(&frames),
+    };
+    readings.sort_by(|a, b| a.t.total_cmp(&b.t));
+    let g = SportProfile::basketball().goals;
+    let (said, events): (Vec<f64>, Vec<ScoreEvent>) = reco_minimap::live_score::replay(&frames, &readings, [g[0], g[1]], Default::default()).into_iter().unzip();
+    // the final state of every score (an update replaces its event)
+    let mut last: std::collections::BTreeMap<u32, ScoreEvent> = Default::default();
+    for e in &events {
+        last.insert(e.sid, e.clone());
+    }
+    let report = o.s("reference").map(|p| {
+        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(p).unwrap_or_else(|e| fail(format!("{p}: {e}")))).unwrap_or_else(|e| fail(format!("{p}: {e}")));
+        reference_scorers(&v)
+    });
+    let num = |n: Option<u32>| n.map(|n| format!("#{n}")).unwrap_or_else(|| "?".into());
+    let (mut ok, mut wrong, mut unknown, mut compared) = (0, 0, 0, 0);
+    let retracted = last.values().filter(|e| e.retracted).count();
+    let delays: Vec<f64> = events.iter().zip(&said).filter(|(e, _)| !e.update).map(|(e, t)| t - e.t).collect();
+    let named: Vec<f64> = last.values().filter(|e| e.number.is_some() && !e.retracted).filter_map(|e| events.iter().zip(&said).find(|(x, _)| x.sid == e.sid && x.number.is_some()).map(|(x, t)| t - x.t)).collect();
+    for e in last.values().filter(|e| !e.retracted) {
+        let first = events.iter().find(|x| x.sid == e.sid).unwrap();
+        let team = if e.team == reco_minimap::team::Team::Home { trs!("Heim", "home", "domicile", "local") } else { trs!("Gast", "away", "visiteurs", "visitante") };
+        let mut line = format!("{:>8}  {team:<5} {:+}  {:>3}  {:<16} {:>4}  {:.0} %", fmt_clock(e.t), e.points, e.to, e.basis.key(), num(e.number), e.confidence * 100.0);
+        if first.pending && e.number.is_some() {
+            line += &tr!("  (Nummer nachgeliefert)", "  (number delivered later)", "  (numéro livré plus tard)", "  (dorsal entregado después)");
+        }
+        if let Some(r) = report.as_ref() {
+            if let Some(&(want, pts)) = r.get(&(e.team, e.to)) {
+                if pts as i32 == e.points {
+                    compared += 1;
+                    let mark = match (e.number, want) {
+                        (Some(a), Some(b)) if a == b => { ok += 1; "✓" }
+                        (None, _) => { unknown += 1; "?" }
+                        _ => { wrong += 1; "✗" }
+                    };
+                    line += &format!("   {} {} {mark}", trs!("Bericht", "report", "rapport", "informe"), num(want));
+                }
+            }
+        }
+        println!("{line}");
+    }
+    let median = |v: &[f64]| {
+        let mut v = v.to_vec();
+        v.sort_by(|a, b| a.total_cmp(b));
+        v.get(v.len() / 2).copied().unwrap_or(0.0)
+    };
+    println!("{}", tr!("{} Punkte-Meldungen, {} zurückgenommen; gemeldet im Median {:.1} s nach der Anzeige, Spieler genannt im Median {:.1} s danach", "{} score reports, {} taken back; reported a median {:.1} s after the board, player named a median {:.1} s after", "{} annonces de points, {} retirées ; annoncées en médiane {:.1} s après le tableau, joueur nommé en médiane {:.1} s après", "{} avisos de puntos, {} retirados; avisados con una mediana de {:.1} s tras el marcador, jugador nombrado con una mediana de {:.1} s después", last.len(), retracted, median(&delays), median(&named)));
+    if report.is_some() {
+        println!("{}", tr!("Werfer richtig: {}/{}, falsch: {}, ohne Nummer: {}", "Shooter right: {}/{}, wrong: {}, without number: {}", "Tireur correct : {}/{}, faux : {}, sans numéro : {}", "Tirador correcto: {}/{}, incorrecto: {}, sin dorsal: {}", ok, compared, wrong, unknown));
+    }
+    if let Some(p) = o.s("json") {
+        std::fs::write(p, events.iter().map(|e| e.to_json().to_string()).collect::<Vec<_>>().join("\n") + "\n").unwrap_or_else(|e| fail(format!("{p}: {e}")));
+    }
 }
 
 // ---------------------------------------------------------------- selfcheck
@@ -791,10 +938,10 @@ fn cmd_ocr_bench(o: &Opts, manifest: &str) {
         let (path, label) = (f[0], f[1]);
         let group = f.get(2).unwrap_or(&"all").to_string();
         let (w, h, rgb) = match load_rgb(path) { Some(x) => x, None => { eprintln!("{}", tr!("nicht lesbar: {path}", "cannot read: {path}", "illisible : {path}", "no se puede leer: {path}")); continue; } };
-        let crop = ocr::localize(w, h, &rgb);
+        let crop = ocr::Crop { w, h, rgb };
         let e = stats.entry(group).or_default();
         e.0 += 1;
-        if let Ok(r) = reader.read(&crop) {
+        if let Ok(r) = ocr::read_best(&mut reader, &crop, o.has("thorough")) {
             let (s, _) = ctc_greedy(&r.probs, r.steps);
             if s == label || parse_number(&s).map(|n| n.to_string()) == Some(label.to_string()) { e.1 += 1; }
             if let Some((n, post)) = ctc_roster(&r.probs, r.steps, &roster) {
@@ -857,6 +1004,32 @@ fn cmd_clip(o: &Opts, input: &str) {
         println!("{}", out.display());
     }
     progress::report(Some(1.0), None, "");
+}
+
+/// Several moments of a game joined into one video each (`--plan plan.json` or `--at t1,t2 --label X`).
+fn cmd_reel(o: &Opts, input: &str) {
+    use reco_minimap::tools::reel;
+    let (before, after) = (o.f("before", 6.0), o.f("after", 4.0));
+    let reels = match (o.s("plan"), o.s("at")) {
+        (Some(p), _) => {
+            let txt = std::fs::read_to_string(p).unwrap_or_else(|e| fail(format!("{p}: {e}")));
+            let v: serde_json::Value = serde_json::from_str(&txt).unwrap_or_else(|e| fail(format!("{p}: {e}")));
+            reel::parse_plan(&v, before, after).unwrap_or_else(|e| fail(e))
+        }
+        (None, Some(at)) => {
+            let moments = at.split(',').filter_map(|x| parse_clock(x.trim())).map(|t| reel::Moment { t, before, after }).collect();
+            vec![reel::Reel { label: o.s("label").unwrap_or("Video").to_string(), moments }]
+        }
+        _ => fail(trs!("--plan oder --at fehlt", "--plan or --at is missing", "--plan ou --at manquant", "falta --plan o --at")),
+    };
+    if reels.is_empty() {
+        fail::<()>(trs!("kein Moment gewählt", "no moment chosen", "aucun moment choisi", "ningún momento elegido"));
+    }
+    let info = video::probe(input).unwrap_or_else(|e| fail(e));
+    let dir = std::path::PathBuf::from(o.s("out").unwrap_or("videos"));
+    for f in reel::make_all(input, &reels, &dir, info.duration).unwrap_or_else(|e| fail(e)) {
+        println!("{}", f.display());
+    }
 }
 
 fn cmd_stats(o: &Opts, path: &str) {
@@ -1177,7 +1350,8 @@ fn numbers_setup(o: &Opts, mcfg: &mut Config) -> Option<Numbers> {
 
 /// Try to read numbers of the players seen in this frame. `src` is the frame to crop from (a higher-resolution
 /// version of the panorama if available; bbox coordinates are normalized, so resolution does not matter).
-fn read_numbers(nm: &mut Numbers, mm: &mut Minimap, src: &Frame, t: f64) -> Vec<serde_json::Value> {
+/// `prio`: tracklets read first and as often as possible (e.g. the candidates of a score).
+fn read_numbers(nm: &mut Numbers, mm: &mut Minimap, src: &Frame, t: f64, prio: &[(u32, u32)]) -> Vec<serde_json::Value> {
     let mut cands=Vec::new();
     nm.last_reads.retain(|_,at|t>=*at && t-*at<30.0);
     for tr in mm.tracker().tracks().iter().filter(|x|!x.referee && x.state==reco_minimap::tracker::TrackState::Visible && (x.last_seen-t).abs()<1e-6) {
@@ -1185,20 +1359,22 @@ fn read_numbers(nm: &mut Numbers, mm: &mut Minimap, src: &Frame, t: f64) -> Vec<
         let height=bb.h*src.h as f32;
         if nm.heights.len()<5000 {nm.heights.push(height);}
         if height<nm.min_h {continue;}
-        let interval=if tr.confirmed.is_some_and(|n|tr.jersey.score_of(n)>=8.0) {2.0} else if tr.confirmed.is_some() {0.8} else {0.25};
+        let first=prio.contains(&(tr.id,tr.segment));
+        let interval=if first {0.0} else if tr.confirmed.is_some_and(|n|tr.jersey.score_of(n)>=8.0) {2.0} else if tr.confirmed.is_some() {0.8} else {0.25};
         if nm.last_reads.get(&(tr.id,tr.segment)).is_some_and(|at|t-*at<interval) {continue;}
         let (x0,y0,x1,y1)=ocr::torso_rect(src,&bb);
         let (w,h,rgb)=src.crop_rgb(x0,y0,x1,y1);
         let crop=ocr::Crop{w,h,rgb};
         let quality=ocr::crop_quality(&crop);
-        if quality>0.0 {cands.push((tr.id,tr.segment,tr.confirmed.is_some(),quality,crop));}
+        if quality>0.0 {cands.push((tr.id,tr.segment,tr.confirmed.is_some() && !first,quality,crop));}
     }
-    cands.sort_by(|a,b|a.2.cmp(&b.2).then(b.3.total_cmp(&a.3)).then(a.0.cmp(&b.0)));
+    cands.sort_by(|a,b|(!prio.contains(&(a.0,a.1))).cmp(&!prio.contains(&(b.0,b.1))).then(a.2.cmp(&b.2)).then(b.3.total_cmp(&a.3)).then(a.0.cmp(&b.0)));
     let mut records=Vec::new();
     for (id,segment,_,quality,crop) in cands.into_iter().take(nm.max_reads) {
         nm.last_reads.insert((id,segment),t);
         nm.tries+=1;
-        if let Ok(reading)=nm.reader.read(&ocr::localize(crop.w,crop.h,&crop.rgb)) {
+        // several windows of the torso, the most certain reading wins (see `ocr::read_best`)
+        if let Ok(reading)=ocr::read_best(&mut nm.reader,&crop,true) {
             if let Some(tr)=mm.tracker().tracks().iter().find(|tr|tr.id==id && tr.segment==segment) {
                 records.push(reco_minimap::tools::cache::record(tr,&reading,quality));
             }
@@ -1206,6 +1382,21 @@ fn read_numbers(nm: &mut Numbers, mm: &mut Minimap, src: &Frame, t: f64) -> Vec<
         }
     }
     records
+}
+
+/// One log line per live score report.
+fn log_scores(ev: &[reco_minimap::live_score::ScoreEvent]) {
+    for e in ev {
+        let team = team_name(e.team);
+        let who = e.number.map(|n| format!("#{n}")).unwrap_or_else(|| trs!("?", "?", "?", "?").to_string());
+        if e.retracted {
+            eprintln!("\n  {}", tr!("{} zurückgenommen: {} {:+}", "{} taken back: {} {:+}", "{} retiré : {} {:+}", "{} retirado: {} {:+}", fmt_clock(e.t), team, e.points));
+        } else if e.update {
+            eprintln!("\n  {}", tr!("{} {} {:+}: Spieler {}", "{} {} {:+}: player {}", "{} {} {:+} : joueur {}", "{} {} {:+}: jugador {}", fmt_clock(e.t), team, e.points, who));
+        } else {
+            eprintln!("\n  {}", tr!("{} {} {:+} ({}:{}), Spieler {} ({:.0} %)", "{} {} {:+} ({}:{}), player {} ({:.0} %)", "{} {} {:+} ({}:{}), joueur {} ({:.0} %)", "{} {} {:+} ({}:{}), jugador {} ({:.0} %)", fmt_clock(e.t), team, e.points, e.from, e.to, who, e.confidence * 100.0));
+        }
+    }
 }
 
 fn scene_json(e: &SceneEvent) -> serde_json::Value {
@@ -1321,6 +1512,12 @@ fn cmd_live(o: &Opts, input: &str) {
     teams.apply(&mut mcfg);
     mcfg.tracker.spawn_conf = { let (low, high) = thr_players(o); if low < high { high } else { 0.0 } };
     let mut numbers = numbers_setup(o, &mut mcfg).map(|nm| BackgroundOcr::new(nm.reader,nm.min_h,nm.max_reads));
+    // `--scoreboard`: the hall scoreboard read from the analysed frames; with basketball also who scored
+    let mut board = o.s("scoreboard").map(|p| {
+        let cfg = reco_minimap::tools::scoreboard::load(p).unwrap_or_else(|e| fail(e));
+        reco_minimap::tools::scoreboard::FrameBoard::new(&cfg, info.w as usize, info.h as usize, o.f("board-fps", 2.0))
+    });
+    let mut scorer = board.as_ref().filter(|_| profile.id == "basketball" && profile.goals.len() == 2).map(|_| reco_minimap::live_score::LiveScorer::new([profile.goals[0], profile.goals[1]], Default::default()));
     let mut scenes = o.has("scenes").then(|| { let mut d = SceneDetector::new(profile.clone()); d.direction = direction_opt(o); d });
     let mut mm = Minimap::new(mcfg, Box::new(projector));
 
@@ -1329,7 +1526,7 @@ fn cmd_live(o: &Opts, input: &str) {
     let ticker = ticker_cfg(o, &profile.id);
     let ticker_mode = ticker.names.clone();
     let ticker_mode = ticker_mode.as_str();
-    let hub = Hub::with_ticker(serde_json::json!({"home": hex(draw_home), "away": hex(draw_away), "referee": "#000000", "ball": "#ff8c00", "floor": "#262c34", "linecolor": "#e1e4e8",
+    let hub = Hub::with_ticker(serde_json::json!({"home": hex(draw_home), "away": hex(draw_away), "referee": "#000000", "hide_referees": o.has("hide-referees"), "ball": "#ff8c00", "floor": "#262c34", "linecolor": "#e1e4e8",
         "sport": profile.id, "numbers": o.has("numbers"), "field": [profile.field.length, profile.field.width], "lines": profile.lines.iter().map(|pl| pl.iter().map(|p| [(p.x * 100.0).round() / 100.0, (p.y * 100.0).round() / 100.0]).collect::<Vec<_>>()).collect::<Vec<_>>()}).to_string(), Some(ticker));
     // copies of the public feed for a web site: a folder and/or an upload (static files only, no code on the receiving side)
     let sink = reco_minimap::tools::ticker_pub::Sink {
@@ -1445,11 +1642,13 @@ fn cmd_live(o: &Opts, input: &str) {
             if nm.ready() && t-last_ocr >= ocr_interval {
                 let mut candidates: Vec<_>=mm.tracker().tracks().iter().filter(|tr|!tr.referee && tr.state==reco_minimap::tracker::TrackState::Visible && (tr.last_seen-t).abs()<1e-6)
                     .filter_map(|tr|tr.bbox.map(|bb|(tr,bb))).filter(|(_,bb)|bb.h*frame.h as f32>=nm.min_h).collect();
-                candidates.sort_by(|(a,ab),(b,bb)|a.confirmed.is_some().cmp(&b.confirmed.is_some()).then(bb.h.total_cmp(&ab.h)));
+                // the candidates of a recent score first, then tracks without a number, larger first
+                let prio=scorer.as_ref().map(|s|s.priority()).unwrap_or_default();
+                candidates.sort_by(|(a,ab),(b,bb)|(!prio.contains(&(a.id,a.segment))).cmp(&!prio.contains(&(b.id,b.segment))).then(a.confirmed.is_some().cmp(&b.confirmed.is_some())).then(bb.h.total_cmp(&ab.h)));
                 let jobs=candidates.into_iter().take(nm.max_reads).filter_map(|(tr,bb)| {
                     let (x0,y0,x1,y1)=ocr::torso_rect(&frame,&bb);
                     let (w,h,rgb)=frame.crop_rgb(x0,y0,x1,y1);
-                    (w>=6 && h>=6).then_some(Job{identity:Identity{id:tr.id,segment:tr.segment,team:tr.team,observed_at:t},crop:ocr::Crop{w,h,rgb}})
+                    (w>=6 && h>=6).then_some(Job{identity:Identity{id:tr.id,segment:tr.segment,team:tr.team,observed_at:t},crop:ocr::Crop{w,h,rgb},thorough:prio.contains(&(tr.id,tr.segment))})
                 }).collect();
                 if nm.submit(jobs) { last_ocr=t; }
             }
@@ -1457,6 +1656,7 @@ fn cmd_live(o: &Opts, input: &str) {
         log_events(&state.events);
         let sc = scenes.as_mut().map(|d| d.update(&state)).unwrap_or_default();
         log_scenes(&sc, &profile.id);
+        let board_reading = board.as_mut().and_then(|b| b.push(&frame, t));
         frame.rgb = Vec::new(); // free the big buffer early
         let age_ms = arrival.elapsed().as_secs_f64() * 1000.0;
         let mut v = state_json_with(&state, &sc);
@@ -1464,6 +1664,19 @@ fn cmd_live(o: &Opts, input: &str) {
         v["ocr"] = serde_json::json!({"background":numbers.is_some(),"pending":numbers.as_ref().map(|n|!n.ready()).unwrap_or(false),"applied":ocr_applied,"stale":ocr_stale,"errors":ocr_errors});
         v["performance"] = serde_json::json!({"tiles":selected.len(),"total_tiles":tiles.len(),"full_sweep":full_sweep,"inference_ms":inference_ms,"dropped_frames":latest.dropped.load(Ordering::Relaxed),"queue_capacity":1,"age_scope":"decoded_frame_to_result","recovery_tiles":recovery_tiles,"workers":model.workers(),
             "detected_players":dets.iter().filter(|d|d.class==Class::Player).count(),"coasting_targets":selection.coasting_targets,"detected_balls":dets.iter().filter(|d|d.class==Class::Ball).count()});
+        if let Some(r) = board_reading.as_ref() {
+            v["scoreboard"] = reco_minimap::tools::scoreboard::reading_json(r);
+        }
+        if let Some(sc) = scorer.as_mut() {
+            let mut ev = reco_minimap::live_score::Snapshot::from_frame(&v).map(|snap| sc.push_frame(snap)).unwrap_or_default();
+            if let Some(r) = board_reading.as_ref() {
+                ev.extend(sc.push_reading(r));
+            }
+            log_scores(&ev);
+            if let Some(a) = v["events"].as_array_mut() {
+                a.extend(ev.iter().map(|e| e.to_json()));
+            }
+        }
         let line = v.to_string();
         if let Some(j) = jsonl.as_mut() {
             let _ = writeln!(j, "{line}");
@@ -1632,7 +1845,7 @@ fn cmd_run(o: &Opts, input: &str) {
     let ppm = o.s("scale").and_then(|v| v.parse().ok()).unwrap_or_else(|| Renderer::default_px_per_m(&profile));
     let draw_home = o.s("draw-home").and_then(parse_hex).unwrap_or(home);
     let draw_away = o.s("draw-away").and_then(parse_hex).unwrap_or(away);
-    let mut theme = Theme { px_per_m: ppm, home: draw_home, away: draw_away, min_alpha: o.f("min-alpha", 0.8) as f32, show_numbers: o.has("numbers"), keeper_stripes: !o.has("no-stripes"), home_keeper: o.s("draw-home-gk").and_then(parse_hex), away_keeper: o.s("draw-away-gk").and_then(parse_hex), ..Theme::default() };
+    let mut theme = Theme { px_per_m: ppm, home: draw_home, away: draw_away, min_alpha: o.f("min-alpha", 0.8) as f32, show_numbers: o.has("numbers"), keeper_stripes: !o.has("no-stripes"), home_keeper: o.s("draw-home-gk").and_then(parse_hex), away_keeper: o.s("draw-away-gk").and_then(parse_hex), show_referees: !o.has("hide-referees"), ..Theme::default() };
     let mut mcfg = game_config(o, &profile, home, away);
     mcfg.referee_rgb = o.s("ref-color").and_then(parse_hex);
     teams.apply(&mut mcfg);
@@ -1702,8 +1915,12 @@ fn cmd_run(o: &Opts, input: &str) {
         }
         reco_minimap::tools::scoreboard::Stream::start(input, &info, &cfg, t_start(o), t_duration(o)).unwrap_or_else(|e| fail(e))
     });
+    // basketball with a scoreboard: who scored, live (buffer of the last seconds + board changes)
+    let mut scorer = board.as_ref().filter(|_| profile.id == "basketball" && profile.goals.len() == 2).map(|_| reco_minimap::live_score::LiveScorer::new([profile.goals[0], profile.goals[1]], Default::default()));
+    let mut n_scores = 0usize;
     let mut n_board = 0usize;
-    let mut last_board: Option<reco_minimap::scoreboard::Reading> = None;
+    // all raw readings of the board, for the course of the game at the end
+    let mut board_raw: Vec<reco_minimap::scoreboard::Reading> = Vec::new();
     // every frame line is written one frame late, so readings that arrive later still find their frame
     let mut held: Option<serde_json::Value> = None;
     fn emit_frame(v: serde_json::Value, tsim: &mut Option<reco_minimap::tools::ticker_sim::TickerSim>, jsonl: &mut Option<std::io::BufWriter<std::fs::File>>) {
@@ -1714,12 +1931,10 @@ fn cmd_run(o: &Opts, input: &str) {
             let _ = writeln!(j, "{v}");
         }
     }
-    fn attach_board(v: &mut serde_json::Value, rs: Vec<reco_minimap::scoreboard::Reading>, n: &mut usize, last: &mut Option<reco_minimap::scoreboard::Reading>) {
+    fn attach_board(v: &mut serde_json::Value, rs: Vec<reco_minimap::scoreboard::Reading>, n: &mut usize, all: &mut Vec<reco_minimap::scoreboard::Reading>) {
         if let Some(ev) = v["events"].as_array_mut() {
             *n += rs.len();
-            if let Some(r) = rs.last() {
-                *last = Some(*r);
-            }
+            all.extend(rs.iter().copied());
             ev.extend(rs.iter().map(reco_minimap::tools::scoreboard::reading_json));
         }
     }
@@ -1786,7 +2001,7 @@ fn cmd_run(o: &Opts, input: &str) {
         let ocr_start=Instant::now();
         let readings=if let Some(nm) = numbers.as_mut() {
             let hf = hires.as_mut().and_then(|r| r.next());
-            read_numbers(nm, &mut mm, hf.as_ref().unwrap_or(&frame), t)
+            read_numbers(nm, &mut mm, hf.as_ref().unwrap_or(&frame), t, &scorer.as_ref().map(|s| s.priority()).unwrap_or_default())
         } else {Vec::new()};
         let ocr_time=ocr_start.elapsed();
         d_ocr+=ocr_time;
@@ -1832,7 +2047,19 @@ fn cmd_run(o: &Opts, input: &str) {
             let mut fj = state_json_with(&state, &sc);
             fj["performance"]=serde_json::json!({"tiles":selection_stats.0,"total_tiles":tiles.len(),"full_sweep":selection_stats.1,"recovery_tiles":selection_stats.2,"coasting_targets":selection_stats.3,"ocr_ms":ocr_time.as_secs_f64()*1000.0});
             if let Some(b) = board.as_mut() {
-                attach_board(&mut fj, b.take_until(t), &mut n_board, &mut last_board);
+                let rs = b.take_until(t);
+                if let Some(sc) = scorer.as_mut() {
+                    let mut ev = reco_minimap::live_score::Snapshot::from_frame(&fj).map(|snap| sc.push_frame(snap)).unwrap_or_default();
+                    for r in &rs {
+                        ev.extend(sc.push_reading(r));
+                    }
+                    log_scores(&ev);
+                    n_scores += ev.iter().filter(|e| !e.update).count();
+                    if let Some(a) = fj["events"].as_array_mut() {
+                        a.extend(ev.iter().map(|e| e.to_json()));
+                    }
+                }
+                attach_board(&mut fj, rs, &mut n_board, &mut board_raw);
             }
             if let Some(prev) = held.replace(fj) {
                 emit_frame(prev, &mut tsim, &mut jsonl);
@@ -1859,14 +2086,21 @@ fn cmd_run(o: &Opts, input: &str) {
     if let Some(mut last) = held.take() {
         if let Some(b) = board.take() {
             let tl = last["t"].as_f64().unwrap_or(0.0);
-            attach_board(&mut last, b.finish_until(tl), &mut n_board, &mut last_board);
+            attach_board(&mut last, b.finish_until(tl), &mut n_board, &mut board_raw);
         }
         emit_frame(last, &mut tsim, &mut jsonl);
     }
+    if scorer.is_some() {
+        eprintln!("{}", tr!("\nLive-Werfer: {} Punkte-Meldungen", "\nLive scorers: {} score reports", "\nTireurs en direct : {} annonces de points", "\nTiradores en directo: {} avisos de puntos", n_scores));
+    }
     if o.s("scoreboard").is_some() {
         let fmt = |v: Option<u32>| v.map(|v| v.to_string()).unwrap_or_else(|| "–".into());
-        match last_board {
-            Some(r) => eprintln!("{}", tr!("\nAnzeigetafel: {n_board} Ablesungen, zuletzt {}:{} (Heim:Gast)", "\nScoreboard: {n_board} readings, last {}:{} (home:away)", "\nTableau d'affichage : {n_board} lectures, dernier {}:{} (domicile:visiteurs)", "\nMarcador: {n_board} lecturas, último {}:{} (local:visitante)", fmt(r.home), fmt(r.away))),
+        let tl = reco_minimap::scoreboard::timeline::resolve(&board_raw, &Default::default());
+        match tl.states.iter().rev().find(|s| s.home.is_some() || s.away.is_some()) {
+            Some(r) => {
+                let periods = tl.segments.iter().filter(|s| matches!(s.kind, reco_minimap::scoreboard::timeline::SegmentKind::Period(_))).count();
+                eprintln!("{}", tr!("\nAnzeigetafel: {n_board} Ablesungen, {} Punkteänderungen, {} Viertel, Stand {}:{} (Heim:Gast)", "\nScoreboard: {n_board} readings, {} score changes, {} periods, score {}:{} (home:away)", "\nTableau d'affichage : {n_board} lectures, {} changements de score, {} périodes, score {}:{} (domicile:visiteurs)", "\nMarcador: {n_board} lecturas, {} cambios de marcador, {} periodos, resultado {}:{} (local:visitante)", tl.changes.len(), periods, fmt(r.home), fmt(r.away)));
+            }
             None => eprintln!("{}", trs!("\nAnzeigetafel: nichts gelesen – Kalibrierung prüfen (Schritt 3).", "\nScoreboard: nothing read – check the calibration (step 3).", "\nTableau d'affichage : rien lu – vérifiez le calibrage (étape 3).", "\nMarcador: no se leyó nada; revisa la calibración (paso 3).")),
         }
     }
@@ -2010,7 +2244,7 @@ fn cmd_replay(o: &Opts, path: &str) {
     let mut scenes = o.has("scenes").then(|| { let mut d = SceneDetector::new(profile.clone()); d.direction = direction_opt(o); d });
     let mut mm = Minimap::new(mcfg, Box::new(projector));
     let mut jsonl = o.s("json").map(|p| std::io::BufWriter::new(std::fs::File::create(p).unwrap_or_else(|e| fail(format!("{p}: {e}")))));
-    let theme = Theme { px_per_m: o.s("scale").and_then(|v| v.parse().ok()).unwrap_or_else(|| Renderer::default_px_per_m(&profile)), home: o.s("draw-home").and_then(parse_hex).unwrap_or(home), away: o.s("draw-away").and_then(parse_hex).unwrap_or(away), min_alpha: o.f("min-alpha", 0.8) as f32, keeper_stripes: !o.has("no-stripes"), home_keeper: o.s("draw-home-gk").and_then(parse_hex), away_keeper: o.s("draw-away-gk").and_then(parse_hex), ..Theme::default() };
+    let theme = Theme { px_per_m: o.s("scale").and_then(|v| v.parse().ok()).unwrap_or_else(|| Renderer::default_px_per_m(&profile)), home: o.s("draw-home").and_then(parse_hex).unwrap_or(home), away: o.s("draw-away").and_then(parse_hex).unwrap_or(away), min_alpha: o.f("min-alpha", 0.8) as f32, keeper_stripes: !o.has("no-stripes"), home_keeper: o.s("draw-home-gk").and_then(parse_hex), away_keeper: o.s("draw-away-gk").and_then(parse_hex), show_referees: !o.has("hide-referees"), ..Theme::default() };
     let renderer = Renderer::with_profile(theme, profile.clone());
     let mut w_min = o.s("minimap").map(|p| {
         let (w, h) = renderer.size();

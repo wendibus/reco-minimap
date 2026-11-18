@@ -147,6 +147,8 @@ Si tu pabellón no tiene medidas estándar, marca solo las cuatro esquinas (y el
 
 **Objetivo:** se elige en la página de calibración (o antes, en el campo *Objetivo*). **Panorama (p. ej. Reco)** es para imágenes panorámicas anchas cuyas líneas rectas se curvan hacia los lados; viene preseleccionado en imágenes muy anchas. **Ojo de pez** es para una cámara con imagen curvada, p. ej. un campo completo. En ambos casos la página calcula también la curvatura a partir de tus puntos; necesita al menos 6, mejor 10 o más, repartidos hasta los bordes de la imagen. El procesamiento, los mosaicos y las estadísticas usan automáticamente la correspondencia corregida.
 
+**Ajustar a las líneas:** si las líneas verdes están casi bien pero no exactas, *Ajustar a las líneas* las lleva a las líneas reales del campo justo al lado – unos pocos píxeles como mucho, para que no tire una línea de otro deporte – y mueve tus puntos con ellas. El mensaje indica qué parte de las líneas está sobre líneas detectadas antes y después. En pabellones con varios deportes elige antes el color de las líneas. ⌘Z lo deshace. Una calibración guardada también se puede afinar por comando: `reco-minimap court-snap video.mp4 --court court.json --out court.json`.
+
 **Pabellones con líneas de varios deportes:** haz clic en *Elegir el color de las líneas* y luego en una línea de tu deporte (antes haz zoom): solo cuentan las líneas de ese color, oscuras o claras. Con *Excluir líneas*, un clic en una línea magenta quita ese trozo y arrastrar borra bajo el pincel: quita todo lo que no pertenece a tu campo (otros deportes, jugadores, paredes) y luego *Buscar el campo automáticamente*.
 
 **Corregir a mano:** los puntos colocados se pueden agarrar y mover con el ratón. Los rombos azules en el borde de la imagen muestran dónde una línea del campo sale de la imagen: arrastra uno a la línea real y ese lugar cuenta como punto adicional (útil cuando las esquinas quedan fuera). **⌘Z** deshace, **⇧⌘Z** rehace (Windows: Ctrl+Z, Ctrl+Y): para puntos, el resultado automático, las líneas excluidas, el color de línea y el objetivo.
@@ -347,9 +349,21 @@ La detección no ve directamente si un tiro entra. Sí ve cómo se reanuda el ju
 
 Con el marcador calibrado, el resultado se lee en lugar de estimarse: la tarjeta muestra el resultado, el periodo y cada cambio con tiempo, equipo y puntos. Cada +1/+2/+3 se asigna al intento correspondiente justo antes (tiro libre para +1, tiro de 2 para +2, tiro de 3 para +3, mismo equipo, hasta 20 s antes). El lanzador recibe los puntos, con una probabilidad y si su dorsal se **leyó** en él o se **dedujo** a lo largo de la trayectoria. Sin un intento que encaje, los puntos van solo al equipo. *Puntos por jugador* los suma. El marcador muestra los cambios uno o dos segundos tarde; se tiene en cuenta. Una corrección en el marcador (el resultado baja) anula la última asignación.
 
+### Estadísticas de jugadores (baloncesto con marcador)
+
+Una tabla por equipo, una fila por dorsal: **minutos** en el campo, **puntos** con **triples, tiros de 2 y tiros libres** anotados, **fallos** (3/2/TL) y **+/−**: los puntos del equipo menos los del rival mientras el jugador estaba en el campo. Los puntos vienen del marcador; el tirador se determina como en directo (+1: el jugador solo en la línea de tiros libres; +2/+3: el intento detectado o, si no, el jugador del equipo más cercano al aro). Los fallos solo cuentan los intentos vistos sin puntos después.
+
+**Todo se determina electrónicamente y puede contener errores.** No sustituye un acta oficial.
+
 ### Tiempo de juego por jugador
 
 Tiempo en el campo por dorsal, para local y visitante, con la parte de la duración del vídeo. Cada rastro seguido sin interrupción cuenta para el dorsal que más se leyó en él; los rastros sin dorsal aparecen como *sin dorsal leído*. Hace falta activar *Leer y mostrar los dorsales* al procesar. Los nombres salen de la plantilla del paso 4 (`7:Anna`).
+
+### Pestañas y vídeos
+
+Las estadísticas se dividen en pestañas: **Resumen** (cifras clave, marcador, periodos), **Jugadores** (estadísticas por jugador), **Tiros** (mapa de tiros, zonas), **Equipo** (posesión, mapa de calor, forma) y **Vídeos**. Se recuerda la última pestaña elegida.
+
+En **Vídeos** varios momentos se unen automáticamente en un vídeo; los que se solapan se fusionan. Elige *Mejores jugadas (todas las canastas)*, *Todo de local* / *visitante* o *Por jugador local* / *visitante (separado)*: esto último crea un vídeo por dorsal a partir de las canastas asignadas por el marcador y la lectura de dorsales (determinado electrónicamente, puede contener errores). Los archivos van a `out/videos/` con el nombre `Año.Mes.Día_Nombre.mp4`, p. ej. `2026.11.15_Jugador13.mp4`; con un segundo partido el mismo día se añade `_2`. La fecha sale de la hora de grabación del vídeo, si no de la fecha del archivo.
 
 ### Momentos clave y clips
 

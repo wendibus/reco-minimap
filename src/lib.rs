@@ -16,6 +16,8 @@ pub mod direction;
 pub mod geom;
 pub mod identity;
 pub mod jersey;
+#[cfg(feature = "tools")]
+pub mod live_score;
 pub mod lens;
 pub mod render;
 pub mod scenes;
@@ -183,6 +185,9 @@ pub struct Config {
     pub referee_rgb: Option<[u8; 3]>,
     /// Ball candidates farther than this (m) outside the court are ignored.
     pub ball_margin: f32,
+    /// A player standing outside the lines for longer than this (s) is left out of the output
+    /// (bench, table, coaches); 0 = off. An inbound in basketball must be made within 5 s.
+    pub off_court_s: f64,
     /// Hysteresis: a new ball track needs at least this confidence ...
     pub ball_init_conf: f32,
     /// ... and a detection that is not near the tracked ball needs this one to take over.
@@ -214,7 +219,7 @@ impl Config {
         ball.field = p.field;
         ball.possession = rules.possession;
         Self {
-            field: p.field, home_rgb, away_rgb, home_gk_rgb: None, away_gk_rgb: None, keepers_enabled: sport::has_keepers(&p.id), tracker, ball, roster: Vec::new(), roster_home: Vec::new(), roster_away: Vec::new(), keepers_home: Vec::new(), keepers_away: Vec::new(), num_min_score: 3.0, num_min_lead: 1.5, vote_decay: 0.985, sub_near_edge_m: 2.0, sub_leave_m: 1.5, sub_min_gone: 3.0, sub_cooldown: 20.0, referee_from_color: true, referee_rgb: None, ball_margin: 3.0, ball_init_conf: 0.40, ball_reacquire_conf: 0.50, ball_max_speed: p.ball_max_speed }
+            field: p.field, home_rgb, away_rgb, home_gk_rgb: None, away_gk_rgb: None, keepers_enabled: sport::has_keepers(&p.id), tracker, ball, roster: Vec::new(), roster_home: Vec::new(), roster_away: Vec::new(), keepers_home: Vec::new(), keepers_away: Vec::new(), num_min_score: 3.0, num_min_lead: 1.5, vote_decay: 0.985, sub_near_edge_m: 2.0, sub_leave_m: 1.5, sub_min_gone: 3.0, sub_cooldown: 20.0, referee_from_color: true, referee_rgb: None, ball_margin: 3.0, off_court_s: 8.0, ball_init_conf: 0.40, ball_reacquire_conf: 0.50, ball_max_speed: p.ball_max_speed }
     }
 }
 
@@ -232,6 +237,8 @@ pub struct Minimap {
     sub_raised: Vec<(u32, f64)>,
     /// Numbers read on the field recently, per team (for line-up deductions).
     lineup: identity::Lineup,
+    /// Since when a player track stands outside the lines (bench, table, coaches).
+    outside: std::collections::HashMap<(u32, u32), f64>,
 }
 
 impl Minimap {
@@ -245,7 +252,7 @@ impl Minimap {
         }
         let tracker = Tracker::new(cfg.tracker.clone());
         let ball = BallTracker::new(cfg.ball.clone());
-        Self { cfg, projector, classifier, tracker, ball, last: None, events_log: Vec::new(), retakes: Vec::new(), sub_raised: Vec::new(), lineup: identity::Lineup::default() }
+        Self { cfg, projector, classifier, tracker, ball, last: None, events_log: Vec::new(), retakes: Vec::new(), sub_raised: Vec::new(), lineup: identity::Lineup::default(), outside: Default::default() }
     }
 
     pub fn tracker(&self) -> &Tracker {
@@ -320,12 +327,27 @@ impl Minimap {
         let events = self.update_numbers(t);
         // build the output after the numbers are updated so `jersey` is current
         let (mut players, mut referees) = (Vec::new(), Vec::new());
+        let field = self.cfg.field;
         for tr in self.tracker.tracks() {
             if tr.hits < self.cfg.tracker.confirm_hits {
                 continue;
             }
+            // standing outside the lines for longer than an inbound / throw-in takes: not in the
+            // game (bench, scorer's table, coaches); back on the court counts again at once
+            if !tr.referee && self.cfg.off_court_s > 0.0 {
+                let key = (tr.id, tr.segment);
+                if field.contains(tr.pos, 0.0) {
+                    self.outside.remove(&key);
+                } else if t - *self.outside.entry(key).or_insert(t) > self.cfg.off_court_s {
+                    continue;
+                }
+            }
             let out = self.agent_out(tr, t);
             if tr.referee { referees.push(out) } else { players.push(out) }
+        }
+        if !self.outside.is_empty() {
+            let live: std::collections::HashSet<(u32, u32)> = self.tracker.tracks().iter().map(|tr| (tr.id, tr.segment)).collect();
+            self.outside.retain(|k, _| live.contains(k));
         }
         self.solve_identities(t, &mut players);
         identity::assign(&mut players);

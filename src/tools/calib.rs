@@ -193,6 +193,62 @@ fn placement_from_points(pairs: &[Pair], profile: &SportProfile, model: Option<L
     Some(Placement { corners: [c(0.0, 0.0)?, c(l, 0.0)?, c(l, w)?, c(0.0, w)?], lens })
 }
 
+/// How far snapping may move a line, in pixels at 960 px picture width: only the painted line right
+/// next to a drawn one should pull, not the neighbouring line of the key or another sport.
+pub const SNAP_PX: f32 = 8.0;
+
+/// The clicked points after snapping the field onto the painted lines next to the drawn ones.
+pub struct Snapped {
+    /// New picture position per point (unchanged where the spot left the picture).
+    pub pano: Vec<Vec2>,
+    pub before: f64,
+    pub after: f64,
+    /// Largest shift of a visible line, pixels at 960 px picture width.
+    pub moved: f32,
+}
+
+fn snap_pairs(map: &LineMap, pairs: &[Pair], profile: &SportProfile, model: Option<LensModel>, aspect: f64, max_px: f32) -> Option<Snapped> {
+    let start = placement_from_points(pairs, profile, model, aspect)?;
+    let field = (profile.field.length, profile.field.width);
+    let r = autocal::snap(map, &profile.lines, field, start, model, max_px)?;
+    let m = autocal::Mapper::new(&r.placement, field)?;
+    let pano = pairs.iter().map(|p| m.to_image(p.court).filter(|q| q.x >= 0.0 && q.y >= 0.0 && q.x <= 1.0 && q.y <= 1.0).unwrap_or(p.pano)).collect();
+    Some(Snapped { pano, before: r.before, after: r.after, moved: r.moved_px })
+}
+
+/// `/api/snap`: the clicked points moved so the drawn lines lie on the painted ones.
+fn snap_json(st: &Shared, body: &str, model: Option<LensModel>, aspect: f64) -> Value {
+    let v: Value = serde_json::from_str(body).unwrap_or(Value::Null);
+    let Some(map) = lines_for(st, &v) else { return json!({"ok": false, "error": "no frame"}) };
+    let Some(pairs) = parse_points(body, &st.profile).filter(|x| x.len() >= 4) else { return json!({"ok": false}) };
+    let max_px = v["max"].as_f64().map(|x| x as f32).unwrap_or(SNAP_PX);
+    match snap_pairs(&map, &pairs, &st.profile, model, aspect, max_px) {
+        Some(r) => json!({"ok": true, "before": r.before, "after": r.after, "moved_px": r.moved * st.info.w as f32 / 960.0,
+                          "points": pairs.iter().zip(&r.pano).map(|(p, q)| json!({"id": p.id, "u": q.x, "v": q.y})).collect::<Vec<_>>()}),
+        None => json!({"ok": false}),
+    }
+}
+
+/// Snap an existing calibration file onto the painted lines of a frame (`court-snap`). Writes `out`
+/// only when the lines fit better. Returns (agreement before, after, largest shift in frame pixels).
+pub fn snap_file(input: &str, info: &VideoInfo, t: f64, court: &str, out: Option<&str>, color: Option<[u8; 3]>, max_px: f32) -> Result<(f64, f64, f32), String> {
+    let cal = CourtCalib::load(court)?;
+    let profile = cal.profile();
+    let frame = grab(input, info, t)?;
+    let map = LineMap::from_rgb(&frame.rgb, frame.w, frame.h, color);
+    let aspect = info.w as f64 / info.h.max(1) as f64;
+    let model = cal.lens.map(|l| l.model);
+    let pairs: Vec<Pair> = cal.points.iter().enumerate().map(|(k, p)| Pair { id: json!(k), name: p.name.clone(), court: p.court, pano: p.pano }).collect();
+    let r = snap_pairs(&map, &pairs, &profile, model, aspect, max_px).ok_or_else(|| trs!("Die Linien liegen schon so gut wie möglich auf den erkannten Linien.", "The lines already lie on the detected lines as well as possible.", "Les lignes sont déjà au mieux sur les lignes détectées.", "Las líneas ya están lo mejor posible sobre las detectadas.").to_string())?;
+    if let Some(out) = out {
+        let moved: Vec<Pair> = pairs.iter().zip(&r.pano).map(|(p, q)| Pair { pano: *q, ..p.clone() }).collect();
+        let (proj, _, rms) = solve(&moved, model, aspect).ok_or("solve")?;
+        let new = CourtCalib { rms_m: rms, lens: proj.lens, points: moved.iter().map(|p| CalPoint { name: p.name.clone(), pano: p.pano, court: p.court }).collect(), ..cal };
+        new.save(out, input)?;
+    }
+    Ok((r.before, r.after, r.moved * info.w as f32 / 960.0))
+}
+
 /// `[r, g, b]` from a JSON array.
 fn color_of(v: &Value) -> Option<[u8; 3]> {
     let a = v.as_array()?;
@@ -347,6 +403,7 @@ fn handle(mut s: TcpStream, st: &Shared) {
             Some(Ok(jpg)) => respond(&mut s, "200 OK", "image/jpeg", &jpg),
             _ => respond(&mut s, "404 Not Found", "text/plain", b"no frame"),
         },
+        ("POST", "/api/snap") => respond(&mut s, "200 OK", "application/json", snap_json(st, &body, model, aspect).to_string().as_bytes()),
         ("POST", "/api/auto") => respond(&mut s, "200 OK", "application/json", auto_json(st, &body, model, aspect).to_string().as_bytes()),
         ("GET", "/api/info") => {
             let v = json!({"w": st.info.w, "h": st.info.h, "sport": st.profile.id, "lens": st.lens.map(|m| m.key()).unwrap_or("none"), "lens_min": LensLevel::MIN_POINTS, "field": [st.profile.field.length, st.profile.field.width], "lang": st.lang,

@@ -63,7 +63,7 @@ mod tests {
     fn slow_worker_does_not_block_submission_or_allow_backlog() {
         let (release, wait) = mpsc::sync_channel(1);
         let mut worker = BackgroundOcr::with_reader(
-            move |_| {
+            move |_, _| {
                 wait.recv().unwrap();
                 Ok(Reading {
                     probs: vec![],
@@ -85,6 +85,7 @@ mod tests {
                 h: 8,
                 rgb: vec![0; 8 * 8 * 3],
             },
+            thorough: false,
         };
         assert!(worker.submit(vec![job()]));
         assert!(!worker.ready());
@@ -115,6 +116,8 @@ impl Identity {
 pub struct Job {
     pub identity: Identity,
     pub crop: Crop,
+    /// Read several windows of the torso (the candidates of a score), see [`ocr::read_best`].
+    pub thorough: bool,
 }
 pub struct ResultBatch {
     pub readings: Vec<(Identity, Reading)>,
@@ -130,10 +133,10 @@ pub struct BackgroundOcr {
 }
 impl BackgroundOcr {
     pub fn new(mut reader: NumberReader, min_h: f32, max_reads: usize) -> Self {
-        Self::with_reader(move |crop| reader.read(crop), min_h, max_reads)
+        Self::with_reader(move |crop, thorough| ocr::read_best(&mut reader, crop, thorough), min_h, max_reads)
     }
     fn with_reader(
-        mut read: impl FnMut(&Crop) -> Result<Reading, String> + Send + 'static,
+        mut read: impl FnMut(&Crop, bool) -> Result<Reading, String> + Send + 'static,
         min_h: f32,
         max_reads: usize,
     ) -> Self {
@@ -152,8 +155,7 @@ impl BackgroundOcr {
                     if started.elapsed().as_secs_f64() > 2.0 {
                         break;
                     }
-                    let crop = ocr::localize(job.crop.w, job.crop.h, &job.crop.rgb);
-                    match read(&crop) {
+                    match read(&job.crop, job.thorough) {
                         Ok(reading) => result.readings.push((job.identity, reading)),
                         Err(_) => result.errors += 1,
                     }

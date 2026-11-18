@@ -361,11 +361,12 @@ mod tests {
             frame: [W as u32, H as u32],
             board: None,
             detect: DetectCfg::default(),
-            left_score: FieldCfg { rect: [40.0, 40.0, 80.0, 50.0], digits: 2, gap_ratio: 0.25, slant: 0.0 },
-            right_score: FieldCfg { rect: [500.0, 40.0, 80.0, 50.0], digits: 2, gap_ratio: 0.25, slant: 0.0 },
-            clock: FieldCfg { rect: [240.0, 40.0, 160.0, 50.0], digits: 4, gap_ratio: 0.3, slant: 0.0 },
-            period: Some(FieldCfg { rect: [300.0, 120.0, 20.0, 30.0], digits: 1, gap_ratio: 0.25, slant: 0.0 }),
+            left_score: FieldCfg { rect: [40.0, 40.0, 80.0, 50.0], digits: 2, gap_ratio: 0.25, slant: 0.0, colon: 0.0 },
+            right_score: FieldCfg { rect: [500.0, 40.0, 80.0, 50.0], digits: 2, gap_ratio: 0.25, slant: 0.0, colon: 0.0 },
+            clock: FieldCfg { rect: [240.0, 40.0, 160.0, 50.0], digits: 4, gap_ratio: 0.3, slant: 0.0, colon: 0.0 },
+            period: Some(FieldCfg { rect: [300.0, 120.0, 20.0, 30.0], digits: 1, gap_ratio: 0.25, slant: 0.0, colon: 0.0 }),
             home: HomeSide::Left,
+            time: None,
         }
     }
 

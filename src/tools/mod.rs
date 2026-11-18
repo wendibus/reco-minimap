@@ -14,6 +14,7 @@ pub mod mac_app;
 pub mod models;
 pub mod ocr;
 pub mod progress;
+pub mod reel;
 pub mod review;
 pub mod scales;
 pub mod scoreboard;

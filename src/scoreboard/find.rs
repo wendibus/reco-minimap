@@ -623,6 +623,7 @@ pub fn propose_fields(v: &[u8], w: usize, h: usize) -> Vec<(&'static str, FieldC
             digits,
             gap_ratio: b.gap,
             slant,
+            colon: 0.0,
         }
     };
     let mut out: Vec<(&'static str, FieldCfg)> = vec![];
@@ -693,7 +694,7 @@ mod tests {
     }
 
     fn board_fields() -> [FieldCfg; 4] {
-        let mk = |x: f64, w: f64, n: usize| FieldCfg { rect: [x, 90.0, w, 40.0], digits: n, gap_ratio: 0.3, slant: 0.0 };
+        let mk = |x: f64, w: f64, n: usize| FieldCfg { rect: [x, 90.0, w, 40.0], digits: n, gap_ratio: 0.3, slant: 0.0, colon: 0.0 };
         [mk(60.0, 60.0, 2), mk(330.0, 60.0, 2), mk(170.0, 130.0, 4), mk(222.0, 18.0, 1)]
     }
 
@@ -754,7 +755,7 @@ mod tests {
         let (w, h) = (1600usize, 300usize);
         let sl = 0.15;
         let sh = sl * 180.0;
-        let mk = |x: f64, ww: f64, n: usize| FieldCfg { rect: [x, 60.0, ww + sh, 180.0], digits: n, gap_ratio: 0.3, slant: sl };
+        let mk = |x: f64, ww: f64, n: usize| FieldCfg { rect: [x, 60.0, ww + sh, 180.0], digits: n, gap_ratio: 0.3, slant: sl, colon: 0.0 };
         let fields = [mk(100.0, 248.0, 2), mk(520.0, 529.0, 4), mk(1150.0, 108.0, 1), mk(1340.0, 248.0, 2)];
         let mut rng = Rng(9);
         let mut rgb = vec![10u8; w * h * 3];
@@ -777,7 +778,7 @@ mod tests {
         let (w, h) = (1600usize, 300usize);
         let mut v = vec![10u8; w * h * 3 / 3];
         let mut rng = Rng(5);
-        let mk = |x: f64, ww: f64, n: usize| FieldCfg { rect: [x, 60.0, ww, 180.0], digits: n, gap_ratio: 0.3, slant: 0.0 };
+        let mk = |x: f64, ww: f64, n: usize| FieldCfg { rect: [x, 60.0, ww, 180.0], digits: n, gap_ratio: 0.3, slant: 0.0, colon: 0.0 };
         let fields = [("left", mk(100.0, 248.0, 2)), ("clock", mk(520.0, 529.0, 4)), ("period", mk(1150.0, 108.0, 1)), ("right", mk(1340.0, 248.0, 2))];
         let mut rgb = vec![10u8; w * h * 3];
         for (_, f) in &fields {

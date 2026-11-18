@@ -1,6 +1,7 @@
 reco-minimap – minimapa (campo, jugadores, árbitros, balón) a partir de un panorama de Reco
 
   reco-minimap calibrate <vídeo> [--sport football|futsal|basketball|handball|hockey|rugby|lacrosse|american_football|volleyball|custom] [--time 5] [--out court.json] [--lens none|fisheye|panorama]
+  reco-minimap court-snap <vídeo> --court court.json [--time 5] [--color r,g,b] [--max 8] [--out court.json]   ajustar una calibración existente a las líneas reales justo al lado (solo guarda con --out)
                          (custom: --length 40 --width 20 --team-size 5 --referees 2)
                          --lens: objetivo – fisheye (imagen curvada) o panorama (imagen panorámica ancha como Reco); la distorsión se calcula desde 6 puntos. Por defecto: panorama en imágenes muy anchas
   reco-minimap selfcheck <vídeo> --model <carpeta|.onnx> [--samples 12] [--annotate <carpeta>]
@@ -24,7 +25,10 @@ reco-minimap – minimapa (campo, jugadores, árbitros, balón) a partir de un p
   reco-minimap stats     <states.jsonl>            informe con cifras de un proceso (puestos, saltos, balón)
   reco-minimap ticker    <states.jsonl> [--out f] [--export carpeta]  el resumen en directo que habría dado este resultado (liveticker.json + resumen); también: run/live --ticker-json <archivo>
   reco-minimap scoreboard-calibrate <vídeo> [--time 60] [--out scoreboard.json] [--no-open]   ubicar el marcador en el panorama (baloncesto)
-  reco-minimap scoreboard <vídeo> [--scoreboard scoreboard.json] [--start s] [--duration s] [--json out.jsonl]   leer marcador, reloj y periodo
+  reco-minimap scoreboard <vídeo> [--scoreboard scoreboard.json] [--start s] [--duration s] [--json out.jsonl] [--raw bruto.jsonl]   leer marcador, reloj, periodos y descansos (lógica del juego: el marcador solo sube, el reloj solo baja)
+  reco-minimap scoreboard-check <bruto.jsonl> [--reference acta.json] [--verbose]   desarrollo del partido a partir de las lecturas brutas, comparado con un acta
+  reco-minimap scorers <resultado.jsonl> [--raw bruto.jsonl] [--reference acta.json] [--json out.jsonl]   reproducir un resultado como en directo: quién anotó (tiro libre: solo en la línea, canasta: intento o el más cercano al aro), comparado con un acta
+  reco-minimap reel <vídeo> --plan plan.json | --at t1,t2 --label Nombre [--before 6 --after 4] [--out videos]   unir varios momentos en un vídeo; archivo AAAA.MM.DD_Nombre.mp4 (otro partido el mismo día: _2)
   reco-minimap review-identities <states.jsonl> --annotations review.json --out reviewed.jsonl   aplicar la plantilla y las correcciones manuales
   reco-minimap snapshot  <states.jsonl> --court court.json --teams teams.json --at 12:34 [--trail 5] [--out scene.json] [--svg scene.svg]
                          extraer un momento de un proceso como escena de pizarra táctica (JSON, ver docs/BOARD.md) y/o SVG
@@ -61,6 +65,8 @@ Opciones comunes:
                     distintos (p. ej. rojo contra azul) y con zonas del campo en un color de equipo; déjalo desactivado
                     para claro contra oscuro
   --referees N      número de puestos de árbitro (por defecto según la calibración); 0 = partido sin árbitros
+  --hide-referees   reconocer a los árbitros (para que no cuenten como jugadores) sin dibujarlos en el minimapa ni en el overlay en directo
+  --off-court S     quien esté fuera de las líneas más de S segundos (banquillo, mesa) no cuenta como jugador (8 por defecto; 0 = desactivado)
   --torso 0.18,0.50 parte del recuadro del jugador (arriba,abajo como fracción de su altura) donde está la camiseta; ajústalo
                     para figuras con otras proporciones (colors, run, live)
   --thr-ball 0.30 --thr-player 0.60 --thr-ref 0.50
@@ -98,9 +104,10 @@ Situaciones de juego (run/live):
   --home-attacks l|r  dirección de juego: portería/canasta que ataca el local al principio (izquierda/derecha como en el minimapa); tiros,
                     tiros libres, córneres y penaltis cuentan para el equipo atacante (también en stats y ticker); --switch-at mm:ss cambio de campo
 
-Marcador (baloncesto, run):
+Marcador (baloncesto, run, live):
   --scoreboard scoreboard.json   leer el marcador en el panorama (primero `scoreboard-calibrate`); en `stats` cada canasta
                     (+1/+2/+3) va al intento correspondiente anterior: el lanzador con una probabilidad, si no solo el equipo
+                    baloncesto en directo (`run`, `live`): cada cambio de marcador se avisa tras ~4 s con el tirador (resumen: «2 puntos de #11»); `live` lee el marcador de la imagen (--board-fps 2)
 
 Opciones de run:
   --ref-color #hex  color de la camiseta de los árbitros (p. ej. #000000 o amarillo): encuentra a los árbitros por el color aunque el modelo no los vea

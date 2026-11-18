@@ -1,6 +1,7 @@
 reco-minimap – minimap (court, players, referees, ball) from a Reco panorama
 
   reco-minimap calibrate <video> [--sport football|futsal|basketball|handball|hockey|rugby|lacrosse|american_football|volleyball|custom] [--time 5] [--out court.json] [--lens none|fisheye|panorama]
+  reco-minimap court-snap <video> --court court.json [--time 5] [--color r,g,b] [--max 8] [--out court.json]   snap an existing calibration onto the real lines right next to it (saves only with --out)
                          (custom: --length 40 --width 20 --team-size 5 --referees 2)
                          --lens: lens – fisheye (curved picture) or panorama (wide all-round picture as from Reco); the distortion is estimated from 6 points. Default: panorama for very wide pictures
   reco-minimap selfcheck <video> --model <folder|.onnx> [--samples 12] [--annotate <folder>]
@@ -24,7 +25,10 @@ reco-minimap – minimap (court, players, referees, ball) from a Reco panorama
   reco-minimap stats     <states.jsonl>            report with numbers about a run (slots, jumps, ball)
   reco-minimap ticker    <states.jsonl> [--out f] [--export folder]   the live ticker this result would have produced (liveticker.json + summary); also: run/live --ticker-json <file>
   reco-minimap scoreboard-calibrate <video> [--time 60] [--out scoreboard.json] [--no-open]   locate the scoreboard in the panorama (basketball)
-  reco-minimap scoreboard <video> [--scoreboard scoreboard.json] [--start s] [--duration s] [--json out.jsonl]   read score, game clock and period
+  reco-minimap scoreboard <video> [--scoreboard scoreboard.json] [--start s] [--duration s] [--json out.jsonl] [--raw raw.jsonl]   read score, game clock, periods and breaks (game logic: scores only go up, the clock only down)
+  reco-minimap scoreboard-check <raw.jsonl> [--reference report.json] [--verbose]   course of the game from raw readings, compared with a match report
+  reco-minimap scorers <result.jsonl> [--raw raw.jsonl] [--reference report.json] [--json out.jsonl]   replay a result as if live: who scored (free throw: alone at the line, field goal: attempt or nearest the basket), compared with a match report
+  reco-minimap reel <video> --plan plan.json | --at t1,t2 --label Name [--before 6 --after 4] [--out videos]   join several moments into one video; file YYYY.MM.DD_Name.mp4 (another game the same day: _2)
   reco-minimap review-identities <states.jsonl> --annotations review.json --out reviewed.jsonl   apply roster and manual corrections
   reco-minimap snapshot  <states.jsonl> --court court.json --teams teams.json --at 12:34 [--trail 5] [--out scene.json] [--svg scene.svg]
                          cut one moment out of a run as a tactics-board scene (JSON, see docs/BOARD.md) and/or SVG
@@ -60,6 +64,8 @@ Common options:
   --shirt-match     match the colour sample to the known shirt colours: helps with strong, clearly different colours
                     (e.g. red against blue) and with court areas in a team colour; leave off for light against dark
   --referees N      number of referee slots (default from the calibration); 0 = game without referees
+  --hide-referees   recognise the referees (so they never count as players) but do not draw them in the minimap and the live overlay
+  --off-court S     whoever stands outside the lines for longer than S seconds (bench, scorer's table) does not count as a player (default 8; 0 = off)
   --torso 0.18,0.50 part of the player box (top,bottom as a fraction of its height) that shows the shirt; adjust for
                     figures with other proportions (colors, run, live)
   --thr-ball 0.30 --thr-player 0.60 --thr-ref 0.50
@@ -96,9 +102,10 @@ Game situations (run/live):
   --home-attacks l|r  playing direction: the goal/basket home attacks at the start (left/right as on the minimap); shots, free throws,
                     corners and penalties then count for the attacking team (also for stats and ticker); --switch-at mm:ss change of ends
 
-Scoreboard (basketball, run):
+Scoreboard (basketball, run, live):
   --scoreboard scoreboard.json   read the score from the board in the panorama (run `scoreboard-calibrate` first); in `stats` every
                     basket (+1/+2/+3) goes to the fitting attempt before it: the shooter with a probability, otherwise the team only
+                    basketball live (`run`, `live`): every score change is reported after ~4 s with the shooter (ticker: "2 points by #11"); `live` reads the board from the picture (--board-fps 2)
 
 run options:
   --ref-color #hex  referee shirt colour (e.g. #000000 or yellow): finds referees by colour even if the model does not

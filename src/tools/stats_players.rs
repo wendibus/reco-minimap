@@ -76,20 +76,41 @@ fn tracklets(frames: &[Value]) -> HashMap<(u64, u64), Tracklet> {
     tl
 }
 
-/// Playing time per team and jersey number.
+/// Playing time per team and jersey number. Every tracklet stands for the number seen most on it;
+/// per frame a number counts once (two trails with the same number at the same time are one
+/// player, not twice the time).
 pub fn players(frames: &[Value]) -> Value {
     let tl = tracklets(frames);
+    let best: HashMap<(u64, u64), (Option<String>, Option<u64>)> = tl.iter().map(|(k, e)| (*k, tracklet_number(e))).collect();
     let mut per: HashMap<(String, u64), f64> = HashMap::new();
     let mut deduced: HashMap<(String, u64), f64> = HashMap::new();
     let mut without: HashMap<String, f64> = HashMap::new();
-    for e in tl.values() {
-        let Some(team) = e.team.iter().max_by(|a, b| a.1.total_cmp(b.1)).map(|x| x.0.clone()).filter(|t| t == "home" || t == "away") else { continue };
-        match e.numbers.iter().max_by(|a, b| a.1.total_cmp(b.1).then(b.0.cmp(a.0))) {
-            Some((n, _)) => {
-                *per.entry((team.clone(), *n)).or_default() += e.secs;
-                *deduced.entry((team, *n)).or_default() += e.inferred;
+    let deduced_share: HashMap<(u64, u64), f64> = tl.iter().map(|(k, e)| (*k, e.inferred / e.numbers.values().sum::<f64>().max(1e-6))).collect();
+    for (i, fr) in frames.iter().enumerate() {
+        let t = fr["t"].as_f64().unwrap_or(0.0);
+        let dt = frames.get(i + 1).and_then(|n| n["t"].as_f64()).map(|n| (n - t).clamp(0.0, 1.0)).unwrap_or(0.0);
+        if dt <= 0.0 {
+            continue;
+        }
+        let mut here: HashMap<(String, u64), f64> = HashMap::new();
+        for p in fr["players"].as_array().into_iter().flatten() {
+            if p["state"].as_str() == Some("lost") {
+                continue;
             }
-            None => *without.entry(team).or_default() += e.secs,
+            let key = (p["id"].as_u64().unwrap_or(0), p["segment"].as_u64().unwrap_or(0));
+            match best.get(&key) {
+                Some((Some(team), Some(n))) => {
+                    let d = deduced_share.get(&key).copied().unwrap_or(0.0);
+                    let e = here.entry((team.clone(), *n)).or_insert(1.0);
+                    *e = e.min(d);
+                }
+                Some((Some(team), None)) => *without.entry(team.clone()).or_default() += dt,
+                _ => {}
+            }
+        }
+        for (k, d) in here {
+            *per.entry(k.clone()).or_default() += dt;
+            *deduced.entry(k).or_default() += dt * d;
         }
     }
     let t0 = frames.first().and_then(|f| f["t"].as_f64()).unwrap_or(0.0);
@@ -110,6 +131,179 @@ pub fn players(frames: &[Value]) -> Value {
         "without_number": {"home": r1(without.get("home").copied().unwrap_or(0.0)), "away": r1(without.get("away").copied().unwrap_or(0.0))},
         "numbers_seen": !per.is_empty(),
     })
+}
+
+/// The tracklet's team and jersey number (the one seen most), if any.
+fn tracklet_number(e: &Tracklet) -> (Option<String>, Option<u64>) {
+    let team = e.team.iter().max_by(|a, b| a.1.total_cmp(b.1)).map(|x| x.0.clone()).filter(|t| t == "home" || t == "away");
+    let number = e.numbers.iter().max_by(|a, b| a.1.total_cmp(b.1).then(b.0.cmp(a.0))).map(|(n, _)| *n);
+    (team, number)
+}
+
+#[derive(Default, Clone, Copy)]
+struct Line {
+    made: [i64; 3],
+    missed: [i64; 3],
+    pts_for: i64,
+    pts_against: i64,
+}
+
+/// Basketball box score from the scoreboard and the tracking, **determined electronically**:
+/// per jersey number the playing time, made free throws / 2-pointers / 3-pointers (the live
+/// scorer: [`crate::live_score`]), misses (attempts of the scene detection without points after
+/// them – only as many as were seen) and the team's points for and against while the player was
+/// on the court (plus/minus). `None` without board readings.
+pub fn box_score(profile: &SportProfile, frames: &[Value], att: &[Attempt]) -> Option<Value> {
+    if profile.id != "basketball" || profile.goals.len() != 2 {
+        return None;
+    }
+    let raw = super::scoreboard::readings_in(frames);
+    let carried = frames.iter().any(|f| f["events"].as_array().is_some_and(|e| e.iter().any(|e| e["type"] == "score")));
+    if raw.is_empty() && !carried {
+        return None;
+    }
+    let scores = crate::live_score::scores_of(frames, &raw, [profile.goals[0], profile.goals[1]]);
+    let tl = tracklets(frames);
+    let num_of = |key: (u64, u64)| tl.get(&key).map(tracklet_number).unwrap_or((None, None));
+    let team_key = |t: Team| match t {
+        Team::Home => "home",
+        Team::Away => "away",
+        Team::Unknown => "none",
+    };
+    let mut lines: HashMap<(String, u64), Line> = HashMap::new();
+    let mut without: HashMap<String, Line> = HashMap::new();
+    let mut team_only: HashMap<String, i64> = HashMap::new();
+    let slot = |pts: i32| match pts {
+        1 => Some(0),
+        2 => Some(1),
+        3 => Some(2),
+        _ => None,
+    };
+    // made shots (also listed with their shooter, for the videos per player)
+    let mut made_list: Vec<Value> = Vec::new();
+    for e in scores.iter().filter(|e| e.points > 0) {
+        let team = team_key(e.team).to_string();
+        let shooter_no = e.shooter.and_then(|(id, seg)| num_of((id as u64, seg as u64)).1).or(e.number.map(|n| n as u64));
+        made_list.push(json!({"t": r1(e.t), "team": team, "points": e.points, "kind": e.kind.key(), "number": shooter_no}));
+        let Some(k) = slot(e.points) else {
+            *team_only.entry(team).or_default() += e.points as i64;
+            continue;
+        };
+        match e.shooter {
+            Some((id, seg)) => {
+                let n = num_of((id as u64, seg as u64)).1.or(e.number.map(|n| n as u64));
+                match n {
+                    Some(n) => lines.entry((team, n)).or_default().made[k] += 1,
+                    None => without.entry(team).or_default().made[k] += 1,
+                }
+            }
+            None => *team_only.entry(team).or_default() += e.points as i64,
+        }
+    }
+    // misses: attempts without points of that team shortly after
+    let kinds = |k: &str| match k {
+        "free_throw" => Some(0),
+        "shot2" => Some(1),
+        "shot3" => Some(2),
+        _ => None,
+    };
+    let mut seen = 0usize;
+    for a in att {
+        let Some(k) = kinds(&a.kind) else { continue };
+        if a.team != "home" && a.team != "away" {
+            continue;
+        }
+        seen += 1;
+        let made = scores.iter().any(|e| team_key(e.team) == a.team && e.points > 0 && e.t >= a.t - 1.0 && e.t <= a.t + 12.0);
+        if made {
+            continue;
+        }
+        let n = a.actor.and_then(|id| {
+            let i = frames.partition_point(|f| f["t"].as_f64().unwrap_or(0.0) < a.t);
+            let fr = frames.get(i).or_else(|| frames.last())?;
+            let p = fr["players"].as_array()?.iter().find(|p| p["id"].as_u64() == Some(id))?;
+            num_of((id, p["segment"].as_u64().unwrap_or(0))).1
+        });
+        match n {
+            Some(n) => lines.entry((a.team.clone(), n)).or_default().missed[k] += 1,
+            None => without.entry(a.team.clone()).or_default().missed[k] += 1,
+        }
+    }
+    // plus/minus: who of each team was on the court when the board changed
+    for e in scores.iter().filter(|e| e.points != 0) {
+        // the frames of the last seconds before it (a single frame misses hidden players)
+        let i0 = frames.partition_point(|f| f["t"].as_f64().unwrap_or(0.0) < e.t - 3.0);
+        let i1 = frames.partition_point(|f| f["t"].as_f64().unwrap_or(0.0) <= e.t);
+        let mut on: Vec<(String, u64)> = Vec::new();
+        for p in frames[i0..i1.max(i0)].iter().flat_map(|fr| fr["players"].as_array().into_iter().flatten()) {
+            if p["state"].as_str() == Some("lost") {
+                continue;
+            }
+            // people at the bench or the table are not on the court
+            let (x, y) = (p["x"].as_f64().unwrap_or(-1.0), p["y"].as_f64().unwrap_or(-1.0));
+            if x < 0.2 || x > profile.field.length as f64 - 0.2 || y < 0.3 || y > profile.field.width as f64 - 0.3 {
+                continue;
+            }
+            if let (Some(team), Some(n)) = num_of((p["id"].as_u64().unwrap_or(0), p["segment"].as_u64().unwrap_or(0))) {
+                if !on.contains(&(team.clone(), n)) {
+                    on.push((team, n));
+                }
+            }
+        }
+        for (team, n) in on {
+            let l = lines.entry((team.clone(), n)).or_default();
+            if team == team_key(e.team) {
+                l.pts_for += e.points as i64;
+            } else {
+                l.pts_against += e.points as i64;
+            }
+        }
+    }
+    let secs: HashMap<(String, u64), f64> = {
+        let pl = players(frames);
+        let mut m = HashMap::new();
+        for team in ["home", "away"] {
+            for p in pl[team].as_array().into_iter().flatten() {
+                if let (Some(n), Some(s)) = (p["number"].as_u64(), p["seconds"].as_f64()) {
+                    m.insert((team.to_string(), n), s);
+                }
+            }
+        }
+        m
+    };
+    let line_json = |l: &Line| {
+        json!({"points": l.made[0] + 2 * l.made[1] + 3 * l.made[2], "ft": l.made[0], "two": l.made[1], "three": l.made[2],
+            "missed": {"ft": l.missed[0], "two": l.missed[1], "three": l.missed[2]},
+            "on_court": {"for": l.pts_for, "against": l.pts_against, "plus_minus": l.pts_for - l.pts_against}})
+    };
+    let list = |team: &str| {
+        let mut nums: Vec<u64> = lines.keys().filter(|(t, _)| t == team).map(|(_, n)| *n).chain(secs.keys().filter(|(t, _)| t == team).map(|(_, n)| *n)).collect();
+        nums.sort_unstable();
+        nums.dedup();
+        let mut v: Vec<Value> = nums
+            .into_iter()
+            .map(|n| {
+                let l = lines.get(&(team.to_string(), n)).copied().unwrap_or_default();
+                let mut j = line_json(&l);
+                j["number"] = json!(n);
+                j["seconds"] = json!(r1(secs.get(&(team.to_string(), n)).copied().unwrap_or(0.0)));
+                j
+            })
+            .collect();
+        v.sort_by(|a, b| b["points"].as_i64().cmp(&a["points"].as_i64()).then(b["seconds"].as_f64().unwrap_or(0.0).total_cmp(&a["seconds"].as_f64().unwrap_or(0.0))));
+        v
+    };
+    let total = |team: &str| scores.iter().filter(|e| team_key(e.team) == team).map(|e| e.points as i64).sum::<i64>();
+    Some(json!({
+        "electronic": true,
+        "home": list("home"), "away": list("away"),
+        "without_number": {"home": line_json(&without.get("home").copied().unwrap_or_default()), "away": line_json(&without.get("away").copied().unwrap_or_default())},
+        "team_only": {"home": team_only.get("home").copied().unwrap_or(0), "away": team_only.get("away").copied().unwrap_or(0)},
+        "points": {"home": total("home"), "away": total("away")},
+        "attempts_seen": seen,
+        "scores": scores.len(),
+        "made": made_list,
+    }))
 }
 
 /// How a sport's score can be estimated: `(restart scene kinds after a score, seconds from the attempt to the restart)`.
@@ -241,7 +435,9 @@ fn score_from_board(frames: &[Value], att: &[Attempt], readings: &[crate::scoreb
 pub fn score(profile: &SportProfile, frames: &[Value], att: &[Attempt], dir: Option<Direction>) -> Value {
     let sport = profile.id.as_str();
     if sport == "basketball" {
-        let readings = super::scoreboard::readings_in(frames);
+        // the raw readings of the board -> the most plausible course of the game
+        let raw = super::scoreboard::readings_in(frames);
+        let readings = crate::scoreboard::timeline::changed_readings(&crate::scoreboard::timeline::resolve(&raw, &Default::default()));
         if readings.iter().any(|r| r.home.is_some() || r.away.is_some()) {
             return score_from_board(frames, att, &readings);
         }
@@ -372,6 +568,40 @@ mod tests {
         assert_eq!(s["events"][0]["shooter"]["status"], "read");
         assert_eq!(s["events"][2]["basis"], "team_only");
         assert_eq!(s["timeline"].as_array().unwrap().len(), 4);
+    }
+
+    #[test]
+    fn basketball_box_score_per_player() {
+        let p = SportProfile::basketball();
+        let pl = |id: u64, team: &str, n: u64, x: f64, y: f64| json!({"id": id, "segment": 0, "team": team, "state": "visible", "jersey": null, "x": x, "y": y,
+            "identity": {"status": "candidate", "player": {"team": team, "number": n}}});
+        let mut frames = Vec::new();
+        for i in 0..=140 {
+            let t = i as f64 * 0.5;
+            let mut ev = Vec::new();
+            let shot = |kind: &str, team: &str, actor: u64, x: f64| json!({"type": "scene", "phase": "attempt", "kind": kind, "team": team, "side": if x > 14.0 { "r" } else { "l" }, "x": x, "y": 7.5, "confidence": 0.6, "t": t, "actor": actor});
+            match i {
+                20 => ev.push(shot("shot3", "away", 2, 20.0)), // missed: no away points after it
+                36 => ev.push(shot("shot2", "home", 1, 24.0)),
+                76 => ev.push(shot("shot3", "away", 2, 8.0)),
+                _ => {}
+            }
+            let (h, a) = (if t < 20.0 { 20 } else { 22 }, if t < 40.0 { 18 } else { 21 });
+            ev.push(json!({"type": "scoreboard", "t": t, "home": h, "away": a, "clock": 300 - i / 2, "period": 1}));
+            let players = if t < 30.0 { vec![pl(1, "home", 11, 24.0, 7.5), pl(2, "away", 4, 22.0, 10.0)] } else { vec![pl(1, "home", 11, 4.0, 10.0), pl(2, "away", 4, 3.0, 7.5)] };
+            frames.push(json!({"t": t, "players": players, "events": ev}));
+        }
+        let att = super::super::stats::attempts(&p, &frames);
+        let b = box_score(&p, &frames, &att).expect("box score");
+        assert_eq!(b["electronic"], true);
+        let home = &b["home"][0];
+        assert_eq!((home["number"].as_u64(), home["points"].as_i64(), home["two"].as_i64()), (Some(11), Some(2), Some(1)));
+        assert_eq!(home["on_court"], json!({"for": 2, "against": 3, "plus_minus": -1}));
+        let away = &b["away"][0];
+        assert_eq!((away["number"].as_u64(), away["points"].as_i64(), away["three"].as_i64()), (Some(4), Some(3), Some(1)));
+        assert_eq!(away["missed"]["three"], 1);
+        assert_eq!(away["on_court"]["plus_minus"], 1);
+        assert_eq!(b["points"], json!({"home": 2, "away": 3}));
     }
 
     #[test]

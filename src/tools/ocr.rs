@@ -159,6 +159,46 @@ pub fn localize(w: usize, h: usize, rgb: &[u8]) -> Crop {
     Crop { w: cx1 - cx0, h: cy1 - cy0, rgb: out }
 }
 
+/// A window of a crop, as fractions of its width and height.
+fn window(c: &Crop, fx0: f32, fy0: f32, fx1: f32, fy1: f32) -> Option<Crop> {
+    let (x0, y0) = ((c.w as f32 * fx0) as usize, (c.h as f32 * fy0) as usize);
+    let (x1, y1) = (((c.w as f32 * fx1).ceil() as usize).min(c.w), ((c.h as f32 * fy1).ceil() as usize).min(c.h));
+    if x1 < x0 + 6 || y1 < y0 + 6 {
+        return None;
+    }
+    let mut rgb = Vec::with_capacity((x1 - x0) * (y1 - y0) * 3);
+    for y in y0..y1 {
+        rgb.extend_from_slice(&c.rgb[(y * c.w + x0) * 3..(y * c.w + x1) * 3]);
+    }
+    Some(Crop { w: x1 - x0, h: y1 - y0, rgb })
+}
+
+/// Read a torso crop. `thorough`: besides the located number also a few fixed windows of the torso
+/// (the colour step sometimes takes in an arm or the shorts and the number gets too small); the
+/// reading whose best digit string is most certain wins. Costs up to five reads.
+pub fn read_best(reader: &mut NumberReader, torso: &Crop, thorough: bool) -> Result<Reading, String> {
+    let first = reader.read(&localize(torso.w, torso.h, &torso.rgb))?;
+    if !thorough {
+        return Ok(first);
+    }
+    let score = |r: &Reading| {
+        let (s, c) = crate::jersey::ctc_greedy(&r.probs, r.steps);
+        if crate::jersey::parse_number(&s).is_some() { c } else { -1.0 }
+    };
+    let mut best = (score(&first), first);
+    for (a, b, c, d) in [(0.15, 0.05, 0.85, 0.75), (0.2, 0.1, 0.8, 0.6), (0.1, 0.0, 0.9, 0.5), (0.25, 0.15, 0.75, 0.55)] {
+        if let Some(w) = window(torso, a, b, c, d) {
+            if let Ok(r) = reader.read(&w) {
+                let sc = score(&r);
+                if sc > best.0 {
+                    best = (sc, r);
+                }
+            }
+        }
+    }
+    Ok(best.1)
+}
+
 /// Download the recognition model (Apache-2.0, from the `rapidocr-onnxruntime` wheel on PyPI) with curl; the wheel is unpacked in Rust (no unzip needed, works on Windows).
 pub fn fetch_model(dest: &Path) -> Result<PathBuf, String> {
     let dir = dest.parent().ok_or(trs!("Zielordner", "target folder", "dossier cible", "carpeta de destino"))?;

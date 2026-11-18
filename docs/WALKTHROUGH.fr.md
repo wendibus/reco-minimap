@@ -147,6 +147,8 @@ Si votre salle n'a pas les dimensions standard, ne cliquez que les quatre coins 
 
 **Objectif :** il se choisit sur la page de calibrage (ou avant, dans le champ *Objectif*). **Panorama (p. ex. Reco)** est pour les images panoramiques larges dont les lignes droites se courbent vers les côtés – il est présélectionné pour les images très larges. **Fisheye** est pour une caméra à image courbée, p. ex. un terrain entier. Dans les deux cas, la page calcule aussi la courbure à partir de vos points ; il en faut au moins 6 – plutôt 10 ou plus, répartis jusqu'aux bords de l'image. Le traitement, les tuiles et les statistiques utilisent automatiquement la correspondance redressée.
 
+**Aimanter aux lignes :** si les lignes vertes sont presque justes mais pas exactes, *Aimanter aux lignes* les tire sur les vraies lignes du terrain juste à côté – quelques pixels au plus, pour qu'aucune ligne d'un autre sport n'attire – et déplace vos points avec. Le message indique la part des lignes sur des lignes détectées avant et après. Dans une salle avec plusieurs sports, choisissez d'abord la couleur des lignes. ⌘Z annule. Un calibrage enregistré peut aussi être affiné en ligne de commande : `reco-minimap court-snap video.mp4 --court court.json --out court.json`.
+
 **Salles avec les lignes de plusieurs sports :** cliquez *Choisir la couleur des lignes* puis une ligne de votre sport (zoomez d'abord) – seules les lignes de cette couleur comptent, sombres comme claires. Avec *Exclure des lignes*, un clic sur une ligne magenta retire ce morceau, glisser efface sous le pinceau : retirez tout ce qui n'appartient pas à votre terrain (autres sports, joueurs, murs), puis *Trouver le terrain automatiquement*.
 
 **Corriger à la main :** les points posés peuvent être saisis et déplacés à la souris. Les losanges bleus au bord de l'image montrent où une ligne du terrain sort de l'image – glissez-en un sur la vraie ligne et cet endroit compte comme point supplémentaire (utile quand les coins sont hors de l'image). **⌘Z** annule, **⇧⌘Z** rétablit (Windows : Ctrl+Z, Ctrl+Y) – pour les points, le résultat automatique, les lignes exclues, la couleur des lignes et l'objectif.
@@ -347,9 +349,21 @@ La détection ne voit pas directement si un tir est réussi. Elle voit en revanc
 
 Avec un tableau calibré, le score est lu au lieu d'être estimé : la carte montre le score, la période et chaque changement avec temps, équipe et points. Chaque +1/+2/+3 est attribué à la tentative correspondante juste avant (lancer franc pour +1, tir à 2 points pour +2, tir à 3 points pour +3, même équipe, jusqu'à 20 s avant). Le tireur reçoit les points, avec une probabilité et l'indication si son numéro a été **lu** sur lui ou **déduit** le long de la trace. Sans tentative correspondante, les points vont seulement à l'équipe. *Points par joueur* les additionne. Le tableau affiche les changements avec une à deux secondes de retard ; c'est pris en compte. Une correction au tableau (score qui baisse) annule la dernière attribution.
 
+### Statistiques des joueurs (basket avec tableau d'affichage)
+
+Un tableau par équipe, une ligne par numéro : **minutes** sur le terrain, **points** avec les **paniers à 3 points, à 2 points et lancers francs** réussis, les **tirs manqués** (3/2/LF) et le **+/−** : points de l'équipe moins ceux de l'adversaire pendant que le joueur était sur le terrain. Les points viennent du tableau d'affichage ; le tireur est déterminé comme en direct (+1 : le joueur seul sur la ligne des lancers francs ; +2/+3 : la tentative détectée, sinon le joueur de l'équipe le plus proche du panier). Les tirs manqués ne comptent que les tentatives vues sans points ensuite.
+
+**Tout est déterminé électroniquement et peut contenir des erreurs.** Cela ne remplace pas une feuille de match officielle.
+
 ### Temps de jeu par joueur
 
 Temps sur le terrain par numéro de maillot, pour domicile et extérieur, avec la part de la durée de la vidéo. Chaque trace suivie sans interruption compte pour le numéro le plus souvent lu sur elle ; les traces sans numéro figurent sous *sans numéro lu*. Il faut activer *Lire et afficher les numéros de maillot* lors du traitement. Les noms viennent de l’effectif de l’étape 4 (`7:Anna`).
+
+### Onglets et vidéos
+
+Les statistiques sont réparties en onglets : **Aperçu** (chiffres clés, score, périodes), **Joueurs** (statistiques par joueur), **Tirs** (carte des tirs, zones), **Équipe** (possession, carte de chaleur, forme) et **Vidéos**. Le dernier onglet choisi est mémorisé.
+
+Dans **Vidéos**, plusieurs moments sont assemblés automatiquement en une vidéo ; les moments qui se chevauchent fusionnent. Choisis *Temps forts (tous les paniers)*, *Tout de domicile* / *extérieur* ou *Par joueur domicile* / *extérieur (séparé)* – ce dernier crée une vidéo par numéro à partir des paniers attribués par le tableau d’affichage et la lecture des numéros (déterminé électroniquement, peut contenir des erreurs). Les fichiers vont dans `out/videos/` sous le nom `Année.Mois.Jour_Nom.mp4`, p. ex. `2026.11.15_Joueur13.mp4` ; avec un deuxième match le même jour, `_2` est ajouté. La date vient de l’heure d’enregistrement de la vidéo, sinon de la date du fichier.
 
 ### Moments clés et clips
 

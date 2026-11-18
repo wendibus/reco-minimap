@@ -147,6 +147,8 @@ Hat deine Halle kein Standardmaß, klicke nur die vier Ecken (und den Mittelpunk
 
 **Objektiv:** wählst du auf der Kalibrierseite (oder vorher im Feld *Objektiv*). **Panorama (z. B. Reco)** ist für breite Rundumbilder, deren gerade Linien sich zu den Seiten biegen – bei sehr breiten Bildern ist es vorgewählt. **Fisheye** ist für eine Kamera mit gebogenem Bild, z. B. ein Vollfeld. In beiden Fällen berechnet die Seite die Biegung aus deinen Punkten mit; dafür braucht sie mindestens 6 Punkte – besser 10 oder mehr, bis an die Bildränder verteilt. Verarbeitung, Kacheln und Statistik nutzen die entzerrte Zuordnung automatisch.
 
+**An Linien einschnappen:** Liegen die grünen Linien fast richtig, aber nicht genau, zieht *An Linien einschnappen* sie auf die echten Spielfeldlinien direkt daneben – höchstens ein paar Pixel weit, damit keine Linie einer anderen Sportart zieht – und verschiebt deine Punkte mit. Die Meldung zeigt, wie viel der Linien vorher und nachher auf erkannten Linien liegen. In Hallen mit mehreren Sportarten vorher die Linienfarbe wählen. ⌘Z macht es rückgängig. Eine gespeicherte Kalibrierung lässt sich auch per Befehl nachschärfen: `reco-minimap court-snap video.mp4 --court court.json --out court.json`.
+
 **Hallen mit Linien mehrerer Sportarten:** *Linienfarbe wählen* klicken und dann eine Linie deiner Sportart (vorher hineinzoomen) – dann zählen nur Linien dieser Farbe, dunkle wie helle. Mit *Linien ausschließen* entfernt ein Klick auf eine magenta Linie dieses Stück, Ziehen radiert unter dem Pinsel: alles wegnehmen, was nicht zu deinem Feld gehört (andere Sportarten, Spieler, Wand), dann *Feld automatisch finden*.
 
 **Von Hand korrigieren:** Gesetzte Punkte lassen sich mit der Maus anfassen und verschieben. Blaue Rauten am Bildrand zeigen, wo eine Feldlinie das Bild verlässt – zieh eine auf die echte Linie, dann zählt die Stelle als zusätzlicher Punkt (hilfreich, wenn die Ecken außerhalb liegen). **⌘Z** macht rückgängig, **⇧⌘Z** wiederholt (Windows: Strg+Z, Strg+Y) – für Punkte, das Ergebnis der Automatik, ausgeschlossene Linien, Linienfarbe und Objektiv.
@@ -347,9 +349,21 @@ Ob ein Wurf oder Schuss traf, sieht die Erkennung nicht direkt. Sie erkennt aber
 
 Mit kalibrierter Anzeigetafel wird der Spielstand abgelesen statt geschätzt: Die Karte zeigt Stand, Viertel und jede Änderung mit Zeit, Team und Punkten. Jedes +1/+2/+3 wird dem passenden Wurfversuch kurz davor zugeordnet (Freiwurf für +1, 2er-Versuch für +2, 3er-Versuch für +3, gleiches Team, bis 20 s vorher). Der Werfer dieses Versuchs bekommt die Punkte – mit Wahrscheinlichkeit und ob seine Trikotnummer an ihm **gelesen** oder entlang der Spur **erschlossen** wurde. Ohne passenden Versuch gehen die Punkte nur ans Team. *Punkte je Spieler* zählt sie zusammen. Die Tafel zeigt Änderungen etwa ein bis zwei Sekunden später; das wird berücksichtigt. Korrekturen an der Tafel (Stand geht zurück) heben die letzte Zuordnung auf.
 
+### Spielerstatistik (Basketball mit Anzeigetafel)
+
+Je Team eine Tabelle, eine Zeile je Rückennummer: **Minuten** auf dem Feld, **Punkte** mit getroffenen **Dreiern, Zweiern und Freiwürfen**, **Fehlwürfe** (3/2/FW) und **+/−**: die Punkte des Teams minus die des Gegners, solange der Spieler auf dem Feld war (beim Darüberfahren der Stand dieser Zeit). Die Punkte kommen von der Anzeigetafel; der Werfer wird wie live ermittelt: ein +1 geht an den Spieler, der allein an der Freiwurflinie steht, ein +2/+3 an den erkannten Wurfversuch, sonst an den Spieler des punktenden Teams, der davor am nächsten am Korb war. Fehlwürfe sind nur die erkannten Versuche, nach denen keine Punkte kamen – meist weniger als in Wirklichkeit; ohne erkannten Versuch steht dort –. Punkte, deren Werfer keine lesbare Nummer hatte, stehen unter *ohne erkannte Nummer*.
+
+**Alles hier ist elektronisch ermittelt und kann Fehler enthalten** – das steht auch auf der Karte. Es ersetzt keinen offiziellen Spielberichtsbogen.
+
 ### Spielzeit je Spieler
 
 Zeit auf dem Feld je Rückennummer, getrennt nach Heim und Gast, mit Anteil an der Videodauer. Jede durchgehend verfolgte Spur zählt für die Nummer, die auf ihr am häufigsten gelesen wurde; Spuren ohne gelesene Nummer stehen unter *ohne erkannte Nummer*. Dafür muss beim Verarbeiten *Trikotnummern lesen und anzeigen* an sein. Namen kommen aus dem Kader in Schritt 4 (`7:Anna`).
+
+### Reiter und Videos
+
+Die Statistik ist in Reiter aufgeteilt: **Überblick** (Kennzahlen, Spielstand, Viertel), **Spieler** (Spielerstatistik), **Würfe** (Wurfkarte, Zonen), **Team** (Ballbesitz, Heatmap, Formation) und **Videos**. Der zuletzt gewählte Reiter wird gemerkt.
+
+Unter **Videos** werden mehrere Momente automatisch zu einem Video zusammengefügt, sich überschneidende Momente verschmelzen. Wähle *Highlights (alle Treffer)*, *Alles von Heim* / *Gast* oder *Je Spieler Heim* / *Gast (getrennt)* – letzteres erzeugt je Rückennummer ein Video aus den Treffern, die Anzeigetafel und Nummernerkennung zugeordnet haben (elektronisch ermittelt, kann Fehler enthalten). Die Dateien landen in `out/videos/` als `Jahr.Monat.Tag_Name.mp4`, z. B. `2026.11.15_Spieler13.mp4`; bei einem zweiten Spiel am selben Tag kommt `_2` dahinter. Das Datum stammt aus der Aufnahmezeit des Videos, sonst aus dem Dateidatum.
 
 ### Schlüsselmomente und Clips
 

@@ -11,10 +11,12 @@
 //!
 //! Pure Rust, no dependencies; the JSON file and the video stream live in `tools::scoreboard`.
 
+pub mod cells;
 pub mod detect;
 pub mod find;
 pub mod quad;
 pub mod seven_seg;
+pub mod timeline;
 
 use quad::{Mat3, Quad};
 
@@ -124,6 +126,9 @@ pub struct FieldCfg {
     /// Slant (italic digits): horizontal offset per pixel of height. Positive = leaning right at
     /// the top. The frame includes the slanted digits.
     pub slant: f64,
+    /// Extra gap before the last two digits (the colon of a clock "M:SS"), relative to the digit
+    /// width. 0 = evenly spaced.
+    pub colon: f64,
 }
 
 /// Sample rectangles of the 7 segments (a,b,c,d,e,f,g) relative to the digit box (x0,y0,x1,y1, 0..1).
@@ -144,12 +149,13 @@ impl FieldCfg {
         let n = self.digits.max(1) as f64;
         let shear = self.slant * h;
         let usable_w = (w - shear.abs()).max(1.0);
-        let dw = usable_w / (n + (n - 1.0) * self.gap_ratio);
+        let colon = if self.digits >= 3 { self.colon.max(0.0) } else { 0.0 };
+        let dw = usable_w / (n + (n - 1.0) * self.gap_ratio + colon);
         let pitch = dw * (1.0 + self.gap_ratio);
         let x_start = x + shear.abs() / 2.0;
         let mut out = Vec::with_capacity(self.digits);
         for i in 0..self.digits {
-            let dx = x_start + i as f64 * pitch;
+            let dx = x_start + i as f64 * pitch + if i + 2 >= self.digits { colon * dw } else { 0.0 };
             let mut rects = [[0.0; 4]; 7];
             for (k, s) in SEG.iter().enumerate() {
                 let cy = y + (s[1] + s[3]) / 2.0 * h;
@@ -181,6 +187,9 @@ pub struct Config {
     pub clock: FieldCfg,
     pub period: Option<FieldCfg>,
     pub home: HomeSide,
+    /// Video time (s) of the calibration frame: the board's position there is the reference
+    /// for following its drift.
+    pub time: Option<f64>,
 }
 
 /// Rectified-view rectangle -> the largest axis-parallel frame rectangle inside the mapped quad.
@@ -307,7 +316,7 @@ mod tests {
 
     #[test]
     fn segments_inside_box() {
-        let f = FieldCfg { rect: [100.0, 50.0, 140.0, 60.0], digits: 2, gap_ratio: 0.25, slant: 0.0 };
+        let f = FieldCfg { rect: [100.0, 50.0, 140.0, 60.0], digits: 2, gap_ratio: 0.25, slant: 0.0, colon: 0.0 };
         let r = f.segment_rects();
         assert_eq!(r.len(), 2);
         for d in &r {
@@ -321,8 +330,8 @@ mod tests {
 
     #[test]
     fn region_covers_fields_on_even_pixels() {
-        let f = |x: f64| FieldCfg { rect: [x, 41.0, 51.0, 31.0], digits: 2, gap_ratio: 0.25, slant: 0.0 };
-        let c = Config { frame: [1280, 720], board: None, detect: DetectCfg::default(), left_score: f(101.0), right_score: f(401.0), clock: f(251.0), period: None, home: HomeSide::Left };
+        let f = |x: f64| FieldCfg { rect: [x, 41.0, 51.0, 31.0], digits: 2, gap_ratio: 0.25, slant: 0.0, colon: 0.0 };
+        let c = Config { frame: [1280, 720], board: None, detect: DetectCfg::default(), left_score: f(101.0), right_score: f(401.0), clock: f(251.0), period: None, home: HomeSide::Left, time: None };
         // video at half the calibration size
         let [x, y, w, h] = c.region(640, 360, 4);
         assert!(x % 2 == 0 && y % 2 == 0 && w % 2 == 0 && h % 2 == 0);

@@ -77,7 +77,7 @@ const DEFS = [
 ];
 let INFO = null;
 const F = {};
-for (const d of DEFS) F[d.key] = { rect: null, digits: d.digits, gap_ratio: 0.25, slant: 0 };
+for (const d of DEFS) F[d.key] = { rect: null, digits: d.digits, gap_ratio: 0.25, slant: 0, colon: 0 };
 const cv = $('cv'), ctx = cv.getContext('2d');
 const view = { s: 1, ox: 0, oy: 0 };
 const frameImg = new Image(), boardImg = new Image();
@@ -227,7 +227,7 @@ function buildFields() {
     const cell = (p, label, attrs) => `<div><span>${label}</span><input type="number" ${attrs} data-k="${d.key}" data-p="${p}"></div>`;
     el.innerHTML = `<label class="t"><input type="radio" name="act" value="${d.key}"><span class="sw"></span><span class="lbl"></span></label>
       <div class="grid">${PROPS.map(([p, k]) => cell(p, T(k), 'step="0.5"')).join('')}</div>
-      <div class="grid three">${cell('digits', T('sbp.digits'), 'min="1" max="6" step="1"')}${cell('gap_ratio', T('sbp.gap'), 'step="0.01"')}${cell('slant', T('sbp.slant'), 'step="0.01"')}</div>`;
+      <div class="grid three">${cell('digits', T('sbp.digits'), 'min="1" max="6" step="1"')}${cell('gap_ratio', T('sbp.gap'), 'step="0.01"')}${cell('slant', T('sbp.slant'), 'step="0.01"')}</div>${d.key === 'clock' ? `<div class="grid three">${cell('colon', T('sbp.colon'), 'min="0" step="0.05"')}</div>` : ''}`;
     el.querySelector('.lbl').textContent = fieldLabel(d.key);
     root.appendChild(el);
   }
@@ -238,7 +238,7 @@ root.addEventListener('input', (e) => {
   const f = F[t.dataset.k], p = t.dataset.p, v = parseFloat(t.value);
   if (isNaN(v)) return;
   if (['x', 'y', 'w', 'h'].includes(p)) { if (!f.rect) return; f.rect[{ x: 0, y: 1, w: 2, h: 3 }[p]] = v; }
-  else f[p] = p === 'digits' ? Math.max(1, Math.min(6, Math.round(v))) : v;
+  else f[p] = p === 'digits' ? Math.max(1, Math.min(6, Math.round(v))) : p === 'colon' ? Math.max(0, v) : v;
   geo();
 });
 root.addEventListener('focusin', (e) => { const f = e.target.closest('.field'); if (!f) return; active = f.id.slice(2); markActive(); draw(); });

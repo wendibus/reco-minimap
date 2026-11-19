@@ -402,7 +402,39 @@ fn stats_for(dir: &Path, file: &str, fixes: Option<&Value>) -> Result<Value, Str
     Ok(v)
 }
 
-/// The playing direction set in the project (`{"home": "l"|"r"|"auto", "switch": "24:00"}`).
+/// Moments of a run to open in the tactics board: the baskets / goals, attempts, set pieces and
+/// substitutions of its ticker file (`<name>.liveticker.json` next to `<name>.jsonl`), oldest first.
+/// A score keeps its last update; taken back ones and corrections are left out.
+fn board_moments(dir: &Path, file: &str) -> Vec<Value> {
+    let f = if Path::new(file).is_absolute() { PathBuf::from(file) } else { dir.join(file) };
+    let ticker = f.with_extension("liveticker.json");
+    let Some(v) = std::fs::read_to_string(&ticker).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) else { return Vec::new() };
+    let mut scores: Vec<Value> = Vec::new();
+    let mut out: Vec<Value> = Vec::new();
+    for e in v["events"].as_array().into_iter().flatten() {
+        let t = e["t"].as_f64();
+        match e["type"].as_str() {
+            Some("score") => {
+                let sid = e["sid"].clone();
+                scores.retain(|x| x["sid"] != sid);
+                if e["retracted"] != json!(true) && e["kind"] != "correction" && e["points"].as_i64().unwrap_or(0) > 0 {
+                    scores.push(json!({"t": t, "type": "score", "kind": e["kind"], "points": e["points"], "team": e["team"], "number": e["number"], "clock": e["clock"], "sid": sid}));
+                }
+            }
+            Some("scene") if e["phase"] != "formation" || matches!(e["kind"].as_str(), Some("tip_off" | "kickoff" | "free_throw" | "corner" | "penalty" | "seven_meter")) => {
+                out.push(json!({"t": t, "type": "scene", "kind": e["kind"], "team": e["team"], "number": e["actor_number"].clone()}));
+            }
+            Some("sub") if e["kind"] == "confirmed" => out.push(json!({"t": t, "type": "sub", "team": e["team"], "in": e["in"], "out": e["out"]})),
+            _ => {}
+        }
+    }
+    out.extend(scores.into_iter().map(|mut x| { x.as_object_mut().map(|o| o.remove("sid")); x }));
+    out.retain(|x| x["t"].is_number());
+    out.sort_by(|a, b| a["t"].as_f64().unwrap_or(0.0).total_cmp(&b["t"].as_f64().unwrap_or(0.0)));
+    out
+}
+
+/// The playing direction set in the project (`{"home": "l"|"r"|"auto", "switch": "24:00" | "period:3"}`).
 fn project_direction(d: &Value) -> Option<crate::direction::Direction> {
     crate::direction::Direction::parse(&get_s(d, "home"), &get_s(d, "switch"))
 }
@@ -411,7 +443,9 @@ fn project_direction(d: &Value) -> Option<crate::direction::Direction> {
 fn direction_args(a: &mut Vec<String>, p: &Value) {
     if let Some(d) = project_direction(&p["direction"]) {
         pushs(a, &["--home-attacks", &d.home_start.to_string()]);
-        if let Some(s) = d.switch_at {
+        if let Some(p) = d.switch_period {
+            pushs(a, &["--switch-period", &p.to_string()]);
+        } else if let Some(s) = d.switch_at {
             pushs(a, &["--switch-at", &format!("{s}")]);
         }
     }
@@ -765,6 +799,15 @@ fn pushs(a: &mut Vec<String>, xs: &[&str]) {
 
 fn start_job(ui: &Arc<Ui>, dir: &Path, kind: &str, params: &Value) -> Result<u64, String> {
     let args = build_args(kind, dir, params)?;
+    // two jobs writing the same files ruin both results (the second one empties them)
+    let outputs = job_outputs(dir, &args);
+    if let Some(busy) = ui.jobs.lock().unwrap().values().find_map(|j| {
+        let st = j.status.lock().unwrap().clone();
+        (st == "running" || st == "cancelling").then(|| j.outputs.iter().find(|o| outputs.contains(o)).cloned()).flatten()
+    }) {
+        let name = busy.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        return Err(tr!("Ein laufender Auftrag schreibt schon in {name}: erst abwarten oder abbrechen, oder einen anderen Namen wählen.", "A running job already writes {name}: wait for it or cancel it, or choose another name.", "Une tâche en cours écrit déjà {name} : attendre ou l'annuler, ou choisir un autre nom.", "Una tarea en curso ya escribe {name}: espera o cancélala, o elige otro nombre."));
+    }
     let id = ui.next.fetch_add(1, Ordering::SeqCst);
     let stop_file = std::env::temp_dir().join(format!("reco-minimap-stop-{}-{id}", std::process::id()));
     let _ = std::fs::remove_file(&stop_file);
@@ -778,7 +821,7 @@ fn start_job(ui: &Arc<Ui>, dir: &Path, kind: &str, params: &Value) -> Result<u64
         progress: Mutex::new(Value::Null),
         first_progress: Mutex::new(None),
         started: std::time::Instant::now(),
-        outputs: job_outputs(dir, &args),
+        outputs,
         stop_file,
         kept: Mutex::new(None),
     });
@@ -964,6 +1007,7 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
             Ok(jpg) => respond(&mut s, "200 OK", "image/jpeg", &jpg),
             Err(e) => err(&mut s, e),
         },
+        ("POST", "/api/board/moments") => jres(&mut s, json!({"ok": true, "moments": board_moments(Path::new(&get_s(&b, "dir")), &get_s(&b, "file"))})),
         ("POST", "/api/stats") => match stats_for(Path::new(&get_s(&b, "dir")), &get_s(&b, "file"), b.get("fixes")) {
             Ok(v) => jres(&mut s, json!({"ok": true, "stats": v})),
             Err(e) => err(&mut s, e),
@@ -998,6 +1042,17 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
                 Ok(id) => jres(&mut s, json!({"ok": true, "id": id})),
                 Err(e) => err(&mut s, e),
             }
+        }
+        // jobs still running, so that a reloaded page shows them again
+        ("GET", "/api/jobs") => {
+            let jobs = ui.jobs.lock().unwrap();
+            let mut list: Vec<Value> = jobs.iter().filter(|(_, j)| matches!(j.status.lock().unwrap().as_str(), "running" | "cancelling")).map(|(id, j)| {
+                let mut v = job_json(*id, j);
+                v["kind"] = json!(j.kind);
+                v
+            }).collect();
+            list.sort_by_key(|v| v["id"].as_u64());
+            jres(&mut s, json!({"ok": true, "jobs": list}));
         }
         ("GET", p) if p.starts_with("/api/job/") => {
             let id: u64 = p.trim_start_matches("/api/job/").trim_end_matches("/cancel").parse().unwrap_or(0);

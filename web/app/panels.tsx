@@ -185,7 +185,7 @@ export function CalibPanel() {
         <span className={files.scoreboard ? 'ok' : 'mm-muted'}>{files.scoreboard ? T('sb.state', { n: files.scoreboard.fields, side: T(files.scoreboard.home === 'right' ? 'sb.right' : 'sb.left') }) : T('sb.none')}</span></div>
     </Card>}
     {['basketball', 'football', 'futsal', 'handball', 'hockey', 'lacrosse'].includes(project.sport) && <Card title={t.direction.title} hint={t.direction.hint}>
-      <div className="mm-grid2"><Sel k="direction.home" label={t.direction.home} options={[['', t.direction.auto], ['l', t.direction.left], ['r', t.direction.right]]} /><Text k="direction.switch" label={t.direction.switch} placeholder="24:00" /></div>
+      <div className="mm-grid2"><Sel k="direction.home" label={t.direction.home} options={[['', t.direction.auto], ['l', t.direction.left], ['r', t.direction.right]]} /><SwitchSel /></div>
       <p className="mm-hint">{t.direction.switchHint}</p>
     </Card>}
   </>;
@@ -321,21 +321,64 @@ export function LivePanel() {
 
 // ---------------------------------------------------------------- 6 · evaluation (run report, tactics board)
 export function EvalPanel() {
-  const { project, files, mutate, runJob, log, t } = useApp();
-  const outs = files.out.filter((x) => x.name.endsWith('.jsonl'));
+  const { project, dir, files, mutate, runJob, log, t } = useApp();
+  const outs = files.out.filter((x) => x.name.endsWith('.jsonl') && !x.name.endsWith('.dets.jsonl'));
   const [file, setFile] = useState(outs[0]?.path ?? '');
   useEffect(() => { if (!outs.some((o) => o.path === file)) setFile(outs[0]?.path ?? ''); }, [files.out]); // eslint-disable-line react-hooks/exhaustive-deps
   const [at, setAt] = useState<string>(project.board_at ?? '');
   const [trail, setTrail] = useState<number>(project.board_trail ?? 5);
+  // moments of the ticker (baskets, attempts, substitutions …): the board opens a few seconds before one
+  const [moments, setMoments] = useState<Json[]>([]);
+  const [moment, setMoment] = useState<string>('');
+  const [before, setBefore] = useState<number>(project.board_before ?? 3);
+  useEffect(() => {
+    let stop = false;
+    setMoments([]); setMoment('');
+    if (file) void api('/api/board/moments', { dir, file }).then((r) => { if (!stop && r.ok) setMoments(r.moments as Json[]); });
+    return () => { stop = true; };
+  }, [file, dir]);
+  const ts = t.stats;
+  const names = { home: project.live?.home_name?.trim() || ts.home, away: project.live?.away_name?.trim() || ts.away } as Record<string, string>;
+  const label = (m: Json) => {
+    const who = [names[String(m.team)] ?? '', m.number != null ? `#${m.number}` : ''].filter(Boolean).join(' ');
+    const what = m.type === 'score' ? (project.sport === 'basketball' ? ts.basketKinds[Number(m.points)] ?? '' : (ts.kinds as Record<string, string>)[String(m.kind)] ?? String(m.kind))
+      : m.type === 'sub' ? ts.kinds.sub : (ts.kinds as Record<string, string>)[String(m.kind)] ?? String(m.kind);
+    return `${clock(Number(m.t))} · ${what}${who ? ' · ' + who : ''}`;
+  };
+  const chosen = moment === '' ? undefined : moments[Number(moment)];
+  const atOf = (m: Json) => clock(Math.max(0, Math.round(Number(m.t) - before)));
+  const boardAt = chosen ? atOf(chosen) : at.trim();
   return <>
     <Card title={T('eval.title')}>
       <Labeled label={T('eval.file')}><select value={file} onChange={(e) => setFile(e.target.value)}>{outs.map((x) => <option key={x.path} value={x.path}>{x.name}</option>)}</select></Labeled>
       <div className="mm-row mm-gap"><Btn primary hint={t.hints.evalRun} disabled={!outs.length} onClick={() => void runJob('stats', { file })}>{T('eval.btn')}</Btn><Btn hint={t.hints.reveal} disabled={!outs.length} onClick={() => void showFile(file, false, log)}>{T('btn.reveal')}</Btn></div>
     </Card>
     <Card title={T('board.title')} hint={T('board.ui_hint')}>
-      <div className="mm-row mm-gap"><span className="mm-muted">{T('board.ui_at')}</span><input type="text" value={at} placeholder="12:30" style={{ width: 90 }} onChange={(e) => setAt(e.target.value)} />
+      {moments.length > 0 && <div className="mm-row mm-gap"><span className="mm-muted">{T('board.ui_moment')}</span>
+        <select value={moment} onChange={(e) => setMoment(e.target.value)}><option value="">{T('board.ui_own_time')}</option>{moments.map((m, i) => <option key={i} value={i}>{label(m)}</option>)}</select>
+        {chosen && <><span className="mm-muted">{T('board.ui_before')}</span><input type="number" min={0} max={60} value={before} style={{ width: 60 }} onChange={(e) => setBefore(Math.max(0, +e.target.value || 0))} /><span className="mm-muted">→ {atOf(chosen)}</span></>}</div>}
+      <div className="mm-row mm-gap">{!chosen && <><span className="mm-muted">{T('board.ui_at')}</span><input type="text" value={at} placeholder="12:30" style={{ width: 90 }} onChange={(e) => setAt(e.target.value)} /></>}
         <span className="mm-muted">{T('board.ui_trail')}</span><input type="number" min={0} value={trail} style={{ width: 70 }} onChange={(e) => setTrail(+e.target.value || 0)} />
-        <Btn primary hint={t.hints.board} disabled={!outs.length || !files.court} onClick={() => { const c = project.colors; mutate((p) => { p.board_at = at.trim(); p.board_trail = trail || 5; }); void runJob('board', { file, at: at.trim(), trail: trail || 5, draw_home: c.draw_home, draw_away: c.draw_away }); }}>{T('board.ui_open')}</Btn></div>
+        <Btn primary hint={t.hints.board} disabled={!outs.length || !files.court} onClick={() => { const c = project.colors; mutate((p) => { p.board_at = at.trim(); p.board_trail = trail || 5; p.board_before = before; }); void runJob('board', { file, at: boardAt, trail: trail || 5, draw_home: c.draw_home, draw_away: c.draw_away }); }}>{T('board.ui_open')}</Btn></div>
     </Card>
+  </>;
+}
+
+// change of ends: when a period starts (from the scoreboard) instead of a fixed video time
+const SWITCH_PERIOD: Record<string, [number, 'switchQ3' | 'switchH2']> = { basketball: [3, 'switchQ3'], hockey: [3, 'switchQ3'], lacrosse: [3, 'switchQ3'], football: [2, 'switchH2'], futsal: [2, 'switchH2'], handball: [2, 'switchH2'] };
+function SwitchSel() {
+  const { project, set, t } = useApp();
+  const v = String(project.direction?.switch ?? '');
+  const [p, label] = SWITCH_PERIOD[project.sport] ?? [2, 'switchH2'];
+  const period = `period:${p}`;
+  const [timeMode, setTimeMode] = useState(() => v !== '' && !v.startsWith('period:'));
+  const mode = v.startsWith('period:') ? 'period' : timeMode || v ? 'time' : '';
+  return <>
+    <Labeled label={t.direction.switch}><select value={mode} onChange={(e) => { const m = e.target.value; setTimeMode(m === 'time'); set('direction.switch', m === 'period' ? period : ''); }}>
+      <option value="period">{t.direction[label]}</option>
+      <option value="">{t.direction.switchNone}</option>
+      <option value="time">{t.direction.switchTime}</option>
+    </select></Labeled>
+    {mode === 'time' && <Text k="direction.switch" label={t.direction.switchTimeLabel} placeholder="24:00" />}
   </>;
 }

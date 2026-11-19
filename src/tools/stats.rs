@@ -444,6 +444,13 @@ pub fn apply_direction(profile: &SportProfile, att: &mut [Attempt], given: Optio
     };
     let obs: Vec<Obs> = att.iter().filter_map(|a| Some(Obs { t: a.t, team: team(&a.team), side: attempt_side(ng, a)? })).collect();
     let est = estimate(&obs);
+    // a switch at a period the scoreboard did not show (or no scoreboard): the change of ends the attempts point to
+    let given = given.map(|mut d| {
+        if d.switch_period.is_some() && d.switch_at.is_none() {
+            d.switch_at = est.and_then(|e| e.dir.switch_at);
+        }
+        d
+    });
     let (dir, source) = match (given, est) {
         (Some(d), _) => (Some(d), "given"),
         (None, Some(e)) if e.reliable() => (Some(e.dir), "estimated"),
@@ -481,6 +488,8 @@ pub fn report_with(profile: &SportProfile, frames: &[Value], given: Option<Direc
 
 /// [`report_with`] with the shooters checked by hand (basketball box score).
 pub fn report_full(profile: &SportProfile, frames: &[Value], given: Option<Direction>, fixes: &super::stats_players::ScoreFixes) -> Value {
+    // a switch "when period N starts": its time from the scoreboard readings in the file
+    let given = given.map(|d| d.with_periods(&super::scoreboard::readings_in(frames)));
     let sport = profile.id.as_str();
     let (l, w) = (profile.field.length, profile.field.width);
     let n = frames.len();

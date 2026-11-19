@@ -104,6 +104,7 @@ Spielsituationen (run/live):
                     (Liste je Sportart: docs/SZENARIEN.de.md); erscheint im Protokoll, als `scenes` im JSON und in `stats`
   --home-attacks l|r  Spielrichtung: Tor/Korb, auf das Heim zu Beginn spielt (links/rechts wie in der Minikarte); Würfe, Freiwürfe,
                     Ecken und Strafwürfe zählen dann für das angreifende Team (auch bei stats und ticker); --switch-at mm:ss Seitenwechsel
+                    --switch-period N  Seitenwechsel, sobald die Anzeigetafel Abschnitt N zeigt (Basketball 3, Fußball 2)
 
 Anzeigetafel (Basketball, run, live):
   --scoreboard scoreboard.json   Spielstand von der Tafel im Panorama ablesen (erst `scoreboard-calibrate`); in `stats` geht jeder

@@ -419,6 +419,9 @@ add("board.hint", "Szene-Datei hierher ziehen oder „Öffnen“ wählen. Eine S
 add("board.ui_hint", "Hält ein Lauf-Ergebnis (.jsonl) an einem Zeitpunkt an und öffnet ihn im Taktikboard. Ein schon gespeichertes Board desselben Zeitpunkts wird so geöffnet, wie du es gespeichert hast.", "Pauses a run result (.jsonl) at a moment and opens it in the tactics board. A board you already saved for the same moment opens as you left it.", "Arrête un résultat (.jsonl) à un instant et l'ouvre dans le tableau tactique. Un tableau déjà enregistré pour le même instant s'ouvre tel que vous l'avez laissé.", "Detiene un resultado (.jsonl) en un momento y lo abre en la pizarra táctica. Una pizarra ya guardada para el mismo momento se abre como la dejaste.")
 add("board.ui_at", "Zeitpunkt", "Moment", "Instant", "Momento")
 add("board.ui_trail", "Laufweg (s)", "Trail (s)", "Trajet (s)", "Recorrido (s)")
+add("board.ui_moment", "Moment aus dem Ticker", "Moment from the ticker", "Moment du direct", "Momento de la retransmisión")
+add("board.ui_own_time", "eigener Zeitpunkt …", "own moment …", "instant libre …", "momento propio …")
+add("board.ui_before", "Sekunden davor", "seconds before", "secondes avant", "segundos antes")
 add("board.ui_open", "Taktikboard öffnen", "Open tactics board", "Ouvrir le tableau tactique", "Abrir pizarra táctica")
 
 # --- live ticker

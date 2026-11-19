@@ -171,21 +171,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (r.ok) setState((s) => ({ ...s, models: r.models, files: r.files }));
   }, []);
 
-  useEffect(() => {
-    void (async () => {
-      const init = (await api('/api/init')) as Init;
-      if (!init.ok) return;
-      setState((s) => ({ ...s, init }));
-      await openProject(init.default_dir);
-    })();
-  }, [openProject]);
 
-  const runJob = useCallback(async (kind: string, params: Json, outer?: JobView['outer']): Promise<JobStatus> => {
-    const r = await api('/api/job/start', { dir: ref.current.dir, kind, params });
-    if (!r.ok) { log(T('status.error', { m: r.error })); return 'failed'; }
-    const id = r.id as number;
-    const startedAt = Date.now();
-    setJobs((js) => [...js.filter((j) => j.status === 'running' || j.status === 'cancelling').filter((j) => j.id !== id), { id, kind, status: 'running', progress: null, message: '', stage: null, elapsedSeconds: 0, etaSeconds: null, keepable: false, kept: null, cancellable: true, lines: [], startedAt, outer }]);
+  // follows a job until it ends (also one that was started before the page was reloaded)
+  const follow = useCallback(async (id: number, kind: string, startedAt: number, outer?: JobView['outer']): Promise<JobStatus> => {
+    setJobs((js) => [...js.filter((j) => j.status === 'running' || j.status === 'cancelling').filter((j) => j.id !== id), { id, kind, status: 'running', progress: null, message: '', stage: null, elapsedSeconds: (Date.now() - startedAt) / 1000, etaSeconds: null, keepable: false, kept: null, cancellable: true, lines: [], startedAt, outer }]);
     for (;;) {
       await new Promise((ok) => setTimeout(ok, 600));
       const j = await api(`/api/job/${id}?from=0`);
@@ -196,7 +185,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return j.status as JobStatus;
       }
     }
-  }, [log, refresh]);
+  }, [refresh]);
+  const runJob = useCallback(async (kind: string, params: Json, outer?: JobView['outer']): Promise<JobStatus> => {
+    const r = await api('/api/job/start', { dir: ref.current.dir, kind, params });
+    if (!r.ok) { log(T('status.error', { m: r.error })); return 'failed'; }
+    return follow(r.id as number, kind, Date.now(), outer);
+  }, [log, follow]);
+  useEffect(() => {
+    void (async () => {
+      const init = (await api('/api/init')) as Init;
+      if (!init.ok) return;
+      setState((s) => ({ ...s, init }));
+      await openProject(init.default_dir);
+      // jobs that kept running while the page was reloaded (e.g. after the window stopped drawing)
+      const r = await api('/api/jobs');
+      for (const j of (r.ok ? r.jobs as Json[] : [])) void follow(j.id as number, String(j.kind), Date.now() - Number(j.elapsedSeconds ?? 0) * 1000);
+    })();
+  }, [openProject, follow]);
   const cancelJob = useCallback(async (id: number, keep: boolean) => {
     await api(`/api/job/${id}/cancel`, { keep });
   }, []);

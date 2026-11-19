@@ -115,11 +115,22 @@ pub fn scene_from_json(v: &Value) -> Result<BoardScene, String> {
     })
 }
 
-/// The `"t"` of a state line without parsing the whole (long) line.
+/// The `"t"` of a state line without parsing the whole (long) line. `run --json` writes the keys
+/// sorted, so the frame time is the last key (`{"ball":…,"t":12.5}`); older files had it first.
 fn quick_t(line: &str) -> Option<f64> {
-    let rest = line.strip_prefix("{\"t\":")?;
-    let end = rest.find(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-' || c == 'e' || c == 'E' || c == '+'))?;
-    rest[..end].parse().ok()
+    let num = |s: &str| -> Option<(f64, usize)> {
+        let end = s.find(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-' || c == 'e' || c == 'E' || c == '+')).unwrap_or(s.len());
+        s[..end].parse().ok().map(|t| (t, end))
+    };
+    if let Some(rest) = line.strip_prefix("{\"t\":") {
+        return num(rest).map(|(t, _)| t);
+    }
+    // last key: `"t":<number>}` closes the line (a nested "t", e.g. of an event, never does)
+    let line = line.trim_end();
+    let at = line.rfind("\"t\":")?;
+    let rest = &line[at + 4..];
+    let (t, end) = num(rest)?;
+    (&rest[end..] == "}").then_some(t)
 }
 
 /// Colours and stripe options for a scene cut from a run.
@@ -239,4 +250,16 @@ pub fn scene_step(v: &Value, step: usize) -> Result<BoardScene, String> {
     };
     s.marks = marks_from_json(&st["marks"]);
     Ok(s)
+}
+
+#[cfg(test)]
+mod quick_t_tests {
+    use super::quick_t;
+    #[test]
+    fn the_frame_time_is_found_first_or_last_in_the_line() {
+        assert_eq!(quick_t(r#"{"t":12.5,"players":[]}"#), Some(12.5));
+        // sorted keys as `run --json` writes them; the event's own "t" is not taken
+        assert_eq!(quick_t(r#"{"ball":{"x":null},"events":[{"t":0.242,"type":"scoreboard"}],"players":[],"referees":[],"t":3.5}"#), Some(3.5));
+        assert_eq!(quick_t(r#"{"ball":{},"events":[{"t":0.2}]}"#), None);
+    }
 }

@@ -106,6 +106,7 @@ Situaciones de juego (run/live):
                     (lista por deporte: docs/SCENARIOS.es.md); aparece en el registro, como `scenes` en el JSON y en `stats`
   --home-attacks l|r  dirección de juego: portería/canasta que ataca el local al principio (izquierda/derecha como en el minimapa); tiros,
                     tiros libres, córneres y penaltis cuentan para el equipo atacante (también en stats y ticker); --switch-at mm:ss cambio de campo
+                    --switch-period N  cambio de campo en cuanto el marcador muestra el periodo N (baloncesto 3, fútbol 2)
 
 Marcador (baloncesto, run, live):
   --scoreboard scoreboard.json   leer el marcador en el panorama (primero `scoreboard-calibrate`); en `stats` cada canasta

@@ -1865,6 +1865,9 @@ fn cmd_live(o: &Opts, input: &str) {
             None => board.as_mut().and_then(|b| b.push(&frame, t)).into_iter().collect(),
         };
         let board_reading = board_readings.last().copied();
+        if let Some(d) = scenes.as_mut().and_then(|s| s.direction.as_mut()) {
+            board_readings.iter().for_each(|r| d.note_period(r.period, r.t));
+        }
         frame.rgb = Vec::new(); // free the big buffer early
         let age_ms = arrival.elapsed().as_secs_f64() * 1000.0;
         let mut v = state_json_with(&state, &sc);
@@ -2006,9 +2009,14 @@ fn state_json_with(s: &FrameState, scenes: &[SceneEvent]) -> serde_json::Value {
 }
 
 /// What the live ticker may show and the team names (`live`, and `run --ticker-json` / `ticker` for a simulation).
-/// `--home-attacks l|r` (end the home team attacks at the start) and `--switch-at mm:ss`.
+/// `--home-attacks l|r` (end the home team attacks at the start) and `--switch-at mm:ss` or
+/// `--switch-period N` (ends change when period N starts on the scoreboard).
 fn direction_opt(o: &Opts) -> Option<reco_minimap::direction::Direction> {
-    o.s("home-attacks").and_then(|h| reco_minimap::direction::Direction::parse(h, o.s("switch-at").unwrap_or("")))
+    let switch = match o.s("switch-period") {
+        Some(p) => format!("period:{p}"),
+        None => o.s("switch-at").unwrap_or("").to_string(),
+    };
+    o.s("home-attacks").and_then(|h| reco_minimap::direction::Direction::parse(h, &switch))
 }
 
 fn ticker_cfg(o: &Opts, sport: &str) -> reco_minimap::tools::live::TickerCfg {
@@ -2273,6 +2281,10 @@ fn cmd_run(o: &Opts, input: &str) {
             fj["performance"]=serde_json::json!({"tiles":selection_stats.0,"total_tiles":tiles.len(),"full_sweep":selection_stats.1,"recovery_tiles":selection_stats.2,"coasting_targets":selection_stats.3,"ocr_ms":ocr_time.as_secs_f64()*1000.0});
             if let Some(b) = board.as_mut() {
                 let rs = b.take_until(t);
+                // `--switch-period`: the ends change once the board shows that period
+                if let Some(d) = scenes.as_mut().and_then(|s| s.direction.as_mut()) {
+                    rs.iter().for_each(|r| d.note_period(r.period, r.t));
+                }
                 if let Some(sc) = scorer.as_mut() {
                     let mut ev = reco_minimap::live_score::Snapshot::from_frame(&fj).map(|snap| sc.push_frame(snap)).unwrap_or_default();
                     for r in &rs {

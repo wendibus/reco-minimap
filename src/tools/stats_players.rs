@@ -153,7 +153,24 @@ struct Line {
 /// scorer: [`crate::live_score`]), misses (attempts of the scene detection without points after
 /// them – only as many as were seen) and the team's points for and against while the player was
 /// on the court (plus/minus). `None` without board readings.
-pub fn box_score(profile: &SportProfile, frames: &[Value], att: &[Attempt]) -> Option<Value> {
+/// Shooters checked by hand: (team "home"/"away", that team's score after the basket) -> jersey
+/// number, or `None` for "not known". They replace the electronic shooter.
+pub type ScoreFixes = HashMap<(String, u32), Option<u64>>;
+
+/// The hand checks of a project (`score_fixes`: {"home:62": 4, "away:45": null}).
+pub fn parse_fixes(v: &Value) -> ScoreFixes {
+    let mut m = ScoreFixes::new();
+    for (k, n) in v.as_object().into_iter().flatten() {
+        if let Some((team, to)) = k.split_once(':') {
+            if let (Ok(to), "home" | "away") = (to.parse::<u32>(), team) {
+                m.insert((team.to_string(), to), n.as_u64());
+            }
+        }
+    }
+    m
+}
+
+pub fn box_score(profile: &SportProfile, frames: &[Value], att: &[Attempt], fixes: &ScoreFixes) -> Option<Value> {
     if profile.id != "basketball" || profile.goals.len() != 2 {
         return None;
     }
@@ -183,21 +200,57 @@ pub fn box_score(profile: &SportProfile, frames: &[Value], att: &[Attempt]) -> O
     let mut made_list: Vec<Value> = Vec::new();
     for e in scores.iter().filter(|e| e.points > 0) {
         let team = team_key(e.team).to_string();
-        let shooter_no = e.shooter.and_then(|(id, seg)| num_of((id as u64, seg as u64)).1).or(e.number.map(|n| n as u64));
-        made_list.push(json!({"t": r1(e.t), "team": team, "points": e.points, "kind": e.kind.key(), "number": shooter_no}));
+        let auto = e.shooter.and_then(|(id, seg)| num_of((id as u64, seg as u64)).1).or(e.number.map(|n| n as u64));
+        let fix = fixes.get(&(team.clone(), e.to));
+        let shooter_no = match fix {
+            Some(f) => *f,
+            None => auto,
+        };
+        // the other candidates of the electronic choice, for a quick check by hand
+        let mut cands: Vec<u64> = auto.into_iter().collect();
+        for (key, _) in &e.others {
+            if let Some(n) = num_of((key.0 as u64, key.1 as u64)).1 {
+                if !cands.contains(&n) {
+                    cands.push(n);
+                }
+            }
+        }
+        // then everybody of that team on the court right before, nearest a basket first
+        {
+            let i0 = frames.partition_point(|f| f["t"].as_f64().unwrap_or(0.0) < e.t - 4.0);
+            let i1 = frames.partition_point(|f| f["t"].as_f64().unwrap_or(0.0) <= e.t);
+            let mut near: Vec<(f64, u64)> = Vec::new();
+            for p in frames[i0..i1.max(i0)].iter().flat_map(|fr| fr["players"].as_array().into_iter().flatten()) {
+                let (x, y) = (p["x"].as_f64().unwrap_or(-1.0), p["y"].as_f64().unwrap_or(-1.0));
+                if p["team"].as_str() != Some(team.as_str()) || x < 0.2 || x > profile.field.length as f64 - 0.2 || y < 0.3 || y > profile.field.width as f64 - 0.3 {
+                    continue;
+                }
+                let Some(n) = num_of((p["id"].as_u64().unwrap_or(0), p["segment"].as_u64().unwrap_or(0))).1 else { continue };
+                let d = profile.goals.iter().map(|g| ((g.x as f64 - x).powi(2) + (g.y as f64 - y).powi(2)).sqrt()).fold(f64::MAX, f64::min);
+                match near.iter_mut().find(|q| q.1 == n) {
+                    Some(q) => q.0 = q.0.min(d),
+                    None => near.push((d, n)),
+                }
+            }
+            near.sort_by(|a, b| a.0.total_cmp(&b.0));
+            for (_, n) in near {
+                if !cands.contains(&n) {
+                    cands.push(n);
+                }
+            }
+        }
+        made_list.push(json!({"t": r1(e.t), "team": team, "points": e.points, "to": e.to, "kind": e.kind.key(), "number": shooter_no, "auto": auto, "checked": fix.is_some(), "candidates": cands, "basis": e.basis.key()}));
         let Some(k) = slot(e.points) else {
             *team_only.entry(team).or_default() += e.points as i64;
             continue;
         };
-        match e.shooter {
-            Some((id, seg)) => {
-                let n = num_of((id as u64, seg as u64)).1.or(e.number.map(|n| n as u64));
-                match n {
-                    Some(n) => lines.entry((team, n)).or_default().made[k] += 1,
-                    None => without.entry(team).or_default().made[k] += 1,
-                }
-            }
-            None => *team_only.entry(team).or_default() += e.points as i64,
+        if e.shooter.is_none() && fix.is_none() {
+            *team_only.entry(team).or_default() += e.points as i64;
+            continue;
+        }
+        match shooter_no {
+            Some(n) => lines.entry((team, n)).or_default().made[k] += 1,
+            None => without.entry(team).or_default().made[k] += 1,
         }
     }
     // misses: attempts without points of that team shortly after
@@ -592,7 +645,7 @@ mod tests {
             frames.push(json!({"t": t, "players": players, "events": ev}));
         }
         let att = super::super::stats::attempts(&p, &frames);
-        let b = box_score(&p, &frames, &att).expect("box score");
+        let b = box_score(&p, &frames, &att, &ScoreFixes::new()).expect("box score");
         assert_eq!(b["electronic"], true);
         let home = &b["home"][0];
         assert_eq!((home["number"].as_u64(), home["points"].as_i64(), home["two"].as_i64()), (Some(11), Some(2), Some(1)));

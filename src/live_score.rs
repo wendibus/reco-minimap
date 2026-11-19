@@ -82,6 +82,8 @@ pub struct Snapshot {
     pub t: f64,
     pub players: Vec<Player>,
     pub attempts: Vec<Attempt>,
+    /// Tracklet id holding the ball (ball tracking), if any.
+    pub holder: Option<u32>,
 }
 
 fn team_of(s: &str) -> Team {
@@ -132,7 +134,8 @@ impl Snapshot {
                 Some(Attempt { actor: e["actor"].as_u64()? as u32, team: team_of(e["team"].as_str().unwrap_or("")), points })
             })
             .collect();
-        Some(Snapshot { t, players, attempts })
+        let holder = v["ball"]["holder"].as_u64().map(|h| h as u32);
+        Some(Snapshot { t, players, attempts, holder })
     }
 }
 
@@ -164,6 +167,8 @@ pub enum Basis {
     FreeThrowLine,
     /// The scene detection saw the shot.
     Attempt,
+    /// The scoring team's last player with the ball before the score.
+    LastHolder,
     /// Nearest the basket before the score.
     NearBasket,
     /// Nobody of the scoring team in the buffer.
@@ -175,6 +180,7 @@ impl Basis {
         match self {
             Basis::FreeThrowLine => "free_throw_line",
             Basis::Attempt => "attempt",
+            Basis::LastHolder => "ball_holder",
             Basis::NearBasket => "near_basket",
             Basis::TeamOnly => "team_only",
         }
@@ -378,14 +384,6 @@ impl LiveScorer {
         out
     }
 
-    /// Inside the court (with a small margin): people at the bench or the table are no shooters.
-    fn on_court(&self, p: Vec2) -> bool {
-        // field coordinates start at 0; the baskets stand as far from both end lines
-        let (b0, b1) = (self.baskets[0].x.min(self.baskets[1].x), self.baskets[0].x.max(self.baskets[1].x));
-        let (len, wid) = (b1 + b0, 2.0 * self.baskets[0].y);
-        p.x >= 0.2 && p.x <= len - 0.2 && p.y >= 0.3 && p.y <= wid - 0.3
-    }
-
     fn clock_at(&self, t: f64) -> Option<u32> {
         self.clocks.iter().rev().find(|c| c.0 <= t + 0.01).or(self.clocks.back()).map(|c| c.1)
     }
@@ -406,54 +404,7 @@ impl LiveScorer {
             _ => return e,
         };
         let frames: Vec<&Snapshot> = self.buf.iter().filter(|f| f.t >= t - w0 && f.t <= t - w1).collect();
-        // the basket everybody is at: the one nearest the players' centre
-        let (sx, n) = frames.iter().flat_map(|f| f.players.iter()).fold((0.0f32, 0usize), |a, p| (a.0 + p.pos.x, a.1 + 1));
-        if n == 0 {
-            return e;
-        }
-        let cx = sx / n as f32;
-        let basket = *self.baskets.iter().min_by(|a, b| (a.x - cx).abs().total_cmp(&(b.x - cx).abs())).unwrap();
-        let mut votes: HashMap<(u32, u32), f32> = HashMap::new();
-        let mut total = 0.0f32;
-        let mut basis = Basis::NearBasket;
-        if kind == ScoreKind::FreeThrow {
-            // the free-throw spot lies from the basket towards the middle of the court
-            let mid = (self.baskets[0].x + self.baskets[1].x) / 2.0;
-            let dir = if basket.x < mid { 1.0 } else { -1.0 };
-            let spot = Vec2::new(basket.x + dir * self.cfg.ft_offset, basket.y);
-            basis = Basis::FreeThrowLine;
-            for f in &frames {
-                let best = f.players.iter().filter(|p| p.team == team && self.on_court(p.pos)).map(|p| (p, p.pos.dist(spot))).min_by(|a, b| a.1.total_cmp(&b.1));
-                total += 1.0;
-                if let Some((p, _)) = best.filter(|b| b.1 <= self.cfg.ft_radius) {
-                    *votes.entry((p.id, p.segment)).or_default() += 1.0;
-                }
-            }
-        } else {
-            // an attempt of the scoring team that fits the points wins outright (latest one)
-            let att = frames.iter().rev().flat_map(|f| f.attempts.iter().map(move |a| (f, a))).find(|(_, a)| a.team == team && (a.points as i32 == points || points == 3));
-            if let Some((f, a)) = att {
-                if let Some(p) = f.players.iter().find(|p| p.id == a.actor) {
-                    votes.insert((p.id, p.segment), 1.0);
-                    total = 1.0;
-                    basis = Basis::Attempt;
-                }
-            }
-            if votes.is_empty() {
-                // later frames count more: right before the score the shooter is at the basket
-                let span = (w0 - w1).max(1e-6);
-                for f in &frames {
-                    let w = (0.5 + (f.t - (t - w0)) / span) as f32;
-                    let best = f.players.iter().filter(|p| p.team == team && self.on_court(p.pos)).min_by(|a, b| a.pos.dist(basket).total_cmp(&b.pos.dist(basket)));
-                    total += w;
-                    if let Some(p) = best {
-                        *votes.entry((p.id, p.segment)).or_default() += w;
-                    }
-                }
-            }
-        }
-        let mut ranked: Vec<((u32, u32), f32)> = votes.into_iter().map(|(k, v)| (k, v / total.max(1e-6))).collect();
-        ranked.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+        let Some((basis, ranked)) = pick_shooter(&frames, self.baskets, team, kind, points, t, (w0, w1), &self.cfg) else { return e };
         let until = t + self.cfg.priority_s;
         for (k, _) in ranked.iter().take(3) {
             self.prio.insert(*k, until);
@@ -473,6 +424,83 @@ impl LiveScorer {
         }
         e
     }
+}
+
+/// Inside the court (with a small margin): people at the bench or the table are no shooters.
+fn on_court(baskets: [Vec2; 2], p: Vec2) -> bool {
+    // field coordinates start at 0; the baskets stand as far from both end lines
+    let (b0, b1) = (baskets[0].x.min(baskets[1].x), baskets[0].x.max(baskets[1].x));
+    let (len, wid) = (b1 + b0, 2.0 * baskets[0].y);
+    p.x >= 0.2 && p.x <= len - 0.2 && p.y >= 0.3 && p.y <= wid - 0.3
+}
+
+/// Who scored, from the frames before a score at `t` (the window `t - w.0 ..= t - w.1`): the
+/// candidates of the scoring team with their share (best first) and how they were found.
+#[allow(clippy::too_many_arguments)]
+pub fn pick_shooter(frames: &[&Snapshot], baskets: [Vec2; 2], team: Team, kind: ScoreKind, points: i32, t: f64, w: (f64, f64), cfg: &ScorerCfg) -> Option<(Basis, Vec<((u32, u32), f32)>)> {
+    let (w0, w1) = w;
+    let on_court = |p: Vec2| on_court(baskets, p);
+    // the basket everybody is at: the one nearest the players' centre
+    let (sx, n) = frames.iter().flat_map(|f| f.players.iter()).fold((0.0f32, 0usize), |a, p| (a.0 + p.pos.x, a.1 + 1));
+    if n == 0 {
+        return None;
+    }
+    let cx = sx / n as f32;
+    let basket = *baskets.iter().min_by(|a, b| (a.x - cx).abs().total_cmp(&(b.x - cx).abs())).unwrap();
+    let mut votes: HashMap<(u32, u32), f32> = HashMap::new();
+    let mut total = 0.0f32;
+    let mut basis = Basis::NearBasket;
+    if kind == ScoreKind::FreeThrow {
+        // the free-throw spot lies from the basket towards the middle of the court
+        let mid = (baskets[0].x + baskets[1].x) / 2.0;
+        let dir = if basket.x < mid { 1.0 } else { -1.0 };
+        let spot = Vec2::new(basket.x + dir * cfg.ft_offset, basket.y);
+        basis = Basis::FreeThrowLine;
+        for f in frames {
+            let best = f.players.iter().filter(|p| p.team == team && on_court(p.pos)).map(|p| (p, p.pos.dist(spot))).min_by(|a, b| a.1.total_cmp(&b.1));
+            total += 1.0;
+            if let Some((p, _)) = best.filter(|b| b.1 <= cfg.ft_radius) {
+                *votes.entry((p.id, p.segment)).or_default() += 1.0;
+            }
+        }
+    } else {
+        // an attempt of the scoring team that fits the points wins outright (latest one)
+        let att = frames.iter().rev().flat_map(|f| f.attempts.iter().map(move |a| (f, a))).find(|(_, a)| a.team == team && (a.points as i32 == points || points == 3));
+        if let Some((f, a)) = att {
+            if let Some(p) = f.players.iter().find(|p| p.id == a.actor) {
+                votes.insert((p.id, p.segment), 1.0);
+                total = 1.0;
+                basis = Basis::Attempt;
+            }
+        }
+        if votes.is_empty() {
+            // the scoring team's last player with the ball, near enough to the basket for a shot
+            let held = frames.iter().rev().find_map(|f| {
+                let h = f.holder?;
+                f.players.iter().find(|p| p.id == h && p.team == team && on_court(p.pos) && p.pos.dist(basket) <= 9.0)
+            });
+            if let Some(p) = held {
+                votes.insert((p.id, p.segment), 1.0);
+                total = 1.0;
+                basis = Basis::LastHolder;
+            }
+        }
+        if votes.is_empty() {
+            // later frames count more: right before the score the shooter is at the basket
+            let span = (w0 - w1).max(1e-6);
+            for f in frames {
+                let wt = (0.5 + (f.t - (t - w0)) / span) as f32;
+                let best = f.players.iter().filter(|p| p.team == team && on_court(p.pos)).min_by(|a, b| a.pos.dist(basket).total_cmp(&b.pos.dist(basket)));
+                total += wt;
+                if let Some(p) = best {
+                    *votes.entry((p.id, p.segment)).or_default() += wt;
+                }
+            }
+        }
+    }
+    let mut ranked: Vec<((u32, u32), f32)> = votes.into_iter().map(|(k, v)| (k, v / total.max(1e-6))).collect();
+    ranked.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+    Some((basis, ranked))
 }
 
 /// The final state of every score (an update replaces its event; taken back ones are dropped).
@@ -519,6 +547,7 @@ pub fn parse_event(v: &Value) -> Option<ScoreEvent> {
     let basis = match v["basis"].as_str().unwrap_or("") {
         "free_throw_line" => Basis::FreeThrowLine,
         "attempt" => Basis::Attempt,
+        "ball_holder" => Basis::LastHolder,
         "near_basket" => Basis::NearBasket,
         _ => Basis::TeamOnly,
     };
@@ -528,7 +557,8 @@ pub fn parse_event(v: &Value) -> Option<ScoreEvent> {
         sid: v["sid"].as_u64()? as u32, t: v["t"].as_f64()?, team: team_of(v["team"].as_str().unwrap_or("")), points: v["points"].as_i64()? as i32,
         from: v["from"].as_u64().unwrap_or(0) as u32, to: v["to"].as_u64().unwrap_or(0) as u32, kind, basis, shooter,
         number: v["number"].as_u64().map(|n| n as u32), read: b("read"), confidence: v["confidence"].as_f64().unwrap_or(0.0) as f32,
-        clock: v["clock"].as_u64().map(|c| c as u32), pending: b("pending"), update: b("update"), retracted: b("retracted"), others: Vec::new(),
+        clock: v["clock"].as_u64().map(|c| c as u32), pending: b("pending"), update: b("update"), retracted: b("retracted"),
+        others: v["others"].as_array().into_iter().flatten().filter_map(|o| Some(((o["track"].as_u64()? as u32, o["segment"].as_u64().unwrap_or(0) as u32), o["share"].as_f64().unwrap_or(0.0) as f32))).collect(),
     })
 }
 
@@ -598,7 +628,7 @@ mod tests {
         for i in 0..20 {
             let t = i as f64 * 0.5;
             // home attacks the right basket; #13 at the free-throw spot, others on the lane
-            s.push_frame(Snapshot { t, players: vec![pl(1, Team::Home, 22.2, 7.6, Some(13)), pl(2, Team::Home, 24.0, 5.0, Some(4)), pl(3, Team::Away, 24.0, 10.0, None), pl(4, Team::Away, 25.0, 5.0, None)], attempts: vec![] });
+            s.push_frame(Snapshot { t, players: vec![pl(1, Team::Home, 22.2, 7.6, Some(13)), pl(2, Team::Home, 24.0, 5.0, Some(4)), pl(3, Team::Away, 24.0, 10.0, None), pl(4, Team::Away, 25.0, 5.0, None)], attempts: vec![], holder: None });
         }
         let mut ev = Vec::new();
         for i in 0..24 {
@@ -612,7 +642,7 @@ mod tests {
     fn field_goal_waits_for_the_number() {
         let mut s = scorer();
         for i in 0..20 {
-            s.push_frame(Snapshot { t: i as f64 * 0.5, players: vec![pl(7, Team::Away, 3.0, 7.0, None), pl(8, Team::Away, 10.0, 3.0, Some(5)), pl(9, Team::Home, 5.0, 7.0, Some(4))], attempts: vec![] });
+            s.push_frame(Snapshot { t: i as f64 * 0.5, players: vec![pl(7, Team::Away, 3.0, 7.0, None), pl(8, Team::Away, 10.0, 3.0, Some(5)), pl(9, Team::Home, 5.0, 7.0, Some(4))], attempts: vec![], holder: None });
         }
         let mut ev = Vec::new();
         for i in 0..24 {
@@ -621,7 +651,7 @@ mod tests {
         assert_eq!(ev.len(), 1);
         assert_eq!((ev[0].team, ev[0].shooter, ev[0].pending), (Team::Away, Some((7, 0)), true));
         assert_eq!(s.priority(), vec![(7, 0)]);
-        let up = s.push_frame(Snapshot { t: 14.0, players: vec![pl(7, Team::Away, 3.0, 7.0, Some(24))], attempts: vec![] });
+        let up = s.push_frame(Snapshot { t: 14.0, players: vec![pl(7, Team::Away, 3.0, 7.0, Some(24))], attempts: vec![], holder: None });
         assert_eq!(up.len(), 1);
         assert_eq!((up[0].sid, up[0].number, up[0].update), (ev[0].sid, Some(24), true));
         // the JSON round trip keeps what the statistics need

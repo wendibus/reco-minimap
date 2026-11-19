@@ -217,7 +217,7 @@ Danach verarbeitest du das ganze Spiel.
 In Schritt 4 gibt es den Abschnitt *Trikotnummern lesen und anzeigen*.
 
 1. Klicke einmalig *Modell laden* (etwa 11 MB). Der Status wechselt zu „Nummern-Modell vorhanden“.
-2. Trage die **Kadernummern** beider Teams ein, mit Komma getrennt (`4,7,10,12,23`). Die Erkennung wählt dann nur unter diesen Nummern – deutlich zuverlässiger. Bei Fußball, Handball, Hockey u. ä. markierst du die Torleute mit `g` oder `tw` hinter der Nummer (`1g,4,7,12tw`): Ist die Torwartfarbe gesetzt (Schritt 3c), wird die Nummer eines Torwarts nur unter den Torleuten gesucht, die aller anderen nur unter den Feldspielern.
+2. Trage unter **2 · Video › Mannschaften** die Teamnamen und die **Kadernummern** beider Teams ein, mit Komma getrennt (`4,7,10,12,23`). Die Erkennung wählt dann nur unter diesen Nummern – deutlich zuverlässiger. Bei Fußball, Handball, Hockey u. ä. markierst du die Torleute mit `g` oder `tw` hinter der Nummer (`1g,4,7,12tw`): Ist die Torwartfarbe gesetzt (Schritt 3c), wird die Nummer eines Torwarts nur unter den Torleuten gesucht, die aller anderen nur unter den Feldspielern.
 3. Setze das Häkchen bei *Trikotnummern lesen und anzeigen* und lass einen Abschnitt laufen.
 4. **Die Größe entscheidet.** Eine Nummer ist ab etwa 10 px Ziffernhöhe lesbar, das heißt Spieler mit etwa **80 px Höhe**. Am Ende des Laufs steht im Protokoll, wie groß Spieler in deinem Video sind und ob das reicht. Wenn nicht, exportiere mit Reco eine größere Version desselben Panoramas (gleiche Zeitachse, gleiche Bildrate) und trage sie bei *Höher aufgelöstes Panorama für die Nummern* ein. Die Erkennung läuft weiter im kleineren Video.
 5. Nummern erscheinen auf den Scheiben, sobald sie bestätigt sind. Spieler, deren Rücken nie sichtbar ist, bleiben ohne Nummer.
@@ -361,9 +361,15 @@ Zeit auf dem Feld je Rückennummer, getrennt nach Heim und Gast, mit Anteil an d
 
 ### Reiter und Videos
 
-Die Statistik ist in Reiter aufgeteilt: **Überblick** (Kennzahlen, Spielstand, Viertel), **Spieler** (Spielerstatistik), **Würfe** (Wurfkarte, Zonen), **Team** (Ballbesitz, Heatmap, Formation) und **Videos**. Der zuletzt gewählte Reiter wird gemerkt.
+Die Statistik ist in Reiter aufgeteilt: **Überblick** (Kennzahlen, Spielstand, Viertel), **Spieler** (Spielerstatistik), **Körbe** (Werfer prüfen, nur Basketball mit Anzeigetafel), **Würfe** (Wurfkarte, Zonen), **Team** (Ballbesitz, Heatmap, Formation) und **Videos**. Der zuletzt gewählte Reiter wird gemerkt.
 
-Unter **Videos** werden mehrere Momente automatisch zu einem Video zusammengefügt, sich überschneidende Momente verschmelzen. Wähle *Highlights (alle Treffer)*, *Alles von Heim* / *Gast* oder *Je Spieler Heim* / *Gast (getrennt)* – letzteres erzeugt je Rückennummer ein Video aus den Treffern, die Anzeigetafel und Nummernerkennung zugeordnet haben (elektronisch ermittelt, kann Fehler enthalten). Die Dateien landen in `out/videos/` als `Jahr.Monat.Tag_Name.mp4`, z. B. `2026.11.15_Spieler13.mp4`; bei einem zweiten Spiel am selben Tag kommt `_2` dahinter. Das Datum stammt aus der Aufnahmezeit des Videos, sonst aus dem Dateidatum.
+Unter **Videos** werden mehrere Momente automatisch zu einem Video zusammengefügt, sich überschneidende Momente verschmelzen. Wähle *Highlights (alle Körbe)*, *Alles von Heim* / *Gast* oder *Je Spieler Heim* / *Gast (getrennt)* – letzteres erzeugt je Rückennummer ein Video aus den Körben, die Anzeigetafel und Nummernerkennung zugeordnet haben (elektronisch ermittelt, kann Fehler enthalten). Die Dateien landen in `out/videos/` als `Jahr.Monat.Tag_Name.mp4`, z. B. `2026.11.15_Spieler13.mp4`; bei einem zweiten Spiel am selben Tag kommt `_2` dahinter. Das Datum stammt aus der Aufnahmezeit des Videos, sonst aus dem Dateidatum.
+
+### Körbe prüfen
+
+Welcher Spieler einen Korb erzielt hat, ermittelt das Programm elektronisch – bei weit entfernten Körben ist das oft unsicher. Im Reiter **Körbe** prüfst du jeden Korb in wenigen Sekunden: Links stehen alle Körbe mit Zeit, Team, Punkten, Spielstand und dem zugeordneten Werfer (✓ = geprüft). Rechts laufen die letzten 6,5 Sekunden vor dem Korb in einer Schleife, vergrößert auf den Bereich um den Korb (Pause und Schieberegler zum Anhalten). Darunter stehen die **Vorschläge** des Programms und der ganze **Kader** der Mannschaft als Knöpfe; ein Klick wählt den Werfer und springt zum nächsten ungeprüften Korb. *Vorschlag übernehmen* bestätigt die Wahl des Programms, *unbekannt* lässt den Korb ohne Werfer, *Prüfung zurücknehmen* stellt die elektronische Zuordnung wieder her.
+
+Deine Auswahl wird im Projekt gespeichert (Mannschaft und Spielstand nach dem Korb) und gilt sofort für Punkte je Spieler, Box-Score und die Spieler-Videos – auch nach einer neuen Auswertung desselben Spiels. Dafür muss das Video aus Schritt 2 noch am selben Ort liegen.
 
 ### Schlüsselmomente und Clips
 

@@ -217,7 +217,7 @@ Then process the whole game.
 In step 4 there is a section *Read and show jersey numbers*.
 
 1. Click *Download model* once (about 11 MB). The status turns to "Number model installed".
-2. Enter the **squad numbers** of both teams, separated by commas (`4,7,10,12,23`). The reader then only chooses among these – much more reliable. In football, handball, hockey and the like, mark the goalkeepers with `g` behind the number (`1g,4,7,12g`): once the goalkeeper kit colour is set (step 3c), a keeper's number is then searched only among the keepers and everyone else's only among the outfield players.
+2. Under **2 · Video › Teams**, enter the team names and the **squad numbers** of both teams, separated by commas (`4,7,10,12,23`). The reader then only chooses among these – much more reliable. In football, handball, hockey and the like, mark the goalkeepers with `g` behind the number (`1g,4,7,12g`): once the goalkeeper kit colour is set (step 3c), a keeper's number is then searched only among the keepers and everyone else's only among the outfield players.
 3. Tick *Read and show jersey numbers* and run a segment.
 4. **Size matters.** A number is readable from roughly 10 px digit height, which means players about **80 px tall**. At the end of the run the log says how tall players are in your video and whether that is enough. If not, export a larger version of the same panorama with Reco (same timeline, same frame rate) and enter it as *Higher-resolution panorama for the numbers*. Detection keeps using the smaller video.
 5. Numbers appear on the dots as soon as they are confirmed. Players whose back is never visible stay without a number.
@@ -361,9 +361,15 @@ Time on the field per jersey number, for home and away, with the share of the vi
 
 ### Tabs and videos
 
-The statistics are split into tabs: **Overview** (key figures, score, periods), **Players** (box score), **Shots** (shot chart, zones), **Team** (possession, heat map, shape) and **Videos**. The tab you chose last is remembered.
+The statistics are split into tabs: **Overview** (key figures, score, periods), **Players** (box score), **Baskets** (check the shooters, basketball with a scoreboard only), **Shots** (shot chart, zones), **Team** (possession, heat map, shape) and **Videos**. The tab you chose last is remembered.
 
 In **Videos** several moments are joined into one video automatically, overlapping moments merge. Choose *Highlights (all baskets)*, *Everything of home* / *away*, or *Per player home* / *away (separate)* – the latter makes one video per jersey number from the baskets the scoreboard and the number reading assigned (electronically determined, may contain errors). Files go to `out/videos/` named `Year.Month.Day_Name.mp4`, e.g. `2026.11.15_Player13.mp4`; with a second game the same day the name gets `_2`. The date comes from the video's recording time, else the file date.
+
+### Check baskets
+
+Who scored a basket is determined electronically – at a far basket this is often uncertain. In the **Baskets** tab you check every basket in a few seconds: on the left all baskets with time, team, points, score and the assigned shooter (✓ = checked). On the right the last 6.5 seconds before the basket play in a loop, enlarged to the area around the basket (pause and slider to stop). Below are the program's **suggestions** and the team's whole **roster** as buttons; a click picks the shooter and moves on to the next unchecked basket. *Take the suggestion* confirms the program's choice, *unknown* leaves the basket without a shooter, *Undo the check* restores the electronic choice.
+
+Your choice is saved in the project (team and score after the basket) and counts at once for points per player, the box score and the player videos – also after analysing the same game again. The video from step 2 has to be in the same place.
 
 ### Key moments and clips
 

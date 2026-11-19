@@ -111,10 +111,26 @@ export function VideoPanel() {
     const tot = Math.round(probe.duration || 0);
     info = <div className="ok">{T('video.info', { w: probe.w, h: probe.h, fps: probe.fps, d: tot ? `${Math.floor(tot / 60)}:${String(tot % 60).padStart(2, '0')} min` : '' })}</div>;
   } else if (probe?.error) info = <div className="bad">{T('video.err')}</div>;
-  return <Card title={T('video.title')}>
-    <Labeled label={T('video.path')}><PathField value={project.video ?? ''} prompt={T('video.path')} onChange={(v) => set('video', v)} /></Labeled>
-    <p className="mm-hint">{T('video.hint')}</p>
-    <div className="mm-gap">{info}</div>
+  return <>
+    <Card title={T('video.title')}>
+      <Labeled label={T('video.path')}><PathField value={project.video ?? ''} prompt={T('video.path')} onChange={(v) => set('video', v)} /></Labeled>
+      <p className="mm-hint">{T('video.hint')}</p>
+      <div className="mm-gap">{info}</div>
+    </Card>
+    <TeamsCard />
+  </>;
+}
+
+// the one place for team names and squads (numbers and player names); used by processing, live,
+// ticker, statistics and videos
+function TeamsCard() {
+  const { isKeeperSport } = useApp();
+  return <Card title={T('teams.title')} hint={T('teams.hint')}>
+    <div className="mm-teams">
+      <div><h3>{T('teams.home')}</h3><Text k="live.home_name" label={T('ticker.ui_home')} /><Text k="run.numbers.roster_home" label={T('run.roster_home')} /></div>
+      <div><h3>{T('teams.away')}</h3><Text k="live.away_name" label={T('ticker.ui_away')} /><Text k="run.numbers.roster_away" label={T('run.roster_away')} /></div>
+    </div>
+    <p className="mm-hint">{T('run.roster_hint')}{isKeeperSport() ? ' ' + T('run.roster_hint_gk') : ''}</p>
   </Card>;
 }
 
@@ -181,14 +197,13 @@ function Workers() {
 }
 
 function Numbers({ withHires }: { withHires: boolean }) {
-  const { project, init, set, runJob, isKeeperSport, t } = useApp();
+  const { project, init, set, runJob, t } = useApp();
   const n = project.run.numbers;
   const ok = init?.ocr?.exists;
   return <Card title={T('run.numbers')}>
     <Check k="run.numbers.enabled" label={T('run.numbers')} /><p className="mm-hint">{T('run.numbers_hint')}</p>
     <div className="mm-row mm-gap"><span className={ok ? 'ok' : 'bad'}>{ok ? T('run.ocr_ok') : T('run.ocr_missing')}</span>{!ok && <Btn hint={t.hints.fetchOcr} onClick={() => void runJob('fetch_ocr', {}).then(() => location.reload())}>{T('run.ocr_fetch')}</Btn>}</div>
-    <div className="mm-grid2"><Text k="run.numbers.roster_home" label={T('run.roster_home')} /><Text k="run.numbers.roster_away" label={T('run.roster_away')} /></div>
-    <p className="mm-hint">{T('run.roster_hint')}{isKeeperSport() ? ' ' + T('run.roster_hint_gk') : ''}</p>
+    <p className="mm-hint">{T('run.roster_where')}</p>
     {withHires && <><Labeled label={T('run.hires')}><PathField value={n.hires ?? ''} prompt={T('run.hires')} onChange={(v) => set('run.numbers.hires', v)} /></Labeled><p className="mm-hint">{T('run.hires_hint')}</p></>}
   </Card>;
 }
@@ -269,7 +284,7 @@ export function LivePanel() {
       <Workers />
       <Check k="live.realtime" label={T('live.realtime')} /><Check k="live.adaptive" label={T('live.adaptive')} />
       <h3>{T('ticker.title')}</h3><p className="mm-hint">{T('ticker.ui_hint')}</p>
-      <div className="mm-grid3"><Sel k="live.ticker_names" label={T('ticker.ui_show')} options={['numbers', 'names', 'both'].map((m) => [m, T('ticker.m_' + m)])} /><Text k="live.home_name" label={T('ticker.ui_home')} /><Text k="live.away_name" label={T('ticker.ui_away')} /></div>
+      <div className="mm-grid3"><Sel k="live.ticker_names" label={T('ticker.ui_show')} options={['numbers', 'names', 'both'].map((m) => [m, T('ticker.m_' + m)])} /></div><p className="mm-hint">{T('run.roster_where')}</p>
       <Check k="live.ticker_approve" label={T('ticker.ui_approve')} /><Check k="live.ticker_export" label={T('ticker.ui_export')} />
       <div className="mm-grid2"><Text k="live.ticker_push" label={T('ticker.ui_push')} placeholder="https://…/ticker.json" /><Text k="live.ticker_key" label={T('ticker.ui_key')} password /></div>
       <p className="mm-hint">{T('ticker.ui_web_hint')}</p>

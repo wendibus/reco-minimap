@@ -217,7 +217,7 @@ Después procesa el partido entero.
 En el paso 4 está la sección *Leer y mostrar los dorsales*.
 
 1. Haz clic una vez en *Descargar modelo* (unos 11 MB). El estado cambia a «Modelo de dorsales instalado».
-2. Introduce los **dorsales de las plantillas** de ambos equipos, separados por comas (`4,7,10,12,23`). La lectura elige entonces solo entre esos números – mucho más fiable. En fútbol, balonmano, hockey, etc., marca a los porteros con `g` tras el número (`1g,4,7,12g`): con el color de la camiseta de portero definido (paso 3c), el dorsal de un portero se busca solo entre los porteros y el de los demás solo entre los jugadores de campo.
+2. En **2 · Vídeo › Equipos**, introduce los nombres de equipo y los **dorsales de las plantillas** de ambos equipos, separados por comas (`4,7,10,12,23`). La lectura elige entonces solo entre esos números – mucho más fiable. En fútbol, balonmano, hockey, etc., marca a los porteros con `g` tras el número (`1g,4,7,12g`): con el color de la camiseta de portero definido (paso 3c), el dorsal de un portero se busca solo entre los porteros y el de los demás solo entre los jugadores de campo.
 3. Marca *Leer y mostrar los dorsales* y ejecuta un segmento.
 4. **El tamaño decide.** Un dorsal se lee a partir de unos 10 px de altura de cifra, es decir, jugadores de unos **80 px de alto**. Al final del proceso, el registro indica qué tamaño tienen los jugadores en tu vídeo y si basta. Si no, exporta con Reco una versión mayor del mismo panorama (misma línea de tiempo, misma cadencia) e indícala en *Panorama de mayor resolución para los dorsales*. La detección sigue en el vídeo pequeño.
 5. Los dorsales aparecen sobre los puntos cuando están confirmados. Los jugadores cuya espalda nunca se ve se quedan sin número.
@@ -361,9 +361,15 @@ Tiempo en el campo por dorsal, para local y visitante, con la parte de la duraci
 
 ### Pestañas y vídeos
 
-Las estadísticas se dividen en pestañas: **Resumen** (cifras clave, marcador, periodos), **Jugadores** (estadísticas por jugador), **Tiros** (mapa de tiros, zonas), **Equipo** (posesión, mapa de calor, forma) y **Vídeos**. Se recuerda la última pestaña elegida.
+Las estadísticas se dividen en pestañas: **Resumen** (cifras clave, marcador, periodos), **Jugadores** (estadísticas por jugador), **Canastas** (revisar los tiradores, solo baloncesto con marcador), **Tiros** (mapa de tiros, zonas), **Equipo** (posesión, mapa de calor, forma) y **Vídeos**. Se recuerda la última pestaña elegida.
 
 En **Vídeos** varios momentos se unen automáticamente en un vídeo; los que se solapan se fusionan. Elige *Mejores jugadas (todas las canastas)*, *Todo de local* / *visitante* o *Por jugador local* / *visitante (separado)*: esto último crea un vídeo por dorsal a partir de las canastas asignadas por el marcador y la lectura de dorsales (determinado electrónicamente, puede contener errores). Los archivos van a `out/videos/` con el nombre `Año.Mes.Día_Nombre.mp4`, p. ej. `2026.11.15_Jugador13.mp4`; con un segundo partido el mismo día se añade `_2`. La fecha sale de la hora de grabación del vídeo, si no de la fecha del archivo.
+
+### Revisar canastas
+
+Quién anotó una canasta se determina electrónicamente; en la canasta lejana suele ser incierto. En la pestaña **Canastas** revisas cada canasta en pocos segundos: a la izquierda todas las canastas con tiempo, equipo, puntos, marcador y el tirador asignado (✓ = revisada). A la derecha se repiten los últimos 6,5 segundos antes de la canasta, ampliados alrededor de la canasta (pausa y deslizador para detener). Debajo están las **propuestas** del programa y toda la **plantilla** del equipo como botones; un clic elige el tirador y pasa a la siguiente canasta sin revisar. *Tomar la propuesta* confirma la elección del programa, *desconocido* deja la canasta sin tirador, *Deshacer la revisión* restaura la asignación electrónica.
+
+Tu elección se guarda en el proyecto (equipo y marcador tras la canasta) y cuenta de inmediato para los puntos por jugador, el box score y los vídeos de jugadores, también tras analizar de nuevo el mismo partido. El vídeo del paso 2 debe seguir en el mismo lugar.
 
 ### Momentos clave y clips
 

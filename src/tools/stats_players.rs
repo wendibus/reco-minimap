@@ -201,7 +201,10 @@ pub fn box_score(profile: &SportProfile, frames: &[Value], att: &[Attempt], fixe
     for e in scores.iter().filter(|e| e.points > 0) {
         let team = team_key(e.team).to_string();
         let auto = e.shooter.and_then(|(id, seg)| num_of((id as u64, seg as u64)).1).or(e.number.map(|n| n as u64));
-        let fix = fixes.get(&(team.clone(), e.to));
+        // a pick on the phone during the game counts like a check by hand (a later check wins)
+        let manual = e.basis == crate::live_score::Basis::Manual;
+        let picked = manual.then_some(e.number.map(|n| n as u64));
+        let fix = fixes.get(&(team.clone(), e.to)).or(picked.as_ref());
         let shooter_no = match fix {
             Some(f) => *f,
             None => auto,

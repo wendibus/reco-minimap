@@ -173,6 +173,8 @@ pub enum Basis {
     NearBasket,
     /// Nobody of the scoring team in the buffer.
     TeamOnly,
+    /// Named by the operator (phone page during a live game).
+    Manual,
 }
 
 impl Basis {
@@ -183,6 +185,7 @@ impl Basis {
             Basis::LastHolder => "ball_holder",
             Basis::NearBasket => "near_basket",
             Basis::TeamOnly => "team_only",
+            Basis::Manual => "manual",
         }
     }
 }
@@ -548,6 +551,7 @@ pub fn parse_event(v: &Value) -> Option<ScoreEvent> {
         "free_throw_line" => Basis::FreeThrowLine,
         "attempt" => Basis::Attempt,
         "ball_holder" => Basis::LastHolder,
+        "manual" => Basis::Manual,
         "near_basket" => Basis::NearBasket,
         _ => Basis::TeamOnly,
     };

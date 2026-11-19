@@ -644,6 +644,11 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
                 if p["ticker_approve"].as_bool() == Some(true) {
                     pushs(&mut a, &["--ticker-approve"]);
                 }
+                // phone page to name shooters: only with a long random key from the project
+                let pk = get_s(p, "pick_key");
+                if p["pick"].as_bool() == Some(true) && pk.len() >= 16 && pk.bytes().all(|b| b.is_ascii_alphanumeric()) {
+                    pushs(&mut a, &["--pick-key", &pk]);
+                }
                 // copies of the public feed for a web site (static files; the upload needs curl)
                 if p["ticker_export"].as_bool() == Some(true) {
                     pushs(&mut a, &["--ticker-export", &dir.join("out").join("ticker").to_string_lossy()]);

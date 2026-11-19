@@ -7,6 +7,7 @@
 //!   GET /config.json   colours
 //!   GET /ticker        live ticker page (substitutions and game situations as a feed; works on a phone)
 //!   GET /ticker.json   the feed so far (`?since=N` for only the newer entries) and the ticker settings
+//!   GET /pick?key=K    phone page: name the shooter of every basket (only with the secret key of `--pick-key`)
 
 use crate::{tr};
 use std::io::{Read, Write};
@@ -77,6 +78,7 @@ pub struct Hub {
     ticker_cfg: String,
     ticker_full: String,
     ticker: Mutex<Ticker>,
+    picks: Mutex<Option<Picks>>,
 }
 
 /// The ticker's state: the published feed, the queue waiting for release, and what was taken back.
@@ -88,6 +90,31 @@ struct Ticker {
     next_id: u64,
     retracted: Vec<u64>,
     approve: bool,
+}
+
+/// Baskets kept on the phone page (open and recently picked).
+const PICKS_KEEP: usize = 12;
+
+/// A basket the operator can name the shooter of on the phone (`/pick`).
+struct Pick {
+    sid: u64,
+    event: Value,
+    candidates: Vec<u64>,
+    chosen: Option<Option<u64>>,
+}
+
+/// The phone page: a secret key in its link, the rosters, the baskets, and the picks waiting to be
+/// written by the processing loop.
+struct Picks {
+    key: String,
+    roster: [Vec<u64>; 2],
+    cards: Vec<Pick>,
+    manual: Vec<Value>,
+}
+
+/// Compare without stopping at the first difference (the key guards the page in the network).
+fn same_key(a: &str, b: &str) -> bool {
+    a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
 /// Events waiting for release are capped so an unattended queue cannot grow without bound.
@@ -125,7 +152,7 @@ impl Hub {
         let plain = json!({"names": "numbers", "teams": {"home": "", "away": ""}, "players": {"home": {}, "away": {}}});
         let ticker_cfg = ticker.as_ref().map(|t| t.to_json()).unwrap_or_else(|| plain.clone()).to_string();
         let ticker_full = ticker.as_ref().map(|t| t.to_json_full()).unwrap_or(plain).to_string();
-        Arc::new(Hub { inner: Mutex::new((0, String::new())), cv: Condvar::new(), config: config_json, ticker_cfg, ticker_full, ticker: Mutex::new(Ticker { approve, ..Default::default() }) })
+        Arc::new(Hub { inner: Mutex::new((0, String::new())), cv: Condvar::new(), config: config_json, ticker_cfg, ticker_full, ticker: Mutex::new(Ticker { approve, ..Default::default() }), picks: Mutex::new(None) })
     }
 
     /// New events (substitutions, game situations): published at once, or queued for release in manual mode.
@@ -214,6 +241,105 @@ impl Hub {
         self.ticker.lock().unwrap().approve = on;
     }
 
+    /// Turn on the phone page for naming shooters. `key` must be long enough to be guessed by nobody.
+    pub fn enable_picks(&self, key: &str, roster_home: Vec<u64>, roster_away: Vec<u64>) -> bool {
+        if key.len() < 16 || !key.bytes().all(|b| b.is_ascii_alphanumeric()) {
+            return false;
+        }
+        *self.picks.lock().unwrap() = Some(Picks { key: key.to_string(), roster: [roster_home, roster_away], cards: Vec::new(), manual: Vec::new() });
+        true
+    }
+
+    /// A score event of the live scorer: a new basket becomes a card, a later number updates it, a
+    /// retraction removes it. `candidates`: jersey numbers to offer first.
+    pub fn offer_pick(&self, ev: &Value, mut candidates: Vec<u64>) {
+        let mut g = self.picks.lock().unwrap();
+        let Some(p) = g.as_mut() else { return };
+        let Some(sid) = ev["sid"].as_u64() else { return };
+        if ev["retracted"].as_bool() == Some(true) {
+            p.cards.retain(|c| c.sid != sid);
+            return;
+        }
+        if !matches!(ev["kind"].as_str(), Some("free_throw" | "field_goal")) || ev["basis"] == "manual" {
+            return;
+        }
+        if let Some(c) = p.cards.iter_mut().find(|c| c.sid == sid) {
+            if c.chosen.is_none() {
+                c.event["number"] = ev["number"].clone();
+            }
+            return;
+        }
+        // a second free throw: most likely the same shooter as the one just before
+        if ev["kind"] == "free_throw" {
+            let t = ev["t"].as_f64().unwrap_or(0.0);
+            if let Some(Some(n)) = p.cards.iter().rev().find(|c| c.event["kind"] == "free_throw" && c.event["team"] == ev["team"] && (t - c.event["t"].as_f64().unwrap_or(0.0)).abs() < 90.0).and_then(|c| c.chosen) {
+                candidates.retain(|x| *x != n);
+                candidates.insert(0, n);
+            }
+        }
+        p.cards.push(Pick { sid, event: ev.clone(), candidates, chosen: None });
+        if p.cards.len() > PICKS_KEEP {
+            p.cards.remove(0);
+        }
+    }
+
+    /// The operator named the shooter (`None`: not known). The update goes out with the next frame.
+    pub fn choose(&self, sid: u64, number: Option<u64>) -> bool {
+        let mut g = self.picks.lock().unwrap();
+        let Some(p) = g.as_mut() else { return false };
+        let Some(c) = p.cards.iter_mut().find(|c| c.sid == sid) else { return false };
+        c.chosen = Some(number);
+        let mut e = c.event.clone();
+        e["update"] = json!(true);
+        e["pending"] = json!(false);
+        e["retracted"] = json!(false);
+        e["number"] = json!(number);
+        e["read"] = json!(number.is_some());
+        e["basis"] = json!("manual");
+        e["confidence"] = json!(if number.is_some() { 1.0 } else { 0.0 });
+        e["shooter"] = Value::Null;
+        e["others"] = json!([]);
+        p.manual.push(e);
+        true
+    }
+
+    /// Take a pick back (undo): the basket is open again and the ticker shows the scorer's own result.
+    pub fn unpick(&self, sid: u64) -> bool {
+        let mut g = self.picks.lock().unwrap();
+        let Some(p) = g.as_mut() else { return false };
+        let Some(c) = p.cards.iter_mut().find(|c| c.sid == sid) else { return false };
+        if c.chosen.is_none() {
+            return false;
+        }
+        c.chosen = None;
+        let mut e = c.event.clone();
+        e["update"] = json!(true);
+        p.manual.push(e);
+        true
+    }
+
+    /// Picks made since the last call, as score updates (for the result file and the ticker).
+    pub fn take_manual(&self) -> Vec<Value> {
+        self.picks.lock().unwrap().as_mut().map(|p| std::mem::take(&mut p.manual)).unwrap_or_default()
+    }
+
+    fn pick_ok(&self, key: &str) -> bool {
+        self.picks.lock().unwrap().as_ref().is_some_and(|p| same_key(&p.key, key))
+    }
+
+    /// The phone page's view: settings with names, rosters and the baskets (newest first).
+    pub fn pick_json(&self) -> String {
+        let g = self.picks.lock().unwrap();
+        let Some(p) = g.as_ref() else { return "{}".into() };
+        let cfg: Value = serde_json::from_str(&self.ticker_full).unwrap_or(Value::Null);
+        let cards: Vec<Value> = p.cards.iter().rev().map(|c| {
+            let e = &c.event;
+            json!({"sid": c.sid, "t": e["t"], "clock": e["clock"], "team": e["team"], "points": e["points"], "kind": e["kind"], "to": e["to"],
+                "auto": e["number"], "candidates": c.candidates, "picked": c.chosen.is_some(), "number": c.chosen.flatten()})
+        }).collect();
+        json!({"config": cfg, "roster": {"home": p.roster[0], "away": p.roster[1]}, "cards": cards}).to_string()
+    }
+
     pub fn publish(&self, json: String) {
         let mut g = self.inner.lock().unwrap();
         g.0 += 1;
@@ -266,6 +392,24 @@ fn handle(mut s: TcpStream, hub: Arc<Hub>) {
                 _ => respond(&mut s, "404 Not Found", "text/plain", b"not found"),
             }
         }
+        p if p == "/pick" || p == "/pick/" || p.starts_with("/pick.") || p.starts_with("/pick/") => {
+            let q = |k: &str| query.split('&').find_map(|kv| kv.strip_prefix(&format!("{k}="))).map(str::to_string);
+            if !hub.pick_ok(&q("key").unwrap_or_default()) {
+                return respond(&mut s, "403 Forbidden", "text/plain", b"forbidden");
+            }
+            match (method.as_str(), p) {
+                ("GET", "/pick") | ("GET", "/pick/") => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("pick.html").as_bytes()),
+                ("GET", "/pick.json") => respond(&mut s, "200 OK", "application/json; charset=utf-8", hub.pick_json().as_bytes()),
+                ("POST", "/pick/choose") => {
+                    let sid = q("sid").and_then(|v| v.parse::<u64>().ok());
+                    let n = q("n").and_then(|v| v.parse::<u64>().ok());
+                    // `n=auto`: undo the pick
+                    let v = sid.map(|sid| if q("n").as_deref() == Some("auto") { hub.unpick(sid) } else { hub.choose(sid, n) }).unwrap_or(false);
+                    respond(&mut s, "200 OK", "application/json", json!({"ok": v}).to_string().as_bytes())
+                }
+                _ => respond(&mut s, "404 Not Found", "text/plain", b"not found"),
+            }
+        }
         "/ticker.json" => {
             let since = query.split('&').find_map(|kv| kv.strip_prefix("since=")).and_then(|v| v.parse().ok()).unwrap_or(0);
             respond(&mut s, "200 OK", "application/json; charset=utf-8", hub.ticker_json(since).as_bytes());
@@ -315,4 +459,68 @@ pub fn serve(hub: Arc<Hub>, host: &str, port: u16) -> Result<String, String> {
         }
     });
     Ok(addr)
+}
+
+#[cfg(test)]
+mod pick_tests {
+    use super::*;
+
+    fn get(addr: &str, method: &str, path: &str) -> (String, String) {
+        let mut s = TcpStream::connect(addr).unwrap();
+        // one write, like a browser: the hub reads a request in one go
+        s.write_all(format!("{method} {path} HTTP/1.1\r\nHost: {addr}\r\nContent-Length: 0\r\n\r\n").as_bytes()).unwrap();
+        let mut out = String::new();
+        s.read_to_string(&mut out).unwrap();
+        let (head, body) = out.split_once("\r\n\r\n").unwrap_or((&out, ""));
+        (head.lines().next().unwrap_or("").to_string(), body.to_string())
+    }
+
+    fn score(sid: u64, kind: &str, number: Option<u64>) -> Value {
+        json!({"type": "score", "sid": sid, "t": 10.0 * sid as f64, "team": "away", "points": if kind == "free_throw" { 1 } else { 2 }, "from": 40, "to": 42, "kind": kind, "basis": "near_basket", "number": number, "update": false, "retracted": false, "pending": number.is_none(), "confidence": 0.4, "clock": 300, "shooter": {"track": 7, "segment": 1}, "others": []})
+    }
+
+    #[test]
+    fn the_shooter_is_named_on_the_phone() {
+        let hub = Hub::with_ticker("{}".into(), None);
+        assert!(!hub.enable_picks("short", vec![], vec![]));
+        assert!(hub.enable_picks("abcdefghijklmnop1234", vec![4, 6], vec![3, 8, 21]));
+        let addr = serve(hub.clone(), "127.0.0.1", 0).unwrap();
+        // without the key nothing is shown or changed
+        let r = get(&addr, "GET", "/pick?key=wrongwrongwrongwrong");
+        assert!(r.0.contains("403"), "{r:?}");
+        assert!(get(&addr, "POST", "/pick/choose?key=abcdefghijklmnop1234x&sid=1&n=8").0.contains("403"));
+        hub.offer_pick(&score(1, "field_goal", Some(3)), vec![3, 21]);
+        let (st, body) = get(&addr, "GET", "/pick.json?key=abcdefghijklmnop1234");
+        assert!(st.contains("200"), "{st}");
+        let v: Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(v["cards"][0]["candidates"], json!([3, 21]));
+        assert_eq!(v["roster"]["away"], json!([3, 8, 21]));
+        assert!(get(&addr, "GET", "/pick?key=abcdefghijklmnop1234").1.contains("pick.title"));
+        // a tap: an update of the same score with the number, picked up by the processing loop
+        assert!(get(&addr, "POST", "/pick/choose?key=abcdefghijklmnop1234&sid=1&n=8").1.contains("true"));
+        let m = hub.take_manual();
+        assert_eq!(m.len(), 1);
+        assert_eq!((m[0]["sid"].as_u64(), m[0]["number"].as_u64(), m[0]["basis"].as_str(), m[0]["update"].as_bool()), (Some(1), Some(8), Some("manual"), Some(true)));
+        assert!(hub.take_manual().is_empty());
+        // "unknown" works too, and the live score parser reads the pick back
+        assert!(hub.choose(1, None));
+        let e = crate::live_score::parse_event(&hub.take_manual()[0]).unwrap();
+        assert_eq!((e.number, e.basis), (None, crate::live_score::Basis::Manual));
+        // the second free throw offers the shooter of the first one first
+        hub.offer_pick(&score(2, "free_throw", None), vec![]);
+        hub.choose(2, Some(21));
+        hub.offer_pick(&score(3, "free_throw", None), vec![3]);
+        let v: Value = serde_json::from_str(&hub.pick_json()).unwrap();
+        assert_eq!(v["cards"][0]["candidates"], json!([21, 3]));
+        // undo: open again, the scorer's own result goes out as an update
+        assert!(hub.unpick(2));
+        let m = hub.take_manual();
+        assert_eq!(m[0]["basis"], "manual", "the pick and its undo arrive in order");
+        assert_eq!((m[1]["sid"].as_u64(), m[1]["basis"].as_str(), m[1]["update"].as_bool()), (Some(2), Some("near_basket"), Some(true)));
+        assert!(!hub.unpick(2));
+        // a score taken back disappears
+        hub.offer_pick(&json!({"sid": 3, "retracted": true}), vec![]);
+        let v: Value = serde_json::from_str(&hub.pick_json()).unwrap();
+        assert!(v["cards"].as_array().unwrap().iter().all(|c| c["sid"] != 3));
+    }
 }

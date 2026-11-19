@@ -260,6 +260,17 @@ Le mode direct nécessite le même panorama complet que celui du calibrage, pas 
 ![Overlay en direct](img/overlay.webp)
 *L'overlay en direct avec `?floor=1` (fond sombre pour tester) ; dans OBS le fond est transparent. L'anneau orange indique qui a le ballon.*
 
+### Choisir les tireurs sur un téléphone (basket)
+
+Au basket avec un tableau d'affichage calibré (étape 3), une personne au bord du terrain peut nommer le tireur après chaque panier d'un seul appui – bien plus sûr que l'attribution automatique au panier éloigné.
+
+1. Cochez *Choisir les tireurs sur un téléphone* et *Accessible depuis d'autres appareils du réseau*, puis lancez le direct.
+2. Sous *Lien pour le téléphone* figure une adresse avec une clé secrète. Ne l'envoyez qu'à la personne qui choisit les tireurs (par AirDrop ou message, par exemple) ; le téléphone doit être sur le même Wi-Fi.
+3. Quand le tableau d'affichage annonce des points, une carte apparaît sur le téléphone : équipe, deux/trois points/lancer franc, score et chrono. En haut les propositions du programme, en dessous tout l'effectif et *inconnu*. Un appui suffit.
+4. Le fil annonce le panier aussitôt et ajoute le tireur dès qu'il est choisi (« 2 points de #8 »). Au deuxième lancer franc, le tireur du premier est proposé en premier. *modifier* corrige un choix.
+
+Le choix est aussi écrit dans le fichier de résultat et compte dans les statistiques comme une vérification dans l'onglet *Paniers*. *Créer un nouveau lien* rend l'ancien lien invalide au prochain démarrage.
+
 ## Étape 6 · Évaluation
 
 Les étapes 6 et 7 travaillent toutes deux avec les fichiers de données (`.jsonl`) de `out/`, mais regardent des choses différentes : **l'étape 6 vérifie la détection** – avec quelle fiabilité joueurs, arbitres et ballon ont été suivis. **L'étape 7 montre le match** – tentatives, possession et où se trouvaient les équipes. Regardez d'abord l'étape 6 : si ses valeurs sont mauvaises, les chiffres de l'étape 7 sont incertains eux aussi.

@@ -260,6 +260,17 @@ The live mode needs the same full panorama you calibrated on, not the AI-cropped
 ![Live overlay](img/overlay.webp)
 *The live overlay with `?floor=1` (dark floor for testing); in OBS the background is transparent. The orange ring marks who has the ball.*
 
+### Pick shooters on a phone (basketball)
+
+For basketball with a calibrated scoreboard (step 3), a person at the court can name the shooter after every basket with one tap – far more reliable than the automatic choice at the far basket.
+
+1. Tick *Pick shooters on a phone* and *Reachable from other devices on the network* and start live.
+2. Under *Link for the phone* there is an address with a secret key. Send it only to the person picking the shooters (for example by AirDrop or a message); the phone has to be on the same Wi-Fi.
+3. When the scoreboard reports points, a card appears on the phone: team, two/three/free throw, score and game clock. The program's suggestions are on top, below them the whole roster and *unknown*. One tap is enough.
+4. The ticker reports the basket at once and adds the shooter as soon as it is picked (“2 points by #8”). At the second free throw the shooter of the first one comes first. *change* corrects a pick.
+
+The pick is also written to the result file and counts in the statistics like a check in the *Baskets* tab. *Make a new link* makes the old link invalid from the next start.
+
 ## Step 6 · Evaluation
 
 Steps 6 and 7 both work with the data files (`.jsonl`) in `out/`, but look at different things: **step 6 checks the detection** – how reliably players, referees and the ball were tracked. **Step 7 shows the game** – attempts, possession and where the teams were. Look at step 6 first: if its values are poor, the numbers in step 7 are uncertain too.

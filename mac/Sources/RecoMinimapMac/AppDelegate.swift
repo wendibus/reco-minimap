@@ -224,6 +224,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         // File and folder choosers come from the app itself: a dialog that osascript opens from the
         // background server process stays invisible behind the window on current macOS.
         configuration.userContentController.addScriptMessageHandler(self, contentWorld: .page, name: "recoDialog")
+        // The page compares this with the launcher it needs and asks for the new DMG when it is older.
+        let launcher = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+        configuration.userContentController.addUserScript(WKUserScript(
+            source: "window.recoLauncher = { version: \"\(launcher)\" };", injectionTime: .atDocumentStart, forMainFrameOnly: true))
         webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = self
         webView.uiDelegate = self

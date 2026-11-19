@@ -231,7 +231,7 @@ export function StatsPanel() {
     </>}
 
     {cur === 'players' && <>
-    {stats.box_score ? <BoxScoreCard b={stats.box_score} colors={colors} names={teamName} roster={roster} /> : <>
+    {stats.box_score?.without_number ? <BoxScoreCard b={stats.box_score} colors={colors} names={teamName} roster={roster} /> : <>
       {stats.score?.method === 'scoreboard' && <PointsCard s={stats} colors={colors} names={teamName} roster={roster} />}
       {stats.players && <PlayersCard p={stats.players} span={dur} colors={colors} names={teamName} roster={roster} />}
     </>}

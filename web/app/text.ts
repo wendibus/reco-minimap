@@ -36,6 +36,7 @@ const de = {
   ui: {
     tagline: 'Minimap und Statistik aus dem Reco-Panorama', privacy: 'Alles bleibt auf diesem Rechner', project: 'Projekt', steps: 'Ablauf',
     stepStats: '7 · Statistik', log: 'Protokoll', showLog: 'Protokoll anzeigen', hideLog: 'Protokoll ausblenden', noFolder: 'Kein Ordner gewählt', choose: 'Ordner wählen',
+    macAppOld: 'Diese Mac-App ist veraltet: Das automatische Update erneuert nur das Programm darin. Für alle Funktionen (z. B. die Datei-Dialoge) bitte die neue DMG installieren.', macAppDownload: 'Neue Mac-App laden',
   },
   models: {
     cardTitle: 'Erkennungsmodell', camera: 'Reco camera (YOLO26n)', standard: 'Standard', allSports: 'alle Sportarten',
@@ -174,6 +175,7 @@ const en: Text = {
   ui: {
     tagline: 'Minimap and statistics from the Reco panorama', privacy: 'Everything stays on this computer', project: 'Project', steps: 'Workflow',
     stepStats: '7 · Statistics', log: 'Log', showLog: 'Show log', hideLog: 'Hide log', noFolder: 'No folder chosen', choose: 'Choose folder',
+    macAppOld: 'This Mac app is out of date: automatic updates only renew the program inside it. For every feature (e.g. the file dialogs) please install the new DMG.', macAppDownload: 'Download the new Mac app',
   },
   models: {
     cardTitle: 'Detection model', camera: 'Reco camera (YOLO26n)', standard: 'Default', allSports: 'all sports',
@@ -310,6 +312,7 @@ const fr: Text = {
   ui: {
     tagline: 'Minimap et statistiques depuis le panorama Reco', privacy: 'Tout reste sur cet ordinateur', project: 'Projet', steps: 'Déroulement',
     stepStats: '7 · Statistiques', log: 'Journal', showLog: 'Afficher le journal', hideLog: 'Masquer le journal', noFolder: 'Aucun dossier choisi', choose: 'Choisir le dossier',
+    macAppOld: 'Cette app Mac est trop ancienne : la mise à jour automatique ne renouvelle que le programme qu’elle contient. Pour toutes les fonctions (p. ex. les dialogues de fichiers), installez le nouveau DMG.', macAppDownload: 'Télécharger la nouvelle app Mac',
   },
   models: {
     cardTitle: 'Modèle de détection', camera: 'Reco camera (YOLO26n)', standard: 'Par défaut', allSports: 'tous les sports',
@@ -446,6 +449,7 @@ const es: Text = {
   ui: {
     tagline: 'Minimapa y estadísticas del panorama Reco', privacy: 'Todo se queda en este ordenador', project: 'Proyecto', steps: 'Proceso',
     stepStats: '7 · Estadísticas', log: 'Registro', showLog: 'Mostrar registro', hideLog: 'Ocultar registro', noFolder: 'Ninguna carpeta elegida', choose: 'Elegir carpeta',
+    macAppOld: 'Esta app de Mac está desactualizada: la actualización automática solo renueva el programa que contiene. Para todas las funciones (p. ej. los diálogos de archivos) instala el nuevo DMG.', macAppDownload: 'Descargar la nueva app de Mac',
   },
   models: {
     cardTitle: 'Modelo de detección', camera: 'Reco camera (YOLO26n)', standard: 'Predeterminado', allSports: 'todos los deportes',

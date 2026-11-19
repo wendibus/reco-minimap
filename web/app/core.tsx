@@ -16,6 +16,20 @@ export const LANGS: Lang[] = ['de', 'en', 'fr', 'es'];
 // ---------------------------------------------------------------- API
 export type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
+/** The oldest Mac app (launcher) that has everything this interface uses. Payload updates do not
+ *  replace the app itself, so an older one is told to install the new DMG. */
+export const MIN_MAC_APP = '0.23.2';
+export const MAC_APP_DOWNLOAD = 'https://github.com/wendibus/reco-minimap/releases/latest';
+const older = (a: string, b: string) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0); return false; };
+/** The Mac app that shows this page is older than MIN_MAC_APP (apps before 0.23.1 do not say their
+ *  version: an embedded WebKit window on a Mac without the app's dialog bridge is one of those). */
+export function macAppOutdated(): boolean {
+  const w = window as unknown as { recoLauncher?: { version?: string }; webkit?: { messageHandlers?: Record<string, unknown> } };
+  if (w.recoLauncher?.version) return older(w.recoLauncher.version, MIN_MAC_APP);
+  const ua = navigator.userAgent;
+  return /Macintosh/.test(ua) && /AppleWebKit/.test(ua) && !/Safari\//.test(ua) && !w.webkit?.messageHandlers?.recoDialog;
+}
+
 /** Choose a file or folder. Inside the Mac app the app shows its own panel (a dialog started by the
  *  background server would stay invisible there); elsewhere the server opens the system dialog. */
 export async function chooseNative(kind: string, prompt: string): Promise<string | null> {

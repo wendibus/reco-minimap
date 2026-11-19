@@ -378,7 +378,8 @@ fn stats_for(dir: &Path, file: &str, fixes: Option<&Value>) -> Result<Value, Str
     let fixes = super::stats_players::parse_fixes(fixes.unwrap_or(&proj["score_fixes"]));
     let mut v = super::stats::report_full(&profile, &frames, project_direction(&proj["direction"]), &fixes);
     // per basket: where the players were in the panorama, for the picture strip
-    if let (Some(made), Ok(cal)) = (v["box_score"]["made"].as_array_mut(), CourtCalib::load(&dir.join("court.json").to_string_lossy())) {
+    // get_mut, not v["box_score"]["made"]: indexing would turn a missing box score (null) into {"made": null}
+    if let (Some(made), Ok(cal)) = (v.get_mut("box_score").and_then(|b| b.get_mut("made")).and_then(Value::as_array_mut), CourtCalib::load(&dir.join("court.json").to_string_lossy())) {
         if let Some(proj) = cal.projector() {
             for m in made.iter_mut() {
                 let t = m["t"].as_f64().unwrap_or(0.0);

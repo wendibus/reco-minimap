@@ -3,7 +3,7 @@ import LauncherCore
 import WebKit
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandlerWithReply {
     private let worker = WorkerController()
     private let store: PayloadStore
     private var window: NSWindow!
@@ -221,6 +221,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     private func buildWindow() {
         let configuration = WKWebViewConfiguration()
+        // File and folder choosers come from the app itself: a dialog that osascript opens from the
+        // background server process stays invisible behind the window on current macOS.
+        configuration.userContentController.addScriptMessageHandler(self, contentWorld: .page, name: "recoDialog")
         webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = self
         webView.uiDelegate = self
@@ -394,5 +397,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         panel.allowsMultipleSelection = parameters.allowsMultipleSelection
         panel.canChooseDirectories = parameters.allowsDirectories
         return panel.runModal() == .OK ? panel.urls : nil
+    }
+
+    // MARK: Native file and folder chooser for the web interface ({kind: "file" | "folder", prompt}).
+    // Replies with the chosen path, or nil when cancelled.
+
+    func userContentController(_ userContentController: WKUserContentController,
+                               didReceive message: WKScriptMessage) async -> (Any?, String?) {
+        guard message.name == "recoDialog", let body = message.body as? [String: Any] else { return (nil, "unknown message") }
+        let folder = (body["kind"] as? String) == "folder"
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = folder
+        panel.canChooseFiles = !folder
+        panel.canCreateDirectories = folder
+        panel.allowsMultipleSelection = false
+        if let prompt = body["prompt"] as? String, !prompt.isEmpty { panel.message = prompt }
+        NSApp.activate(ignoringOtherApps: true)
+        let response = await panel.beginSheetModal(for: window)
+        return (response == .OK ? panel.url?.path : nil, nil)
     }
 }

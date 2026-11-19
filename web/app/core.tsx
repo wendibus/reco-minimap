@@ -16,6 +16,17 @@ export const LANGS: Lang[] = ['de', 'en', 'fr', 'es'];
 // ---------------------------------------------------------------- API
 export type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
+/** Choose a file or folder. Inside the Mac app the app shows its own panel (a dialog started by the
+ *  background server would stay invisible there); elsewhere the server opens the system dialog. */
+export async function chooseNative(kind: string, prompt: string): Promise<string | null> {
+  const h = (window as unknown as { webkit?: { messageHandlers?: { recoDialog?: { postMessage: (m: unknown) => Promise<unknown> } } } }).webkit?.messageHandlers?.recoDialog;
+  if (h) {
+    try { const p = await h.postMessage({ kind, prompt }); return typeof p === 'string' && p ? p : null; } catch { /* an older app: ask the server */ }
+  }
+  const r = await api('/api/dialog', { kind, prompt });
+  return r.path ? String(r.path) : null;
+}
+
 export async function api(path: string, body?: Json): Promise<Json> {
   try {
     const r = await fetch(path, body === undefined ? {} : { method: 'POST', body: JSON.stringify({ ...body, lang: LANG }) });
@@ -240,7 +251,7 @@ export function PathField({ value, onChange, kind = 'file', prompt }: { value: s
   useEffect(() => setV(value), [value]);
   return <div className="mm-row">
     <input type="text" className="mm-grow" value={v} onChange={(e) => setV(e.target.value)} onBlur={() => v !== value && onChange(v)} onKeyDown={(e) => { if (e.key === 'Enter') onChange(v); }} />
-    <Btn hint={t.hints.browse} onClick={async () => { const r = await api('/api/dialog', { kind, prompt }); if (r.path) onChange(r.path); }}>{T('btn.browse')}</Btn>
+    <Btn hint={t.hints.browse} onClick={async () => { const p = await chooseNative(kind, prompt); if (p) onChange(p); }}>{T('btn.browse')}</Btn>
   </div>;
 }
 

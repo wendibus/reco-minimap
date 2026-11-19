@@ -1,7 +1,37 @@
 {
+  "0.22.0": {
+    "de": [
+      "Körbe prüfen: Neuer Reiter in der Statistik – zu jedem Korb laufen die Sekunden davor vergrößert um den Korb, ein Klick auf die Rückennummer bestätigt oder korrigiert den Werfer. Die Auswahl gilt sofort für Punkte je Spieler, Box-Score und Spieler-Videos.",
+      "Mannschaften an einer Stelle: Teamnamen und Kader stehen jetzt nur noch in Schritt 2 · Video › Mannschaften; die Statistik verwendet die Teamnamen.",
+      "Basketball-Begriffe: Werfer, Korb, Feldkorb, Freiwurf, Zweier und Dreier statt Begriffen aus dem Fußball.",
+      "Ausschlussverfahren: Sind 4 Spieler eines Teams auf dem Feld bekannt, bekommt der fünfte die übrige Nummer der Aufstellung.",
+      "Neue Befehle: score-review (Sekunden vor jedem Korb mit mehr Bildern/s nachschauen) und backfill (Nummern nachträglich ergänzen)."
+    ],
+    "en": [
+      "Check baskets: a new statistics tab – for every basket the seconds before it play enlarged around the basket, one click on the jersey number confirms or corrects the shooter. The choice counts at once for points per player, the box score and the player videos.",
+      "Teams in one place: team names and rosters are now only in step 2 · Video › Teams; the statistics use the team names.",
+      "Basketball terms throughout: shooter, basket, field goal, free throw, two and three instead of football words.",
+      "Elimination: when 4 players of a team on the court are known, the fifth gets the remaining number of the line-up.",
+      "New commands: score-review (look again at the seconds before every basket at more frames/s) and backfill (fill numbers afterwards)."
+    ],
+    "fr": [
+      "Vérifier les paniers : nouvel onglet des statistiques – pour chaque panier, les secondes qui précèdent tournent agrandies autour du panier, un clic sur le numéro confirme ou corrige le tireur. Le choix compte aussitôt pour les points par joueur, la feuille de match et les vidéos des joueurs.",
+      "Équipes à un seul endroit : noms et effectifs se trouvent désormais uniquement à l'étape 2 · Vidéo › Équipes ; les statistiques utilisent les noms des équipes.",
+      "Termes du basket partout : tireur, panier, panier du terrain, lancer franc, deux et trois points au lieu de mots du football.",
+      "Élimination : si 4 joueurs d'une équipe sur le terrain sont connus, le cinquième reçoit le numéro restant de l'alignement.",
+      "Nouvelles commandes : score-review (revoir les secondes avant chaque panier avec plus d'images/s) et backfill (compléter les numéros après coup)."
+    ],
+    "es": [
+      "Revisar canastas: nueva pestaña de estadísticas; para cada canasta se repiten ampliados los segundos anteriores alrededor de la canasta y un clic en el dorsal confirma o corrige el tirador. La elección cuenta al instante para los puntos por jugador, el box score y los vídeos de jugadores.",
+      "Equipos en un solo lugar: nombres y plantillas están ahora solo en el paso 2 · Vídeo › Equipos; las estadísticas usan los nombres de los equipos.",
+      "Términos de baloncesto en todas partes: tirador, canasta, canasta de campo, tiro libre, doble y triple en lugar de palabras del fútbol.",
+      "Eliminación: si se conocen 4 jugadores de un equipo en la pista, el quinto recibe el dorsal restante de la alineación.",
+      "Nuevos comandos: score-review (revisar los segundos antes de cada canasta con más imágenes/s) y backfill (completar dorsales después)."
+    ]
+  },
   "0.21.0": {
     "de": [
-      "Live-Torschützen: Meldet die Anzeigetafel Punkte, bestimmt ein Puffer der letzten Sekunden den Werfer – „2 Punkte durch #13“ erscheint mit dem Versatz der Tafel automatisch im Ticker (Freiwürfe zuverlässig, Feldkörbe noch unsicher).",
+      "Live-Werfer: Meldet die Anzeigetafel Punkte, bestimmt ein Puffer der letzten Sekunden den Werfer – „2 Punkte durch #13“ erscheint mit dem Versatz der Tafel automatisch im Ticker (Freiwürfe zuverlässig, Feldkörbe noch unsicher).",
       "Spielerstatistik je Rückennummer: Minuten, Punkte, 3er/2er/Freiwürfe, Fehlwürfe und +/− der Mannschaft während der Spielzeit – mit dem Hinweis, dass sie elektronisch ermittelt ist und Fehler enthalten kann.",
       "Die Statistik ist in Reiter aufgeteilt: Überblick, Spieler, Würfe, Team, Videos.",
       "Videos aus mehreren Momenten: Highlights, alles von Heim oder Gast oder je Spieler ein eigenes Video, benannt als Jahr.Monat.Tag_Spieler13.mp4 (weiteres Spiel am selben Tag: _2).",

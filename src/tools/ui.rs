@@ -321,7 +321,51 @@ fn load_project(dir: &Path) -> Result<Value, String> {
 }
 
 /// Statistics of one result file of the project, for the sport it was calibrated for.
-fn stats_for(dir: &Path, file: &str) -> Result<Value, String> {
+/// Frames per second and seconds before / after a basket in [`basket_strip`].
+pub const STRIP_FPS: f64 = 3.0;
+pub const STRIP_SPAN: (f64, f64) = (6.5, 1.0);
+
+/// The seconds around a basket as one tall JPEG (frames below each other, [`STRIP_FPS`] per
+/// second from `t - STRIP_SPAN.0`), cut to the part of the panorama around `u` (0..1 across), so
+/// the far basket is big enough to see who shot.
+fn basket_strip(video: &str, t: f64, u: f64) -> Result<Vec<u8>, String> {
+    if video.is_empty() || !Path::new(video).is_file() {
+        return Err(trs!("Video nicht gefunden", "video not found", "vidéo introuvable", "vídeo no encontrado").into());
+    }
+    let (start, dur) = ((t - STRIP_SPAN.0).max(0.0), STRIP_SPAN.0 + STRIP_SPAN.1);
+    let n = (dur * STRIP_FPS).round() as usize;
+    let frac = 0.36;
+    let x = format!("min(max(iw*{u:.4}-iw*{h:.3},0),iw*{r:.3})", u = u.clamp(0.0, 1.0), h = frac / 2.0, r = 1.0 - frac);
+    let vf = format!("fps={STRIP_FPS},crop=w=iw*{frac}:h=ih*0.68:x='{x}':y=ih*0.32,scale=960:-2,tile=1x{n}");
+    let out = Command::new("ffmpeg")
+        .args(["-v", "error", "-ss", &format!("{start:.3}"), "-t", &format!("{dur:.3}"), "-i", video, "-vf", &vf, "-frames:v", "1", "-q:v", "4", "-f", "image2pipe", "-vcodec", "mjpeg", "-"])
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("ffmpeg: {e}"))?;
+    if !out.status.success() || out.stdout.is_empty() {
+        return Err(format!("ffmpeg: {}", String::from_utf8_lossy(&out.stderr).trim()));
+    }
+    Ok(out.stdout)
+}
+
+/// Where in the panorama (0..1 across) a field point lies: the inverse of the calibration, by search.
+fn pano_u(proj: &dyn crate::geom::Projector, p: crate::geom::Vec2) -> Option<f64> {
+    let mut best: Option<(f32, f32, f32)> = None;
+    for i in 0..=160 {
+        for j in 0..=40 {
+            let (u, v) = (i as f32 / 160.0, 0.3 + 0.7 * j as f32 / 40.0);
+            if let Some(c) = proj.to_court(u, v) {
+                let d = c.dist(p);
+                if best.is_none_or(|b| d < b.2) {
+                    best = Some((u, v, d));
+                }
+            }
+        }
+    }
+    best.filter(|b| b.2 < 3.0).map(|b| b.0 as f64)
+}
+
+fn stats_for(dir: &Path, file: &str, fixes: Option<&Value>) -> Result<Value, String> {
     let path = if Path::new(file).is_absolute() { PathBuf::from(file) } else { dir.join(file) };
     let txt = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let frames: Vec<Value> = txt.lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
@@ -330,7 +374,31 @@ fn stats_for(dir: &Path, file: &str) -> Result<Value, String> {
     }
     let profile = CourtCalib::load(&dir.join("court.json").to_string_lossy()).map(|c| c.profile()).map_err(|e| e.to_string())?;
     let proj = std::fs::read_to_string(dir.join("project.json")).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).unwrap_or_else(|| json!({}));
-    Ok(super::stats::report_with(&profile, &frames, project_direction(&proj["direction"])))
+    // the hand checks sent along (newest) or saved in the project
+    let fixes = super::stats_players::parse_fixes(fixes.unwrap_or(&proj["score_fixes"]));
+    let mut v = super::stats::report_full(&profile, &frames, project_direction(&proj["direction"]), &fixes);
+    // per basket: where the players were in the panorama, for the picture strip
+    if let (Some(made), Ok(cal)) = (v["box_score"]["made"].as_array_mut(), CourtCalib::load(&dir.join("court.json").to_string_lossy())) {
+        if let Some(proj) = cal.projector() {
+            for m in made.iter_mut() {
+                let t = m["t"].as_f64().unwrap_or(0.0);
+                let i0 = frames.partition_point(|f| f["t"].as_f64().unwrap_or(0.0) < t - 4.0);
+                let i1 = frames.partition_point(|f| f["t"].as_f64().unwrap_or(0.0) <= t);
+                let pts: Vec<(f64, f64)> = frames[i0..i1.max(i0)].iter().flat_map(|f| f["players"].as_array().into_iter().flatten()).filter_map(|p| Some((p["x"].as_f64()?, p["y"].as_f64()?))).collect();
+                if pts.is_empty() {
+                    continue;
+                }
+                let c = crate::geom::Vec2::new((pts.iter().map(|p| p.0).sum::<f64>() / pts.len() as f64) as f32, (pts.iter().map(|p| p.1).sum::<f64>() / pts.len() as f64) as f32);
+                // towards the nearer basket: the shot is there
+                let g = profile.goals.iter().copied().min_by(|a, b| a.dist(c).total_cmp(&b.dist(c))).unwrap_or(c);
+                let aim = crate::geom::Vec2::new((c.x + g.x) / 2.0, (c.y + g.y) / 2.0);
+                if let Some(u) = pano_u(&proj, aim) {
+                    m["u"] = json!((u * 1000.0).round() / 1000.0);
+                }
+            }
+        }
+    }
+    Ok(v)
 }
 
 /// The playing direction set in the project (`{"home": "l"|"r"|"auto", "switch": "24:00"}`).
@@ -886,7 +954,11 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
             let busy = ui.jobs.lock().unwrap().values().any(|j| matches!(j.status.lock().unwrap().as_str(), "running" | "cancelling"));
             jres(&mut s, json!({"ok": true, "busy": busy}));
         }
-        ("POST", "/api/stats") => match stats_for(Path::new(&get_s(&b, "dir")), &get_s(&b, "file")) {
+        ("POST", "/api/basket/strip") => match basket_strip(&get_s(&b, "video"), b["t"].as_f64().unwrap_or(0.0), b["u"].as_f64().unwrap_or(0.5)) {
+            Ok(jpg) => respond(&mut s, "200 OK", "image/jpeg", &jpg),
+            Err(e) => err(&mut s, e),
+        },
+        ("POST", "/api/stats") => match stats_for(Path::new(&get_s(&b, "dir")), &get_s(&b, "file"), b.get("fixes")) {
             Ok(v) => jres(&mut s, json!({"ok": true, "stats": v})),
             Err(e) => err(&mut s, e),
         },

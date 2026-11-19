@@ -2,6 +2,8 @@ reco-minimap – Minimap (Court, Spieler, Schiris, Ball) aus einem Reco-Panorama
 
   reco-minimap calibrate <video> [--sport football|futsal|basketball|handball|hockey|rugby|lacrosse|american_football|volleyball|custom] [--time 5] [--out court.json] [--lens none|fisheye|panorama]
   reco-minimap court-snap <video> --court court.json [--time 5] [--color r,g,b] [--max 8] [--out court.json]   vorhandene Kalibrierung auf die echten Linien direkt daneben einschnappen (speichert nur mit --out)
+  reco-minimap score-review <video> --result lauf.jsonl [Lauf-Optionen] [--rate 8] [--reference bericht.json] [--out review.jsonl]   die Sekunden vor jedem Korb mit mehr Bildern/s nachschauen und den Werfer neu bestimmen
+  reco-minimap backfill lauf.jsonl --court court.json   Nummern entlang der Spuren und per Ausschluss (5 auf dem Feld) ergänzen
                          (custom: --length 40 --width 20 --team-size 5 --referees 2)
                          --lens: Objektiv – fisheye (gebogenes Bild) oder panorama (breites Rundumbild wie Reco); Verzeichnung wird ab 6 Punkten mitberechnet. Ohne Angabe: Panorama bei sehr breiten Bildern
   reco-minimap selfcheck <video> --model <ordner|.onnx> [--samples 12] [--annotate <ordner>]
@@ -104,7 +106,7 @@ Spielsituationen (run/live):
 
 Anzeigetafel (Basketball, run, live):
   --scoreboard scoreboard.json   Spielstand von der Tafel im Panorama ablesen (erst `scoreboard-calibrate`); in `stats` geht jeder
-                    Treffer (+1/+2/+3) an den passenden Wurfversuch davor: Werfer mit Wahrscheinlichkeit, sonst nur ans Team
+                    Korb oder Freiwurf (+1/+2/+3) an den passenden Wurfversuch davor: Werfer mit Wahrscheinlichkeit, sonst nur ans Team
                     Basketball live (`run`, `live`): jede Punkteänderung wird nach ~4 s mit Werfer gemeldet (Ticker: „2 Punkte durch #11“); `live` liest die Tafel aus dem Bild (--board-fps 2)
 
 run-Optionen:

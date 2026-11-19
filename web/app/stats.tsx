@@ -25,8 +25,8 @@ type Stats = Json & {
 type BoxLine = { points: number; ft: number; two: number; three: number; missed: { ft: number; two: number; three: number }; on_court: { for: number; against: number; plus_minus: number } };
 type BoxScore = { electronic: boolean; home: (BoxLine & { number: number; seconds: number })[]; away: (BoxLine & { number: number; seconds: number })[];
   without_number: Record<'home' | 'away', BoxLine>; team_only: Record<'home' | 'away', number>; points: Record<'home' | 'away', number>; attempts_seen: number; scores: number; made?: Made[] };
-type StatsTab = 'overview' | 'players' | 'shots' | 'team' | 'videos';
-type Made = { t: number; team: 'home' | 'away'; points: number; kind: string; number: number | null };
+type StatsTab = 'overview' | 'players' | 'baskets' | 'shots' | 'team' | 'videos';
+type Made = { t: number; team: 'home' | 'away'; points: number; kind: string; number: number | null; to?: number; auto?: number | null; checked?: boolean; candidates?: number[]; basis?: string; u?: number };
 type PlayerTime = { number: number; seconds: number; share: number; inferred_share?: number };
 type ScoreEvent = { t: number; team: Team; points: number; kind: string; evidence: string[]; restart_t: number; confidence: 'likely' | 'possible' };
 type BoardEvent = { t: number; team: Team; points: number; from: number; to: number; basis: 'attempt' | 'team_only' | 'correction' | 'jump'; probability: number; candidates: number; cancelled: boolean;
@@ -139,7 +139,7 @@ function TickerSimCard({ file }: { file: string }) {
 
 // ---------------------------------------------------------------- the panel
 export function StatsPanel() {
-  const { files, dir, t, project, runJob, common, log } = useApp();
+  const { files, dir, t, project, runJob, common, log, mutate } = useApp();
   const ts = t.stats;
   const outs = files.out.filter((x) => x.name.endsWith('.jsonl'));
   const [file, setFile] = useState(outs[0]?.path ?? '');
@@ -153,15 +153,15 @@ export function StatsPanel() {
   const pickTab = (k: StatsTab) => { setTab(k); try { localStorage.setItem('mm.statsTab', k); } catch { /* private window */ } };
 
   useEffect(() => { if (!outs.some((o) => o.path === file)) setFile(outs[0]?.path ?? ''); }, [files.out]); // eslint-disable-line react-hooks/exhaustive-deps
-  const load = async () => {
+  const load = async (fixes?: Json) => {
     if (!file) return;
-    const r = await api('/api/stats', { dir, file });
+    const r = await api('/api/stats', { dir, file, fixes: fixes ?? project.score_fixes ?? {} });
     if (r.ok) { setStats(r.stats); setError(''); setPicked(new Set()); } else { setStats(null); setError(r.error); }
   };
   useEffect(() => { void load(); }, [file, dir]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const colors: Record<Team, string> = { home: project.colors?.draw_home ?? '#ffffff', away: project.colors?.draw_away ?? '#2f6bff', none: 'var(--label-3)' };
-  const teamName: Record<Team, string> = { home: ts.home, away: ts.away, none: ts.unknown };
+  const teamName: Record<Team, string> = { home: project.live?.home_name?.trim() || ts.home, away: project.live?.away_name?.trim() || ts.away, none: ts.unknown };
   const shown = useMemo(() => (stats?.attempts ?? []).filter((a) => team === 'both' || a.team === team), [stats, team]);
 
   if (!files.court) return <Card><div className="bad">{ts.needCourt}</div></Card>;
@@ -184,7 +184,15 @@ export function StatsPanel() {
   const roster = { home: rosterNames(project.run?.numbers?.roster_home), away: rosterNames(project.run?.numbers?.roster_away) };
   const hasShots = sec.shots || sec.zones || (sec.periods && stats.attempts.length > 0);
   const hasTeam = sec.possession || sec.thirds || sec.heat || !!stats.shape;
-  const tabs = ([['overview', ts.tabOverview], ['players', ts.tabPlayers], ...(hasShots ? [['shots', ts.tabShots]] : []), ...(hasTeam ? [['team', ts.tabTeam]] : []), ['videos', ts.tabVideos]] as [StatsTab, string][]);
+  const made = stats.box_score?.made ?? [];
+  const fixShooter = (m: Made, n: number | null | undefined) => {
+    const key = `${m.team}:${m.to}`;
+    const fixes: Json = { ...(project.score_fixes ?? {}) };
+    if (n === undefined) delete fixes[key]; else fixes[key] = n;
+    mutate((p) => { p.score_fixes = fixes; });
+    void load(fixes);
+  };
+  const tabs = ([['overview', ts.tabOverview], ['players', ts.tabPlayers], ...(made.length ? [['baskets', ts.tabBaskets]] : []), ...(hasShots ? [['shots', ts.tabShots]] : []), ...(hasTeam ? [['team', ts.tabTeam]] : []), ['videos', ts.tabVideos]] as [StatsTab, string][]);
   const cur: StatsTab = tabs.some(([k]) => k === tab) ? tab : 'overview';
 
   return <>
@@ -218,6 +226,8 @@ export function StatsPanel() {
       {stats.players && <PlayersCard p={stats.players} span={dur} colors={colors} names={teamName} roster={roster} />}
     </>}
     </>}
+
+    {cur === 'baskets' && <BasketCheckCard made={made} names={teamName} colors={colors} onFix={fixShooter} />}
 
     {cur === 'shots' && <>
     {sec.shots && <Card title={basket ? ts.shotChart : ts.shotMap}>
@@ -458,7 +468,7 @@ function ScoreCard({ s, colors, names, kindLabel }: { s: Stats; colors: Record<T
   const ts = t.stats, sc = s.score!;
   const hint = s.sport === 'basketball' ? ts.scoreHintBasket : ts.scoreHintGoal;
   return <Card title={ts.score} hint={sc.supported ? hint : undefined}>
-    {!sc.supported ? <p className="mm-muted">{ts.scoreNone}</p> : sc.events.length === 0 ? <p className="mm-muted">{ts.scoreEmpty}</p> : <>
+    {!sc.supported ? <p className="mm-muted">{ts.scoreNone}</p> : sc.events.length === 0 ? <p className="mm-muted">{s.sport === 'basketball' ? ts.scoreEmptyBasket : ts.scoreEmpty}</p> : <>
       <div className="mm-legend">{(['home', 'away'] as Team[]).map((k) => <span key={k}><i className="mm-sw" style={{ background: colors[k] }} />{names[k]} <strong>{sc[k as 'home' | 'away']}</strong></span>)}</div>
       <div className="mm-scroll"><table className="mm-table mm-score"><tbody>{sc.events.map((e, i) => <tr key={i} className={e.confidence === 'possible' ? 'mm-weak' : ''}>
         <td>{clock(e.t)}</td><td><i className="mm-sw" style={{ background: colors[e.team] }} />{names[e.team]}</td>
@@ -483,7 +493,7 @@ function BoardScoreCard({ s, colors, names, kindLabel }: { s: Stats; colors: Rec
   };
   return <Card title={ts.scoreBoard} hint={ts.scoreHintBoard}>
     <div className="mm-legend">{(['home', 'away'] as Team[]).map((k) => <span key={k}><i className="mm-sw" style={{ background: colors[k] }} />{names[k]} <strong>{sc[k as 'home' | 'away']}</strong></span>)}{sc.period ? <span className="mm-muted">{ts.gamePeriod(sc.period)}</span> : null}</div>
-    {ev.length === 0 ? <p className="mm-muted">{ts.scoreEmpty}</p> : <div className="mm-scroll"><table className="mm-table mm-score"><tbody>{ev.map((e, i) => <tr key={i} className={e.cancelled || e.basis !== 'attempt' ? 'mm-weak' : ''}>
+    {ev.length === 0 ? <p className="mm-muted">{s.sport === 'basketball' ? ts.scoreEmptyBasket : ts.scoreEmpty}</p> : <div className="mm-scroll"><table className="mm-table mm-score"><tbody>{ev.map((e, i) => <tr key={i} className={e.cancelled || e.basis !== 'attempt' ? 'mm-weak' : ''}>
       <td>{clock(e.t)}</td><td><i className="mm-sw" style={{ background: colors[e.team] }} />{names[e.team]}</td>
       <td>{e.points > 0 ? '+' : ''}{e.points} <span className="mm-muted">({e.from}→{e.to})</span></td>
       <td>{who(e)}{e.cancelled ? ` · ${ts.cancelled}` : ''}</td>
@@ -537,7 +547,7 @@ function VideoCard({ s, names, colors, roster }: { s: Stats; names: Record<Team,
     return nums.map((n) => ({ label: ts.reelPlayer + n, moments: made.filter((x) => x.team === k && x.number === n).map(fromMade) }));
   }, [preset, s, made]); // eslint-disable-line react-hooks/exhaustive-deps
   const usable = plan.filter((r) => r.moments.length > 0);
-  const presets: [Preset, string][] = [['highlights', ts.reelHighlightsAll], ['home', ts.reelTeamAll(teamLabel('home'))], ['away', ts.reelTeamAll(teamLabel('away'))],
+  const presets: [Preset, string][] = [['highlights', made.length ? ts.reelHighlightsAll : ts.reelHighlightsMoments], ['home', ts.reelTeamAll(teamLabel('home'))], ['away', ts.reelTeamAll(teamLabel('away'))],
     ...(made.length ? [['players_home', ts.reelPlayersAll(teamLabel('home'))], ['players_away', ts.reelPlayersAll(teamLabel('away'))]] as [Preset, string][] : [])];
   const team = preset.endsWith('home') ? 'home' : preset.endsWith('away') ? 'away' : null;
   return <Card title={ts.videosTitle} hint={ts.videosHint}>
@@ -603,5 +613,106 @@ function PlayersCard({ p, span, colors, names, roster }: { p: NonNullable<Stats[
         </div>
       </div>)}
     </div>}
+  </Card>;
+}
+
+// ---------------------------------------------------------------- baskets checked by hand
+/** All jersey numbers of a squad string ("4, 6:Ben, 12tw"). */
+function rosterNumbers(s: string | undefined): number[] {
+  const out: number[] = [];
+  for (const tok of (s ?? '').split(/[,;\n]/)) {
+    const m = tok.match(/^\s*(\d+)/);
+    if (m && !out.includes(+m[1])) out.push(+m[1]);
+  }
+  return out.sort((a, b) => a - b);
+}
+
+const STRIP_FPS = 3, STRIP_BEFORE = 6.5, STRIP_AFTER = 1.0;
+
+/** The seconds before a basket as a looping picture (one tall JPEG from the server, shown frame by frame). */
+function BasketStrip({ video, m }: { video: string; m: Made }) {
+  const { t } = useApp();
+  const ts = t.stats;
+  const [url, setUrl] = useState('');
+  const [err, setErr] = useState('');
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  const [i, setI] = useState(0);
+  const [play, setPlay] = useState(true);
+  const n = Math.round((STRIP_BEFORE + STRIP_AFTER) * STRIP_FPS);
+  useEffect(() => {
+    let gone = false, made = '';
+    setUrl(''); setErr(''); setSize(null); setI(0); setPlay(true);
+    void fetch('/api/basket/strip', { method: 'POST', body: JSON.stringify({ video, t: m.t, u: m.u ?? 0.5 }) })
+      .then(async (r) => { if (!r.ok || !(r.headers.get('content-type') ?? '').includes('image')) throw new Error((await r.json().catch(() => ({})))?.error ?? r.statusText); return r.blob(); })
+      .then((b) => { if (gone) return; made = URL.createObjectURL(b); setUrl(made); })
+      .catch((e) => { if (!gone) setErr(String(e.message ?? e)); });
+    return () => { gone = true; if (made) URL.revokeObjectURL(made); };
+  }, [video, m.t, m.u]);
+  useEffect(() => {
+    if (!play || !size) return;
+    const id = window.setInterval(() => setI((k) => (k + 1) % n), 1000 / STRIP_FPS);
+    return () => window.clearInterval(id);
+  }, [play, size, n]);
+  if (err) return <p className="bad small">{err}</p>;
+  const rel = i / STRIP_FPS - STRIP_BEFORE;
+  return <div className="mm-strip">
+    <div className="mm-strip-view" style={{ aspectRatio: size ? `${size.w} / ${size.h / n}` : '4 / 3' }}>
+      {url ? <img src={url} alt="" onLoad={(e) => setSize({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} style={{ transform: `translateY(${-(100 / n) * i}%)` }} /> : <span className="mm-muted small">{ts.basketLoading}</span>}
+    </div>
+    <div className="mm-row mm-gap">
+      <button type="button" className="secondary-button" data-hint={play ? ts.basketPause : ts.basketPlay} onClick={() => setPlay((p) => !p)}>{play ? '❚❚' : '▶'}</button>
+      <input className="mm-grow" type="range" min={0} max={n - 1} value={i} aria-label="t" onChange={(e) => { setPlay(false); setI(+e.target.value); }} />
+      <span className="mm-muted small mm-strip-t">{rel >= 0 ? '+' : '−'}{Math.abs(rel).toFixed(1)} s</span>
+    </div>
+  </div>;
+}
+
+function BasketCheckCard({ made, names, colors, onFix }: { made: Made[]; names: Record<Team, string>; colors: Record<Team, string>; onFix: (m: Made, n: number | null | undefined) => void }) {
+  const { t, project } = useApp();
+  const ts = t.stats;
+  const [sel, setSel] = useState(() => Math.max(0, made.findIndex((m) => !m.checked)));
+  const cur = made[Math.min(sel, made.length - 1)];
+  const open = made.filter((m) => !m.checked).length;
+  const roster = { home: rosterNumbers(project.run?.numbers?.roster_home), away: rosterNumbers(project.run?.numbers?.roster_away) };
+  const next = (from: number) => { const k = made.findIndex((m, j) => j > from && !m.checked); setSel(k >= 0 ? k : Math.min(from + 1, made.length - 1)); };
+  const pick = (n: number | null | undefined) => { onFix(cur, n); if (n !== undefined) next(sel); };
+  if (!cur) return null;
+  const cands = cur.candidates ?? [];
+  const numBtn = (n: number, sug: boolean) => <button key={n} type="button" className={`mm-num${cur.checked && cur.number === n ? ' active' : ''}${sug ? ' sug' : ''}`} onClick={() => pick(n)}>#{n}</button>;
+  return <Card title={ts.basketsTitle} hint={ts.basketsHint}>
+    <p className="mm-hint">{ts.basketsIntro}</p>
+    <div className="mm-basket">
+      <ol className="mm-basket-list">
+        {made.map((m, j) => <li key={j}><button type="button" className={j === sel ? 'active' : ''} onClick={() => setSel(j)}>
+          <span className="mm-muted">{clock(m.t)}</span>
+          <i className="mm-sw" style={{ background: colors[m.team] }} />
+          <span>+{m.points}</span>
+          <span className="mm-muted">{m.to ?? ''}</span>
+          <span className="mm-grow" />
+          <b>{m.number != null ? `#${m.number}` : '?'}</b>
+          <span className={m.checked ? 'good' : 'mm-muted'}>{m.checked ? '✓' : '·'}</span>
+        </button></li>)}
+      </ol>
+      <div className="mm-basket-main">
+        <div className="mm-row mm-gap mm-wrap">
+          <b>{clock(cur.t)} · {names[cur.team]} · {ts.basketKinds[cur.points] ?? `+${cur.points}`}{cur.to != null ? ` · ${cur.to}` : ''}</b>
+          <span className="mm-grow" />
+          <span className="mm-muted small">{ts.basketOpenLabel}: {ts.basketOpen(open, made.length)}</span>
+        </div>
+        {project.video ? <BasketStrip video={project.video} m={cur} /> : <p className="bad small">{ts.basketNoVideo}</p>}
+        {cands.length > 0 && <><div className="mm-muted small">{ts.basketSuggested}</div><div className="mm-nums">{cands.map((n) => numBtn(n, true))}</div></>}
+        <div className="mm-muted small">{ts.basketRoster} · {names[cur.team]}</div>
+        <div className="mm-nums">
+          {roster[cur.team as 'home' | 'away']?.filter((n) => !cands.includes(n)).map((n) => numBtn(n, false))}
+          <button type="button" className={`mm-num${cur.checked && cur.number == null ? ' active' : ''}`} onClick={() => pick(null)}>{ts.basketUnknown}</button>
+        </div>
+        <div className="mm-row mm-gap mm-wrap">
+          {cur.auto != null && !cur.checked && <Btn primary hint={ts.basketTake} onClick={() => pick(cur.auto ?? null)}>{ts.basketTake} (#{cur.auto})</Btn>}
+          {cur.checked && <Btn hint={ts.basketUndo} onClick={() => onFix(cur, undefined)}>{ts.basketUndo}</Btn>}
+          <span className="mm-grow" />
+          {open > 0 && <Btn hint={ts.basketNext} onClick={() => next(sel)}>{ts.basketNext} →</Btn>}
+        </div>
+      </div>
+    </div>
   </Card>;
 }

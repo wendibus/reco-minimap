@@ -217,7 +217,7 @@ Traitez ensuite le match entier.
 À l'étape 4 se trouve la section *Lire et afficher les numéros de maillot*.
 
 1. Cliquez une fois *Télécharger le modèle* (environ 11 Mo). L'état passe à « Modèle de numéros installé ».
-2. Saisissez les **numéros des effectifs** des deux équipes, séparés par des virgules (`4,7,10,12,23`). La lecture ne choisit alors que parmi ces numéros – bien plus fiable. Au football, handball, hockey etc., marquez les gardiens par `g` après le numéro (`1g,4,7,12g`) : une fois la couleur du maillot de gardien réglée (étape 3c), le numéro d'un gardien n'est cherché que parmi les gardiens et celui des autres que parmi les joueurs de champ.
+2. Sous **2 · Vidéo › Équipes**, saisissez les noms d'équipe et les **numéros des effectifs** des deux équipes, séparés par des virgules (`4,7,10,12,23`). La lecture ne choisit alors que parmi ces numéros – bien plus fiable. Au football, handball, hockey etc., marquez les gardiens par `g` après le numéro (`1g,4,7,12g`) : une fois la couleur du maillot de gardien réglée (étape 3c), le numéro d'un gardien n'est cherché que parmi les gardiens et celui des autres que parmi les joueurs de champ.
 3. Cochez *Lire et afficher les numéros de maillot* et lancez un segment.
 4. **La taille décide.** Un numéro est lisible à partir d'environ 10 px de hauteur de chiffre, soit des joueurs d'environ **80 px de haut**. À la fin du traitement, le journal indique la taille des joueurs dans votre vidéo et si cela suffit. Sinon, exportez avec Reco une version plus grande du même panorama (même ligne de temps, même cadence) et indiquez-la dans *Panorama en plus haute résolution pour les numéros*. La détection continue sur la petite vidéo.
 5. Les numéros apparaissent sur les points une fois confirmés. Les joueurs dont le dos n'est jamais visible restent sans numéro.
@@ -361,9 +361,15 @@ Temps sur le terrain par numéro de maillot, pour domicile et extérieur, avec l
 
 ### Onglets et vidéos
 
-Les statistiques sont réparties en onglets : **Aperçu** (chiffres clés, score, périodes), **Joueurs** (statistiques par joueur), **Tirs** (carte des tirs, zones), **Équipe** (possession, carte de chaleur, forme) et **Vidéos**. Le dernier onglet choisi est mémorisé.
+Les statistiques sont réparties en onglets : **Aperçu** (chiffres clés, score, périodes), **Joueurs** (statistiques par joueur), **Paniers** (vérifier les tireurs, basket avec tableau d'affichage uniquement), **Tirs** (carte des tirs, zones), **Équipe** (possession, carte de chaleur, forme) et **Vidéos**. Le dernier onglet choisi est mémorisé.
 
 Dans **Vidéos**, plusieurs moments sont assemblés automatiquement en une vidéo ; les moments qui se chevauchent fusionnent. Choisis *Temps forts (tous les paniers)*, *Tout de domicile* / *extérieur* ou *Par joueur domicile* / *extérieur (séparé)* – ce dernier crée une vidéo par numéro à partir des paniers attribués par le tableau d’affichage et la lecture des numéros (déterminé électroniquement, peut contenir des erreurs). Les fichiers vont dans `out/videos/` sous le nom `Année.Mois.Jour_Nom.mp4`, p. ex. `2026.11.15_Joueur13.mp4` ; avec un deuxième match le même jour, `_2` est ajouté. La date vient de l’heure d’enregistrement de la vidéo, sinon de la date du fichier.
+
+### Vérifier les paniers
+
+Qui a marqué un panier est déterminé électroniquement – au panier éloigné, c'est souvent incertain. Dans l'onglet **Paniers**, vous vérifiez chaque panier en quelques secondes : à gauche tous les paniers avec temps, équipe, points, score et le tireur attribué (✓ = vérifié). À droite, les 6,5 dernières secondes avant le panier tournent en boucle, agrandies autour du panier (pause et curseur pour arrêter). En dessous, les **propositions** du programme et tout l'**effectif** de l'équipe sous forme de boutons ; un clic choisit le tireur et passe au panier non vérifié suivant. *Reprendre la proposition* confirme le choix du programme, *inconnu* laisse le panier sans tireur, *Annuler la vérification* rétablit l'attribution électronique.
+
+Votre choix est enregistré dans le projet (équipe et score après le panier) et compte aussitôt pour les points par joueur, la feuille de match et les vidéos des joueurs – même après une nouvelle analyse du même match. La vidéo de l'étape 2 doit rester au même endroit.
 
 ### Moments clés et clips
 

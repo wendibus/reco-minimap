@@ -476,6 +476,11 @@ pub fn apply_direction(profile: &SportProfile, att: &mut [Attempt], given: Optio
 
 /// [`report`] with a known playing direction (see [`apply_direction`]).
 pub fn report_with(profile: &SportProfile, frames: &[Value], given: Option<Direction>) -> Value {
+    report_full(profile, frames, given, &Default::default())
+}
+
+/// [`report_with`] with the shooters checked by hand (basketball box score).
+pub fn report_full(profile: &SportProfile, frames: &[Value], given: Option<Direction>, fixes: &super::stats_players::ScoreFixes) -> Value {
     let sport = profile.id.as_str();
     let (l, w) = (profile.field.length, profile.field.width);
     let n = frames.len();
@@ -604,7 +609,7 @@ pub fn report_with(profile: &SportProfile, frames: &[Value], given: Option<Direc
         "direction": direction,
         "players": super::stats_players::players(frames),
         "score": super::stats_players::score(profile, frames, &att, dir),
-        "box_score": super::stats_players::box_score(profile, frames, &att),
+        "box_score": super::stats_players::box_score(profile, frames, &att, fixes),
         "moments": moments,
     })
 }

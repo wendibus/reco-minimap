@@ -2,6 +2,8 @@ reco-minimap – minimap (court, players, referees, ball) from a Reco panorama
 
   reco-minimap calibrate <video> [--sport football|futsal|basketball|handball|hockey|rugby|lacrosse|american_football|volleyball|custom] [--time 5] [--out court.json] [--lens none|fisheye|panorama]
   reco-minimap court-snap <video> --court court.json [--time 5] [--color r,g,b] [--max 8] [--out court.json]   snap an existing calibration onto the real lines right next to it (saves only with --out)
+  reco-minimap score-review <video> --result run.jsonl [run options] [--rate 8] [--reference report.json] [--out review.jsonl]   look again at the seconds before every basket at more frames/s and pick the shooter anew
+  reco-minimap backfill run.jsonl --court court.json   fill numbers along tracklets and by elimination (5 on the court)
                          (custom: --length 40 --width 20 --team-size 5 --referees 2)
                          --lens: lens – fisheye (curved picture) or panorama (wide all-round picture as from Reco); the distortion is estimated from 6 points. Default: panorama for very wide pictures
   reco-minimap selfcheck <video> --model <folder|.onnx> [--samples 12] [--annotate <folder>]

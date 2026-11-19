@@ -381,6 +381,13 @@ fn main() {
         "scoreboard" => cmd_scoreboard(&o, &input),
         "scoreboard-check" => cmd_scoreboard_check(&o, &input),
         "scorers" => cmd_scorers(&o, &input),
+        "score-review" => cmd_score_review(&o, &input),
+        "backfill" => {
+            // numbers along tracklets and by elimination on the court, for an existing result
+            let (_, profile) = load_court(o.s("court").unwrap_or_else(|| fail(trs!("--court court.json fehlt", "--court court.json is missing", "--court court.json manquant", "falta --court court.json"))));
+            let n = reco_minimap::tools::backfill::backfill_file(std::path::Path::new(&input), Some((profile.team_size, profile.field.length as f64, profile.field.width as f64))).unwrap_or_else(|e| fail(e));
+            println!("{}", tr!("{n} Einträge ergänzt", "{n} entries filled", "{n} entrées complétées", "{n} entradas completadas"));
+        }
         "selfcheck" => cmd_selfcheck(&o, &input),
         "scales" => cmd_scales(&o, &input),
         "stats" => cmd_stats(&o, &input),
@@ -635,6 +642,162 @@ fn cmd_scoreboard_check(o: &Opts, input: &str) {
 
 /// Replays a result as if live: frames and board readings in time order through the live scorer;
 /// prints who scored, optionally compared with a match report.
+/// `score-review <video> --result run.jsonl`: after the game, looks again at the seconds before every
+/// basket at a higher frame rate (`--rate`, default 8 per second) to find the shooter: ball holder,
+/// shot attempt or nearest the basket, and reads the shooter's number in the same frames. Only these
+/// windows are analysed, so the run itself can stay at 2 frames per second.
+fn cmd_score_review(o: &Opts, input: &str) {
+    use reco_minimap::live_score::{final_events, pick_shooter, reference_scorers, scores_of, ScoreKind, ScorerCfg, Snapshot};
+    let result = o.s("result").unwrap_or_else(|| fail(trs!("--result run.jsonl fehlt", "--result run.jsonl is missing", "--result run.jsonl manquant", "falta --result run.jsonl")));
+    let text = std::fs::read_to_string(result).unwrap_or_else(|e| fail(format!("{result}: {e}")));
+    let frames: Vec<serde_json::Value> = text.lines().filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok()).filter(|v| v["players"].is_array()).collect();
+    let readings = reco_minimap::tools::scoreboard::readings_in(&frames);
+    let g = SportProfile::basketball().goals;
+    let baskets = [g[0], g[1]];
+    let events: Vec<_> = final_events(&scores_of(&frames, &readings, baskets)).into_iter().filter(|e| matches!(e.kind, ScoreKind::FreeThrow | ScoreKind::FieldGoal)).collect();
+    if events.is_empty() {
+        fail::<()>(trs!("keine Körbe im Ergebnis (mit --scoreboard laufen lassen)", "no baskets in the result (run with --scoreboard)", "aucun panier dans le résultat (lancer avec --scoreboard)", "no hay canastas en el resultado (ejecutar con --scoreboard)"));
+    }
+    // the main run's numbers per tracklet (after backfill) and its frames by time, to name a shooter
+    // whose number was not read in the window
+    let mut main_numbers: HashMap<(u32, u32), u32> = HashMap::new();
+    let main: Vec<Snapshot> = frames.iter().filter_map(Snapshot::from_frame).collect();
+    for s in &main {
+        for p in &s.players {
+            if let Some(n) = p.number {
+                main_numbers.insert((p.id, p.segment), n);
+            }
+        }
+    }
+    let info = open_info(o, input);
+    let rate = o.f("rate", 8.0).max(1.0);
+    let every = ((info.fps / rate).round() as u32).max(1);
+    let after = o.f("after", 3.0);
+    let mut model = load_model(o);
+    model.cfg.thr_player = thr_players(o).0;
+    let tiles = plan(o, &info);
+    let (cal, profile) = load_court(o.s("court").unwrap_or_else(|| fail(trs!("--court court.json fehlt", "--court court.json is missing", "--court court.json manquant", "falta --court court.json"))));
+    let teams = read_teams(o);
+    let (home, away) = (teams.home, teams.away);
+    let shirts: Vec<[u8; 3]> = teams.shirts(o.s("ref-color").and_then(parse_hex), false);
+    let torso = torso_band(o);
+    let shirt_match = o.has("shirt-match");
+    let mut mcfg = game_config(o, &profile, home, away);
+    mcfg.referee_rgb = o.s("ref-color").and_then(parse_hex);
+    teams.apply(&mut mcfg);
+    mcfg.tracker.spawn_conf = { let (low, high) = thr_players(o); if low < high { high } else { 0.0 } };
+    let mut numbers = numbers_setup(o, &mut mcfg);
+    let report = o.s("reference").map(|p| {
+        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(p).unwrap_or_else(|e| fail(format!("{p}: {e}")))).unwrap_or_else(|e| fail(format!("{p}: {e}")));
+        reference_scorers(&v)
+    });
+    let cfg = ScorerCfg::default();
+    let mut out = o.s("out").map(|p| std::io::BufWriter::new(std::fs::File::create(p).unwrap_or_else(|e| fail(format!("{p}: {e}")))));
+    let num = |n: Option<u32>| n.map(|n| format!("#{n}")).unwrap_or_else(|| "?".into());
+    let (mut ok, mut wrong, mut unknown, mut compared, mut ok_before) = (0, 0, 0, 0, 0);
+    let t0 = Instant::now();
+    let mut n_frames = 0usize;
+    eprintln!("{}", tr!("Nachschau: {} Körbe, je {:.0} Bilder/s", "Review: {} baskets, {:.0} frames/s each", "Revue : {} paniers, {:.0} images/s chacun", "Revisión: {} canastas, {:.0} imágenes/s cada una", events.len(), info.fps / every as f64));
+    for (i, ev) in events.iter().enumerate() {
+        let w = if ev.kind == ScoreKind::FreeThrow { cfg.ft_window } else { cfg.fg_window };
+        // a second more at the start so the tracker has settled when the window begins
+        let start = (ev.t - w.0 - 1.0).max(0.0);
+        let mut reader = FrameReader::open(input, &info, start, Some(ev.t + after - start), every).unwrap_or_else(|e| fail(e));
+        let projector = cal.projector().unwrap_or_else(|| fail("court.json"));
+        let mut mm = Minimap::new(mcfg.clone(), Box::new(projector));
+        let mut scenes = SceneDetector::new(profile.clone());
+        scenes.direction = direction_opt(o);
+        if let Some(nm) = numbers.as_mut() {
+            nm.last_reads.clear();
+        }
+        let mut snaps: Vec<Snapshot> = Vec::new();
+        let mut k = 0u64;
+        let mut prio: Vec<(u32, u32)> = Vec::new();
+        while let Some(frame) = reader.next() {
+            let t = start + (k * every as u64) as f64 / info.fps;
+            k += 1;
+            let mut dets = model.detect(&frame, &tiles).unwrap_or_else(|e| fail(e));
+            for d in dets.iter_mut().filter(|d| d.class == Class::Player) {
+                d.color = if shirt_match { frame.torso_color_matching(d, torso, &shirts) } else { frame.torso_color_in(d, torso) };
+            }
+            let state = mm.process(t, &dets);
+            if let Some(nm) = numbers.as_mut() {
+                read_numbers(nm, &mut mm, &frame, t, &prio);
+            }
+            let sc = scenes.update(&state);
+            if let Some(s) = Snapshot::from_frame(&state_json_with(&state, &sc)) {
+                snaps.push(s);
+            }
+            // from the score on: read the candidates first
+            if t >= ev.t && prio.is_empty() {
+                let win: Vec<&Snapshot> = snaps.iter().filter(|f| f.t >= ev.t - w.0 && f.t <= ev.t - w.1).collect();
+                if let Some((_, ranked)) = pick_shooter(&win, baskets, ev.team, ev.kind, ev.points, ev.t, w, &cfg) {
+                    prio = ranked.iter().take(3).map(|r| r.0).collect();
+                }
+            }
+            n_frames += 1;
+        }
+        let win: Vec<&Snapshot> = snaps.iter().filter(|f| f.t >= ev.t - w.0 && f.t <= ev.t - w.1).collect();
+        let picked = pick_shooter(&win, baskets, ev.team, ev.kind, ev.points, ev.t, w, &cfg);
+        let mut e = ev.clone();
+        e.update = true;
+        e.pending = false;
+        let mut how = "";
+        if let Some((basis, ranked)) = picked.filter(|p| !p.1.is_empty()) {
+            let (key, share) = ranked[0];
+            e.basis = basis;
+            e.confidence = share;
+            // the number: last one the window's tracker knows, else the main run's tracklet at the same spot
+            let own = snaps.iter().rev().flat_map(|s| s.players.iter()).find(|p| (p.id, p.segment) == key && p.number.is_some()).map(|p| (p.number, p.read));
+            if let Some((n, read)) = own {
+                e.number = n;
+                e.read = read;
+                how = "window";
+            } else {
+                let mut votes: HashMap<(u32, u32), usize> = HashMap::new();
+                for s in &win {
+                    let Some(me) = s.players.iter().find(|p| (p.id, p.segment) == key) else { continue };
+                    let Some(m) = main.iter().filter(|m| (m.t - s.t).abs() <= 0.26).min_by(|a, b| (a.t - s.t).abs().total_cmp(&(b.t - s.t).abs())) else { continue };
+                    if let Some(p) = m.players.iter().filter(|p| p.team == ev.team).min_by(|a, b| a.pos.dist(me.pos).total_cmp(&b.pos.dist(me.pos))).filter(|p| p.pos.dist(me.pos) <= 1.5) {
+                        *votes.entry((p.id, p.segment)).or_default() += 1;
+                    }
+                }
+                let best = votes.into_iter().max_by_key(|v| v.1).map(|v| v.0);
+                e.shooter = best;
+                e.number = best.and_then(|b| main_numbers.get(&b).copied());
+                e.read = false;
+                how = if e.number.is_some() { "run" } else { "" };
+            }
+            e.others = ranked[1..].iter().take(2).copied().collect();
+        }
+        let team = if e.team == Team::Home { trs!("Heim", "home", "domicile", "local") } else { trs!("Gast", "away", "visiteurs", "visitante") };
+        let mut line = format!("{:>3}/{}  {:>8}  {team:<5} {:+}  {:>3}  {:<16} {:>4} {:<6} {:.0} %   ({} {})", i + 1, events.len(), fmt_clock(e.t), e.points, e.to, e.basis.key(), num(e.number), how, e.confidence * 100.0, trs!("vorher", "before", "avant", "antes"), num(ev.number));
+        if let Some(&(want, pts)) = report.as_ref().and_then(|r| r.get(&(e.team, e.to))) {
+            if pts as i32 == e.points {
+                compared += 1;
+                if ev.number.is_some() && ev.number == want {
+                    ok_before += 1;
+                }
+                let mark = match (e.number, want) {
+                    (Some(a), Some(b)) if a == b => { ok += 1; "✓" }
+                    (None, _) => { unknown += 1; "?" }
+                    _ => { wrong += 1; "✗" }
+                };
+                line += &format!("   {} {} {mark}", trs!("Bericht", "report", "rapport", "informe"), num(want));
+            }
+        }
+        println!("{line}");
+        if let Some(w) = out.as_mut() {
+            let _ = writeln!(w, "{}", e.to_json());
+        }
+    }
+    let secs = t0.elapsed().as_secs_f64();
+    println!("{}", tr!("{n_frames} Bilder in {} ({:.2} Bilder/s)", "{n_frames} frames in {} ({:.2} frames/s)", "{n_frames} images en {} ({:.2} images/s)", "{n_frames} imágenes en {} ({:.2} imágenes/s)", duration_hms(secs), n_frames as f64 / secs.max(0.001)));
+    if report.is_some() {
+        println!("{}", tr!("Werfer richtig: {}/{} (vorher {}), falsch: {}, ohne Nummer: {}", "Shooter right: {}/{} (before {}), wrong: {}, without number: {}", "Tireur correct : {}/{} (avant {}), faux : {}, sans numéro : {}", "Tirador correcto: {}/{} (antes {}), incorrecto: {}, sin dorsal: {}", ok, compared, ok_before, wrong, unknown));
+    }
+}
+
 fn cmd_scorers(o: &Opts, input: &str) {
     use reco_minimap::live_score::{reference_scorers, ScoreEvent};
     let text = std::fs::read_to_string(input).unwrap_or_else(|e| fail(format!("{input}: {e}")));
@@ -2148,7 +2311,7 @@ fn cmd_run(o: &Opts, input: &str) {
         // a video can look back: numbers along whole tracklets
         if numbers.is_some() && !o.has("no-backfill") {
             if let Some(p) = o.s("json") {
-                match reco_minimap::tools::backfill::backfill_file(std::path::Path::new(p)) {
+                match reco_minimap::tools::backfill::backfill_file(std::path::Path::new(p), Some((profile.team_size, profile.field.length as f64, profile.field.width as f64))) {
                     Ok(n) if n > 0 => eprintln!("{}", tr!("Nummern entlang der Spuren ergänzt: {n} Einträge", "Numbers propagated along tracklets: {n} entries", "Numéros propagés le long des pistes : {n} entrées", "Dorsales propagados a lo largo de las pistas: {n} entradas")),
                     Ok(_) => {}
                     Err(e) => eprintln!("{}", tr!("Nummern-Ergänzung übersprungen: {e}", "Number propagation skipped: {e}", "Propagation des numéros ignorée : {e}", "Propagación de dorsales omitida: {e}")),
@@ -2286,7 +2449,7 @@ fn cmd_replay(o: &Opts, path: &str) {
         drop(j);
         if head["ocr"]["enabled"].as_bool()==Some(true) && !o.has("no-backfill") {
             if let Some(path)=o.s("json") {
-                reco_minimap::tools::backfill::backfill_file(std::path::Path::new(path)).unwrap_or_else(|e|fail(e));
+                reco_minimap::tools::backfill::backfill_file(std::path::Path::new(path), Some((profile.team_size, profile.field.length as f64, profile.field.width as f64))).unwrap_or_else(|e|fail(e));
             }
         }
     }

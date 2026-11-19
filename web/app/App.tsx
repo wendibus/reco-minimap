@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { HintLayer } from './HintLayer';
 import { JobDialog } from './JobDialog';
-import { api, Btn, EMBEDDED_KINDS, embeddedUrl, LANGS, useApp } from './core';
+import { api, Btn, chooseNative, EMBEDDED_KINDS, embeddedUrl, LANGS, useApp } from './core';
 import { CalibPanel, EvalPanel, LivePanel, RunPanel, SetupPanel, VideoPanel } from './panels';
 import { StatsPanel } from './stats';
 import { unseen, WhatsNew } from './WhatsNew';
@@ -85,7 +85,7 @@ export function App() {
     <section className="preview-stage"><div className="app-window platform-mac"><div className="app-body">
       <aside className="app-sidebar">
         <section className="side-section"><label>{t.ui.project}</label>
-          <button data-hint={h.chooseFolder} type="button" className="secondary-button folder-button" onClick={async () => { const r = await api('/api/dialog', { kind: 'folder', prompt: T('project.folder') }); if (r.path) void openProject(r.path); }}>▣&nbsp; {t.ui.choose}</button>
+          <button data-hint={h.chooseFolder} type="button" className="secondary-button folder-button" onClick={async () => { const p = await chooseNative('folder', T('project.folder')); if (p) void openProject(p); }}>▣&nbsp; {t.ui.choose}</button>
           <div className="mm-row"><input type="text" className="mm-grow mm-dir" value={dirInput} onChange={(e) => setDirInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void openProject(dirInput); }} aria-label={T('project.folder')} />
             <button type="button" className="tool-button" data-hint={h.openFolder} onClick={() => void openProject(dirInput)}>{T('project.open')}</button></div>
           <button type="button" className="mm-link small" data-hint={h.showFolder} onClick={() => void api('/api/reveal', { path: dir, open: false }).then((r) => !r.ok && log(T('status.error', { m: r.error })))}>{T('btn.reveal')}</button>

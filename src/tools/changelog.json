@@ -1,4 +1,18 @@
 {
+  "0.23.1": {
+    "de": [
+      "Mac-App: „Wählen…“-Dialoge für Dateien und Ordner erscheinen wieder. Die App öffnet das Auswahlfenster jetzt selbst; der bisherige Dialog blieb unter aktuellem macOS unsichtbar. Dafür die neue DMG installieren."
+    ],
+    "en": [
+      "Mac app: the “Choose…” dialogs for files and folders show up again. The app now opens the chooser itself; the previous dialog stayed invisible on current macOS. Install the new DMG for this."
+    ],
+    "fr": [
+      "App Mac : les dialogues « Choisir… » pour fichiers et dossiers s'affichent de nouveau. L'app ouvre elle-même la fenêtre de sélection ; l'ancien dialogue restait invisible sur macOS récent. Installer le nouveau DMG pour cela."
+    ],
+    "es": [
+      "App de Mac: los diálogos «Elegir…» de archivos y carpetas vuelven a aparecer. La app abre ahora la ventana de selección por sí misma; el diálogo anterior quedaba invisible en macOS actual. Para ello, instala el nuevo DMG."
+    ]
+  },
   "0.23.0": {
     "de": [
       "Werfer am Handy wählen: Im Live-Modus (Basketball, mit Anzeigetafel) zeigt ein Link fürs Handy oder Tablet nach jedem erkannten Korb die Spieler, die in Frage kommen. Ein Tipp auf die Rückennummer genügt, der Liveticker übernimmt den Werfer sofort.",

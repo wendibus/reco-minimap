@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, Btn, Card, Check, clock, Color, Labeled, Num, PathField, secs, Sel, showFile, Text, useApp, type Json } from './core';
+import { api, Btn, Card, chooseNative, Check, clock, Color, Labeled, Num, PathField, secs, Sel, showFile, Text, useApp, type Json } from './core';
 
 const ALIAS: Record<string, string> = { soccer: 'football', fussball: 'football', 'fußball': 'football', futbol: 'football', 'fútbol': 'football', football11: 'football', field_hockey: 'hockey', 'field-hockey': 'hockey', fieldhockey: 'hockey', feldhockey: 'hockey', basket: 'basketball', hand: 'handball', volley: 'volleyball' };
 export function useSportId() {
@@ -91,8 +91,8 @@ export function SetupPanel() {
       <h3>{T('model.import')}</h3><p className="mm-hint">{T('model.import_hint')}</p>
       <Labeled label={T('model.path')}><div className="mm-row"><input type="text" className="mm-grow" value={path} onChange={(e) => setPath(e.target.value)} /><Btn primary hint={t.hints.importPath} onClick={() => void doImport(path)}>{T('model.import_path')}</Btn></div></Labeled>
       <div className="mm-row mm-gap">
-        <Btn hint={t.hints.importFolder} onClick={async () => { const r = await api('/api/dialog', { kind: 'folder', prompt: T('model.import') }); if (r.path) { setPath(r.path); void doImport(r.path); } }}>📁 {T('model.import_folder')}</Btn>
-        <Btn hint={t.hints.importFile} onClick={async () => { const r = await api('/api/dialog', { kind: 'file', prompt: '.onnx' }); if (r.path) { setPath(r.path); void doImport(r.path); } }}>📄 {T('model.import_file')}</Btn>
+        <Btn hint={t.hints.importFolder} onClick={async () => { const p = await chooseNative('folder', T('model.import')); if (p) { setPath(p); void doImport(p); } }}>📁 {T('model.import_folder')}</Btn>
+        <Btn hint={t.hints.importFile} onClick={async () => { const p = await chooseNative('file', '.onnx'); if (p) { setPath(p); void doImport(p); } }}>📄 {T('model.import_file')}</Btn>
       </div>
     </Card>
   </>;

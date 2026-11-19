@@ -165,3 +165,7 @@
 .mm-num.sug { border-color: var(--accent); }
 .mm-num.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .mm-break { word-break: break-all; }
+
+/* the Mac app (launcher) is older than this interface needs */
+.mm-app-update { margin: 0 0 12px; padding: 10px 14px; border-radius: 8px; background: color-mix(in srgb, #f5a524 18%, transparent); border: 1px solid color-mix(in srgb, #f5a524 55%, transparent); }
+.mm-app-update a { margin-left: 8px; font-weight: 600; }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { HintLayer } from './HintLayer';
 import { JobDialog } from './JobDialog';
-import { api, Btn, chooseNative, EMBEDDED_KINDS, embeddedUrl, LANGS, useApp } from './core';
+import { api, Btn, chooseNative, MAC_APP_DOWNLOAD, macAppOutdated, EMBEDDED_KINDS, embeddedUrl, LANGS, useApp } from './core';
 import { CalibPanel, EvalPanel, LivePanel, RunPanel, SetupPanel, VideoPanel } from './panels';
 import { StatsPanel } from './stats';
 import { unseen, WhatsNew } from './WhatsNew';
@@ -68,6 +68,7 @@ export function App() {
   const stepLabel = (s: Step) => s === 'stats' ? t.ui.stepStats : T('step.' + s);
 
   return <main className="preview-page"><HintLayer enabled={hints} /><JobDialog /><WhatsNew open={newsOpen} onClose={() => { setNewsOpen(false); if (location.hash === '#whats-new') history.replaceState(null, '', location.pathname + location.search); }} />
+    {macAppOutdated() && <div className="mm-app-update" role="status">⚠︎ {t.ui.macAppOld} <a href={MAC_APP_DOWNLOAD} target="_blank" rel="noreferrer">{t.ui.macAppDownload}</a></div>}
     <header className="preview-header">
       <div className="brand-block"><div className="brand-mark" aria-hidden="true">M</div><div><h1>Reco Minimap <button type="button" className="version-button" data-hint={h.version} onClick={() => setNewsOpen(true)}>{init.version}</button></h1><p>{t.ui.tagline}</p></div></div>
       <div className="switches">

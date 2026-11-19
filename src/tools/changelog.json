@@ -1,4 +1,22 @@
 {
+  "0.23.2": {
+    "de": [
+      "Behoben: Das Fenster blieb leer bzw. die Anzeige verschwand gleich wieder, wenn die Statistik ein Spiel ohne Box-Score zeigte.",
+      "Die Mac-App meldet jetzt, wenn sie selbst veraltet ist und eine neue DMG installiert werden sollte."
+    ],
+    "en": [
+      "Fixed: the window stayed empty or the display vanished right away when the statistics showed a game without a box score.",
+      "The Mac app now says when it is itself out of date and a new DMG should be installed."
+    ],
+    "fr": [
+      "Corrigé : la fenêtre restait vide ou l'affichage disparaissait aussitôt quand les statistiques montraient un match sans feuille de match.",
+      "L'app Mac signale désormais quand elle est elle-même trop ancienne et qu'un nouveau DMG doit être installé."
+    ],
+    "es": [
+      "Corregido: la ventana quedaba vacía o la vista desaparecía enseguida cuando las estadísticas mostraban un partido sin hoja de estadísticas.",
+      "La app de Mac avisa ahora cuando ella misma está desactualizada y conviene instalar un nuevo DMG."
+    ]
+  },
   "0.23.1": {
     "de": [
       "Mac-App: „Wählen…“-Dialoge für Dateien und Ordner erscheinen wieder. Die App öffnet das Auswahlfenster jetzt selbst; der bisherige Dialog blieb unter aktuellem macOS unsichtbar. Dafür die neue DMG installieren."

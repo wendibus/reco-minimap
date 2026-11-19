@@ -266,16 +266,28 @@ export function RunPanel() {
 }
 
 // ---------------------------------------------------------------- 5 · live
+/** A random key for the phone page (24 letters and digits, from the browser's secure random source). */
+function newPickKey(): string {
+  const abc = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const r = new Uint8Array(24);
+  crypto.getRandomValues(r);
+  return Array.from(r, (b) => abc[b % abc.length]).join('');
+}
+
 export function LivePanel() {
-  const { project, files, set, runJob, common, activeModel, jobs, init, cancelJob, t } = useApp();
+  const { project, files, set, runJob, common, activeModel, jobs, init, cancelJob, t, lang } = useApp();
   if (!activeModel() || !files.court || !files.teams) return <Warn>{T('run.need_cal')}</Warn>;
   const l = project.live;
   const job = [...jobs].reverse().find((j) => j.kind === 'live' && (j.status === 'running' || j.status === 'cancelling'));
   const url = job ? `http://127.0.0.1:${l.port}/` : '';
   const turl = url ? `http://${l.network && init?.lan_ip ? init.lan_ip : '127.0.0.1'}:${l.port}/ticker` : '';
+  const pickUrl = l.pick && l.pick_key ? `http://${l.network && init?.lan_ip ? init.lan_ip : '127.0.0.1'}:${l.port}/pick?key=${l.pick_key}&lang=${lang}` : '';
   const start = () => {
     const c = project.colors;
-    void runJob('live', { ...common(), ticker_names: l.ticker_names, home_name: l.home_name, away_name: l.away_name, network: l.network === true, ticker_approve: l.ticker_approve === true, ticker_export: l.ticker_export === true, ticker_push: l.ticker_push, ticker_key: l.ticker_key, source: l.source, size: l.size, fps: l.fps, port: l.port, realtime: l.realtime, adaptive: l.adaptive === true, draw_home: c.draw_home, draw_away: c.draw_away, ref_color: c.ref_color });
+    // the phone page's secret: made once per project, renewed on request
+    const pickKey = l.pick ? (l.pick_key || newPickKey()) : '';
+    if (l.pick && !l.pick_key) set('live.pick_key', pickKey);
+    void runJob('live', { ...common(), pick: l.pick === true, pick_key: pickKey, ticker_names: l.ticker_names, home_name: l.home_name, away_name: l.away_name, network: l.network === true, ticker_approve: l.ticker_approve === true, ticker_export: l.ticker_export === true, ticker_push: l.ticker_push, ticker_key: l.ticker_key, source: l.source, size: l.size, fps: l.fps, port: l.port, realtime: l.realtime, adaptive: l.adaptive === true, draw_home: c.draw_home, draw_away: c.draw_away, ref_color: c.ref_color });
   };
   return <>
     <Card title={T('live.title')} hint={T('live.hint')}>
@@ -289,6 +301,15 @@ export function LivePanel() {
       <div className="mm-grid2"><Text k="live.ticker_push" label={T('ticker.ui_push')} placeholder="https://…/ticker.json" /><Text k="live.ticker_key" label={T('ticker.ui_key')} password /></div>
       <p className="mm-hint">{T('ticker.ui_web_hint')}</p>
       <Check k="live.network" label={T('ticker.ui_network')} />
+      {project.sport === 'basketball' && files.scoreboard && <>
+        <h3>{T('pick.ui_on')}</h3><p className="mm-hint">{T('pick.ui_hint')}</p>
+        <Check k="live.pick" label={T('pick.ui_on')} />
+        {l.pick && !l.network && <p className="bad small">{T('pick.ui_need_net')}</p>}
+        {l.pick && l.pick_key && <div className="mm-row mm-gap mm-wrap"><span className="mm-muted small mm-grow">{T('pick.ui_link')}</span>
+          <Btn hint={T('pick.ui_new_hint')} onClick={() => set('live.pick_key', newPickKey())}>{T('pick.ui_new')}</Btn></div>}
+        {pickUrl && url && <div className="mm-row mm-gap mm-wrap"><a href={pickUrl} target="_blank" rel="noreferrer" className="mm-grow mm-break">{pickUrl}</a>
+          <Btn hint={T('pick.ui_copy')} onClick={() => void navigator.clipboard?.writeText(pickUrl)}>{T('pick.ui_copy')}</Btn></div>}
+      </>}
       <div className="mm-row mm-gap"><Btn primary hint={t.hints.liveStart} disabled={!!url} onClick={start}>{T('live.start')}</Btn><Btn hint={t.hints.liveStop} disabled={!url} onClick={() => job && void cancelJob(job.id, true)}>{T('live.stop')}</Btn></div>
       {url && <><h3>{T('live.url')}</h3><a href={url} target="_blank" rel="noreferrer">{url}</a> · <a href={`${url}?floor=1&debug=1`} target="_blank" rel="noreferrer">{T('live.test')}</a><p className="mm-hint">{T('live.obs')}</p>
         <h3>{T('ticker.link')}</h3><a href={turl} target="_blank" rel="noreferrer">{turl}</a>{l.network && !init?.lan_ip && <p className="bad small">{T('ticker.ui_noip')}</p>}

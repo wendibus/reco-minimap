@@ -646,6 +646,33 @@ fn cmd_scoreboard_check(o: &Opts, input: &str) {
 /// basket at a higher frame rate (`--rate`, default 8 per second) to find the shooter: ball holder,
 /// shot attempt or nearest the basket, and reads the shooter's number in the same frames. Only these
 /// windows are analysed, so the run itself can stay at 2 frames per second.
+/// Jersey numbers to offer first for a basket: the scorer's choice and its other candidates, then
+/// everybody of the scoring team on the court, nearest a basket first.
+fn pick_candidates(e: &reco_minimap::live_score::ScoreEvent, frame: &serde_json::Value, profile: &SportProfile) -> Vec<u64> {
+    let team = if e.team == Team::Home { "home" } else { "away" };
+    let players: Vec<&serde_json::Value> = frame["players"].as_array().into_iter().flatten().filter(|p| p["team"] == team).collect();
+    let mut out: Vec<u64> = e.number.map(|n| n as u64).into_iter().collect();
+    for ((id, seg), _) in &e.others {
+        if let Some(n) = players.iter().find(|p| p["id"].as_u64() == Some(*id as u64) && p["segment"].as_u64() == Some(*seg as u64)).and_then(|p| p["jersey"].as_u64()) {
+            if !out.contains(&n) {
+                out.push(n);
+            }
+        }
+    }
+    let mut near: Vec<(f32, u64)> = players.iter().filter_map(|p| {
+        let n = p["jersey"].as_u64()?;
+        let pos = Vec2::new(p["x"].as_f64()? as f32, p["y"].as_f64()? as f32);
+        Some((profile.goals.iter().map(|g| g.dist(pos)).fold(f32::MAX, f32::min), n))
+    }).collect();
+    near.sort_by(|a, b| a.0.total_cmp(&b.0));
+    for (_, n) in near {
+        if !out.contains(&n) {
+            out.push(n);
+        }
+    }
+    out
+}
+
 fn cmd_score_review(o: &Opts, input: &str) {
     use reco_minimap::live_score::{final_events, pick_shooter, reference_scorers, scores_of, ScoreKind, ScorerCfg, Snapshot};
     let result = o.s("result").unwrap_or_else(|| fail(trs!("--result run.jsonl fehlt", "--result run.jsonl is missing", "--result run.jsonl manquant", "falta --result run.jsonl")));
@@ -1675,13 +1702,19 @@ fn cmd_live(o: &Opts, input: &str) {
     teams.apply(&mut mcfg);
     mcfg.tracker.spawn_conf = { let (low, high) = thr_players(o); if low < high { high } else { 0.0 } };
     let mut numbers = numbers_setup(o, &mut mcfg).map(|nm| BackgroundOcr::new(nm.reader,nm.min_h,nm.max_reads));
-    // `--scoreboard`: the hall scoreboard read from the analysed frames; with basketball also who scored
-    let mut board = o.s("scoreboard").map(|p| {
-        let cfg = reco_minimap::tools::scoreboard::load(p).unwrap_or_else(|e| fail(e));
-        reco_minimap::tools::scoreboard::FrameBoard::new(&cfg, info.w as usize, info.h as usize, o.f("board-fps", 2.0))
+    // `--scoreboard`: the hall scoreboard; with basketball also who scored. A file or a network stream
+    // gets its own small ffmpeg stream of the board region (as `run`): every frame of the board, not only
+    // the few analysed ones. A camera can be opened once only, there the analysed frames are read.
+    let board_cfg = o.s("scoreboard").map(|p| reco_minimap::tools::scoreboard::load(p).unwrap_or_else(|e| fail(e)));
+    let own_stream = !o.has("board-in-frames") && (std::path::Path::new(input).is_file() || ["http://", "https://", "rtsp://", "rtmp://", "srt://", "udp://"].iter().any(|p| input.starts_with(p)));
+    let mut board_stream = board_cfg.as_ref().filter(|_| own_stream).and_then(|cfg| match reco_minimap::tools::scoreboard::Stream::start(input, &info, cfg, t_start(o), t_duration(o)) {
+        Ok(s) => Some(s),
+        Err(e) => { eprintln!("{}", tr!("Anzeigetafel: eigener Strom nicht möglich ({e}), lese aus den analysierten Bildern", "Scoreboard: no stream of its own ({e}), reading the analysed frames", "Tableau d'affichage : pas de flux propre ({e}), lecture des images analysées", "Marcador: sin flujo propio ({e}), se leen las imágenes analizadas")); None }
     });
-    let mut scorer = board.as_ref().filter(|_| profile.id == "basketball" && profile.goals.len() == 2).map(|_| reco_minimap::live_score::LiveScorer::new([profile.goals[0], profile.goals[1]], Default::default()));
+    let mut board = board_cfg.as_ref().filter(|_| board_stream.is_none()).map(|cfg| reco_minimap::tools::scoreboard::FrameBoard::new(cfg, info.w as usize, info.h as usize, o.f("board-fps", 2.0)));
+    let mut scorer = board_cfg.as_ref().filter(|_| profile.id == "basketball" && profile.goals.len() == 2).map(|_| reco_minimap::live_score::LiveScorer::new([profile.goals[0], profile.goals[1]], Default::default()));
     let mut scenes = o.has("scenes").then(|| { let mut d = SceneDetector::new(profile.clone()); d.direction = direction_opt(o); d });
+    let pick_roster = (mcfg.roster_home.iter().map(|&n| n as u64).collect::<Vec<_>>(), mcfg.roster_away.iter().map(|&n| n as u64).collect::<Vec<_>>());
     let mut mm = Minimap::new(mcfg, Box::new(projector));
 
     let draw_home = o.s("draw-home").and_then(parse_hex).unwrap_or(home);
@@ -1703,6 +1736,12 @@ fn cmd_live(o: &Opts, input: &str) {
     }
     reco_minimap::tools::ticker_pub::check(&sink).unwrap_or_else(|e| fail(e));
     let host = o.s("host").unwrap_or("127.0.0.1").to_string();
+    // `--pick-key K`: phone page to name the shooter of every basket (needs the scoreboard)
+    let picking = match o.s("pick-key") {
+        Some(k) if scorer.is_some() => hub.enable_picks(k, pick_roster.0.clone(), pick_roster.1.clone()) || fail(trs!("--pick-key: mindestens 16 Buchstaben/Ziffern", "--pick-key: at least 16 letters/digits", "--pick-key : au moins 16 lettres/chiffres", "--pick-key: al menos 16 letras/cifras")),
+        Some(_) => { eprintln!("{}", trs!("Hinweis: Werfer am Handy wählen geht nur bei Basketball mit Anzeigetafel.", "Note: naming shooters on a phone needs basketball with a scoreboard.", "Remarque : choisir les tireurs sur le téléphone nécessite le basket avec tableau d'affichage.", "Nota: elegir tiradores en el móvil requiere baloncesto con marcador.")); false }
+        None => false,
+    };
     let addr = live::serve(hub.clone(), &host, o.u("port", 8765) as u16).unwrap_or_else(|e| fail(e));
     eprintln!("{}", tr!("\nLive-Overlay: http://{addr}/", "\nLive overlay: http://{addr}/", "\nIncrustation en direct : http://{addr}/", "\nSuperposición en directo: http://{addr}/"));
     eprintln!("{}", trs!("  OBS: Quelle hinzufügen -> Browser -> URL oben, Breite 1400 / Höhe 800 (oder passend), Hintergrund bleibt transparent.", "  OBS: add a source -> Browser -> the URL above, width 1400 / height 800 (or as needed); the background stays transparent.", "  OBS : ajouter une source -> Navigateur -> l'URL ci-dessus, largeur 1400 / hauteur 800 (ou selon besoin) ; le fond reste transparent.", "  OBS: añade una fuente -> Navegador -> la URL de arriba, ancho 1400 / alto 800 (o lo que convenga); el fondo queda transparente."));
@@ -1819,7 +1858,13 @@ fn cmd_live(o: &Opts, input: &str) {
         log_events(&state.events);
         let sc = scenes.as_mut().map(|d| d.update(&state)).unwrap_or_default();
         log_scenes(&sc, &profile.id);
-        let board_reading = board.as_mut().and_then(|b| b.push(&frame, t));
+        // the stream's readings carry video time: the start plus the time since the live run began
+        // (back to live time, like every other event of the run)
+        let board_readings: Vec<reco_minimap::scoreboard::Reading> = match board_stream.as_mut() {
+            Some(bs) => bs.take_until(t_start(o) + t).into_iter().map(|mut r| { r.t -= t_start(o); r }).collect(),
+            None => board.as_mut().and_then(|b| b.push(&frame, t)).into_iter().collect(),
+        };
+        let board_reading = board_readings.last().copied();
         frame.rgb = Vec::new(); // free the big buffer early
         let age_ms = arrival.elapsed().as_secs_f64() * 1000.0;
         let mut v = state_json_with(&state, &sc);
@@ -1832,12 +1877,29 @@ fn cmd_live(o: &Opts, input: &str) {
         }
         if let Some(sc) = scorer.as_mut() {
             let mut ev = reco_minimap::live_score::Snapshot::from_frame(&v).map(|snap| sc.push_frame(snap)).unwrap_or_default();
-            if let Some(r) = board_reading.as_ref() {
+            for r in &board_readings {
                 ev.extend(sc.push_reading(r));
             }
             log_scores(&ev);
+            if picking {
+                for e in &ev {
+                    hub.offer_pick(&e.to_json(), pick_candidates(e, &v, &profile));
+                }
+            }
             if let Some(a) = v["events"].as_array_mut() {
                 a.extend(ev.iter().map(|e| e.to_json()));
+            }
+        }
+        if picking {
+            // shooters named on the phone: into the result file and the ticker with this frame
+            let manual = hub.take_manual();
+            if !manual.is_empty() {
+                for m in &manual {
+                    eprintln!("\n  {}", tr!("{} Werfer gewählt: {}", "{} shooter picked: {}", "{} tireur choisi : {}", "{} tirador elegido: {}", fmt_clock(m["t"].as_f64().unwrap_or(0.0)), m["number"].as_u64().map(|n| format!("#{n}")).unwrap_or_else(|| "?".into())));
+                }
+                if let Some(a) = v["events"].as_array_mut() {
+                    a.extend(manual);
+                }
             }
         }
         let line = v.to_string();

@@ -1,4 +1,30 @@
 {
+  "0.23.0": {
+    "de": [
+      "Werfer am Handy wählen: Im Live-Modus (Basketball, mit Anzeigetafel) zeigt ein Link fürs Handy oder Tablet nach jedem erkannten Korb die Spieler, die in Frage kommen. Ein Tipp auf die Rückennummer genügt, der Liveticker übernimmt den Werfer sofort.",
+      "Rückgängig und Wiederholen: am Handy über zwei Knöpfe, im Reiter „Körbe“ über ↶/↷ oder ⌘Z / ⇧⌘Z.",
+      "Live-Anzeigetafel zuverlässiger: Bei Videodateien und Streams wird die Tafel jetzt fortlaufend gelesen, nicht nur in den ausgewerteten Bildern. Spielstand und Uhr stimmen dadurch besser, die Zeiten im Ticker passen zur Live-Zeit.",
+      "Werfer-Zuordnung live: Hat ein Spieler des punktenden Teams kurz vor dem Korb den Ball, gilt er als Werfer."
+    ],
+    "en": [
+      "Pick the shooter on your phone: in live mode (basketball, with scoreboard) a link for phone or tablet shows the possible players after every detected basket. One tap on the jersey number is enough, the live ticker takes the shooter at once.",
+      "Undo and redo: on the phone with two buttons, in the Baskets tab with ↶/↷ or ⌘Z / ⇧⌘Z.",
+      "More reliable live scoreboard: for video files and streams the board is now read continuously, not only in the analysed frames. Score and clock are more accurate and the ticker times match live time.",
+      "Live shooter attribution: a player of the scoring team who had the ball just before the basket counts as the shooter."
+    ],
+    "fr": [
+      "Choisir le tireur sur le téléphone : en mode direct (basket, avec tableau d'affichage), un lien pour téléphone ou tablette montre après chaque panier détecté les joueurs possibles. Un appui sur le numéro suffit, le direct reprend le tireur aussitôt.",
+      "Annuler et rétablir : sur le téléphone avec deux boutons, dans l'onglet Paniers avec ↶/↷ ou ⌘Z / ⇧⌘Z.",
+      "Tableau d'affichage en direct plus fiable : pour les fichiers vidéo et les flux, le tableau est lu en continu et pas seulement dans les images analysées. Score et chrono sont plus justes, les heures du direct correspondent au temps réel.",
+      "Attribution du tireur en direct : un joueur de l'équipe qui marque ayant le ballon juste avant le panier est retenu comme tireur."
+    ],
+    "es": [
+      "Elegir el lanzador en el móvil: en modo en directo (baloncesto, con marcador) un enlace para móvil o tableta muestra tras cada canasta detectada los jugadores posibles. Basta un toque en el dorsal y la retransmisión toma el lanzador al instante.",
+      "Deshacer y rehacer: en el móvil con dos botones, en la pestaña Canastas con ↶/↷ o ⌘Z / ⇧⌘Z.",
+      "Marcador en directo más fiable: en archivos de vídeo y streams el marcador se lee de forma continua, no solo en las imágenes analizadas. Resultado y reloj son más precisos y las horas de la retransmisión coinciden con el tiempo en directo.",
+      "Lanzador en directo: un jugador del equipo que anota que tenía el balón justo antes de la canasta cuenta como lanzador."
+    ]
+  },
   "0.22.0": {
     "de": [
       "Körbe prüfen: Neuer Reiter in der Statistik – zu jedem Korb laufen die Sekunden davor vergrößert um den Korb, ein Klick auf die Rückennummer bestätigt oder korrigiert den Werfer. Die Auswahl gilt sofort für Punkte je Spieler, Box-Score und Spieler-Videos.",

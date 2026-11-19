@@ -260,6 +260,17 @@ El modo en vivo necesita el mismo panorama completo con el que calibraste, no el
 ![Overlay en directo](img/overlay.webp)
 *El overlay en directo con `?floor=1` (fondo oscuro para probar); en OBS el fondo es transparente. El anillo naranja marca quién tiene el balón.*
 
+### Elegir tiradores en el móvil (baloncesto)
+
+En baloncesto con el marcador calibrado (paso 3), una persona junto a la pista puede nombrar al tirador tras cada canasta con un toque, mucho más fiable que la asignación automática en la canasta lejana.
+
+1. Marca *Elegir tiradores en el móvil* y *Accesible desde otros dispositivos de la red* e inicia el directo.
+2. En *Enlace para el móvil* aparece una dirección con una clave secreta. Envíala solo a quien elige los tiradores (por ejemplo por AirDrop o mensaje); el móvil debe estar en la misma Wi-Fi.
+3. Cuando el marcador indica puntos, aparece una tarjeta en el móvil: equipo, doble/triple/tiro libre, marcador y reloj. Arriba las propuestas del programa, debajo toda la plantilla y *desconocido*. Basta un toque.
+4. El resumen anuncia la canasta al instante y añade el tirador en cuanto se elige («2 puntos de #8»). En el segundo tiro libre aparece primero el tirador del primero. *cambiar* corrige una elección.
+
+La elección también se guarda en el archivo de resultados y cuenta en las estadísticas como una revisión en la pestaña *Canastas*. *Crear un enlace nuevo* invalida el enlace antiguo desde el próximo inicio.
+
 ## Paso 6 · Evaluación
 
 Los pasos 6 y 7 trabajan con los archivos de datos (`.jsonl`) de `out/`, pero miran cosas distintas: **el paso 6 comprueba la detección**, es decir, con qué fiabilidad se siguió a jugadores, árbitros y balón. **El paso 7 muestra el partido**: intentos, posesión y dónde estuvieron los equipos. Mira primero el paso 6: si sus valores son malos, las cifras del paso 7 también son inseguras.

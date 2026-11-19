@@ -164,3 +164,4 @@
 .mm-num { min-width: 46px; padding: 6px 10px; border: .5px solid var(--sep); border-radius: 8px; background: none; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
 .mm-num.sug { border-color: var(--accent); }
 .mm-num.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.mm-break { word-break: break-all; }

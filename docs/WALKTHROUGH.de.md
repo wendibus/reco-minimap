@@ -260,6 +260,17 @@ Der Live-Modus braucht dasselbe ganze Panorama, auf dem du kalibriert hast, nich
 ![Live-Overlay](img/overlay.webp)
 *Das Live-Overlay mit `?floor=1` (dunkler Boden zum Testen); in OBS ist der Hintergrund durchsichtig. Der orange Ring zeigt, wer den Ball hat.*
 
+### Werfer am Handy wählen (Basketball)
+
+Bei Basketball mit kalibrierter Anzeigetafel (Schritt 3) kann eine Person am Spielfeldrand nach jedem Korb mit einem Tipp den Werfer nennen – viel sicherer als die automatische Zuordnung am weit entfernten Korb.
+
+1. Hake *Werfer am Handy wählen* und *Für andere Geräte im Netzwerk erreichbar* an und starte Live.
+2. Unter *Link fürs Handy* steht eine Adresse mit einem geheimen Schlüssel. Schicke sie nur der Person, die die Werfer wählt (zum Beispiel per AirDrop oder Nachricht); das Handy muss im selben WLAN sein.
+3. Meldet die Anzeigetafel Punkte, erscheint auf dem Handy eine Karte: Mannschaft, Zweier/Dreier/Freiwurf, Spielstand und Spieluhr. Oben stehen die Vorschläge des Programms, darunter der ganze Kader und *unbekannt*. Ein Tipp genügt.
+4. Der Ticker meldet den Korb sofort und ergänzt den Werfer, sobald er gewählt ist („2 Punkte durch #8“). Beim zweiten Freiwurf steht der Werfer des ersten vorne. Mit *ändern* lässt sich eine Wahl korrigieren.
+
+Die Wahl landet auch in der Ergebnisdatei und zählt in der Statistik wie eine Prüfung im Reiter *Körbe*. *Neuen Link erzeugen* macht den alten Link ab dem nächsten Start ungültig.
+
 ## Schritt 6 · Auswertung
 
 Schritt 6 und 7 arbeiten beide mit den Datendateien (`.jsonl`) aus `out/`, schauen aber auf Verschiedenes: **Schritt 6 prüft die Erkennung** – wie zuverlässig Spieler, Schiedsrichter und Ball verfolgt wurden. **Schritt 7 zeigt das Spiel** – Versuche, Ballbesitz und wo sich die Teams aufgehalten haben. Sieh dir Schritt 6 zuerst an: Sind die Werte dort schlecht, sind auch die Zahlen in Schritt 7 unsicher.

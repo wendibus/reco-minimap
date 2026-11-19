@@ -27,6 +27,7 @@ type BoxScore = { electronic: boolean; home: (BoxLine & { number: number; second
   without_number: Record<'home' | 'away', BoxLine>; team_only: Record<'home' | 'away', number>; points: Record<'home' | 'away', number>; attempts_seen: number; scores: number; made?: Made[] };
 type StatsTab = 'overview' | 'players' | 'baskets' | 'shots' | 'team' | 'videos';
 type Made = { t: number; team: 'home' | 'away'; points: number; kind: string; number: number | null; to?: number; auto?: number | null; checked?: boolean; candidates?: number[]; basis?: string; u?: number };
+type FixStep = { key: string; before: number | null | undefined; after: number | null | undefined };
 type PlayerTime = { number: number; seconds: number; share: number; inferred_share?: number };
 type ScoreEvent = { t: number; team: Team; points: number; kind: string; evidence: string[]; restart_t: number; confidence: 'likely' | 'possible' };
 type BoardEvent = { t: number; team: Team; points: number; from: number; to: number; basis: 'attempt' | 'team_only' | 'correction' | 'jump'; probability: number; candidates: number; cancelled: boolean;
@@ -149,6 +150,7 @@ export function StatsPanel() {
   const [layer, setLayer] = useState<'home' | 'away' | 'ball'>('home');
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const [tableView, setTableView] = useState(false);
+  const [history, setHistory] = useState<{ undo: FixStep[]; redo: FixStep[] }>({ undo: [], redo: [] });
   const [tab, setTab] = useState<StatsTab>(() => { try { return (localStorage.getItem('mm.statsTab') as StatsTab) || 'overview'; } catch { return 'overview'; } });
   const pickTab = (k: StatsTab) => { setTab(k); try { localStorage.setItem('mm.statsTab', k); } catch { /* private window */ } };
 
@@ -185,13 +187,21 @@ export function StatsPanel() {
   const hasShots = sec.shots || sec.zones || (sec.periods && stats.attempts.length > 0);
   const hasTeam = sec.possession || sec.thirds || sec.heat || !!stats.shape;
   const made = stats.box_score?.made ?? [];
-  const fixShooter = (m: Made, n: number | null | undefined) => {
-    const key = `${m.team}:${m.to}`;
+  // a check by hand; `undefined` takes it back. Every change can be undone and redone.
+  const applyFix = (key: string, n: number | null | undefined) => {
     const fixes: Json = { ...(project.score_fixes ?? {}) };
     if (n === undefined) delete fixes[key]; else fixes[key] = n;
     mutate((p) => { p.score_fixes = fixes; });
     void load(fixes);
   };
+  const fixShooter = (m: Made, n: number | null | undefined) => {
+    const key = `${m.team}:${m.to}`;
+    const before = (project.score_fixes ?? {})[key] as number | null | undefined;
+    setHistory((h) => ({ undo: [...h.undo.slice(-99), { key, before, after: n }], redo: [] }));
+    applyFix(key, n);
+  };
+  const undoFix = () => { const s = history.undo[history.undo.length - 1]; if (!s) return; setHistory((h) => ({ undo: h.undo.slice(0, -1), redo: [...h.redo, s] })); applyFix(s.key, s.before); return s.key; };
+  const redoFix = () => { const s = history.redo[history.redo.length - 1]; if (!s) return; setHistory((h) => ({ undo: [...h.undo, s], redo: h.redo.slice(0, -1) })); applyFix(s.key, s.after); return s.key; };
   const tabs = ([['overview', ts.tabOverview], ['players', ts.tabPlayers], ...(made.length ? [['baskets', ts.tabBaskets]] : []), ...(hasShots ? [['shots', ts.tabShots]] : []), ...(hasTeam ? [['team', ts.tabTeam]] : []), ['videos', ts.tabVideos]] as [StatsTab, string][]);
   const cur: StatsTab = tabs.some(([k]) => k === tab) ? tab : 'overview';
 
@@ -227,7 +237,7 @@ export function StatsPanel() {
     </>}
     </>}
 
-    {cur === 'baskets' && <BasketCheckCard made={made} names={teamName} colors={colors} onFix={fixShooter} />}
+    {cur === 'baskets' && <BasketCheckCard made={made} names={teamName} colors={colors} onFix={fixShooter} onUndo={history.undo.length ? undoFix : undefined} onRedo={history.redo.length ? redoFix : undefined} />}
 
     {cur === 'shots' && <>
     {sec.shots && <Card title={basket ? ts.shotChart : ts.shotMap}>
@@ -667,10 +677,23 @@ function BasketStrip({ video, m }: { video: string; m: Made }) {
   </div>;
 }
 
-function BasketCheckCard({ made, names, colors, onFix }: { made: Made[]; names: Record<Team, string>; colors: Record<Team, string>; onFix: (m: Made, n: number | null | undefined) => void }) {
+function BasketCheckCard({ made, names, colors, onFix, onUndo, onRedo }: { made: Made[]; names: Record<Team, string>; colors: Record<Team, string>; onFix: (m: Made, n: number | null | undefined) => void; onUndo?: () => string | undefined; onRedo?: () => string | undefined }) {
   const { t, project } = useApp();
   const ts = t.stats;
   const [sel, setSel] = useState(() => Math.max(0, made.findIndex((m) => !m.checked)));
+  // jump to the basket an undo / redo changed
+  const show = (key?: string) => { const k = made.findIndex((m) => `${m.team}:${m.to}` === key); if (k >= 0) setSel(k); };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z' || (e.target as HTMLElement)?.closest?.('input, textarea, select')) return;
+      const f = e.shiftKey ? onRedo : onUndo;
+      if (!f) return;
+      e.preventDefault();
+      show(f());
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
   const cur = made[Math.min(sel, made.length - 1)];
   const open = made.filter((m) => !m.checked).length;
   const roster = { home: rosterNumbers(project.run?.numbers?.roster_home), away: rosterNumbers(project.run?.numbers?.roster_away) };
@@ -698,6 +721,8 @@ function BasketCheckCard({ made, names, colors, onFix }: { made: Made[]; names: 
           <b>{clock(cur.t)} · {names[cur.team]} · {ts.basketKinds[cur.points] ?? `+${cur.points}`}{cur.to != null ? ` · ${cur.to}` : ''}</b>
           <span className="mm-grow" />
           <span className="mm-muted small">{ts.basketOpenLabel}: {ts.basketOpen(open, made.length)}</span>
+          <button type="button" className="secondary-button" disabled={!onUndo} data-hint={ts.basketUndoHint} aria-label={ts.basketUndoStep} onClick={() => show(onUndo?.())}>↶</button>
+          <button type="button" className="secondary-button" disabled={!onRedo} data-hint={ts.basketRedoHint} aria-label={ts.basketRedoStep} onClick={() => show(onRedo?.())}>↷</button>
         </div>
         {project.video ? <BasketStrip video={project.video} m={cur} /> : <p className="bad small">{ts.basketNoVideo}</p>}
         {cands.length > 0 && <><div className="mm-muted small">{ts.basketSuggested}</div><div className="mm-nums">{cands.map((n) => numBtn(n, true))}</div></>}

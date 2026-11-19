@@ -2,7 +2,9 @@
 //! change ends. With it, an attempt or set piece at an end belongs to the team attacking that end,
 //! whatever colour the tracker gave the player who happened to hold the ball.
 //!
-//! The direction is given by the user (`--home-attacks l|r`, `--switch-at mm:ss`) or estimated from
+//! The direction is given by the user (`--home-attacks l|r`, `--switch-at mm:ss` or
+//! `--switch-period N`: the teams change ends when period N starts, e.g. the 3rd quarter in
+//! basketball or the 2nd half in football) or estimated from
 //! the attempts of a run: the split of the game into at most two halves in which the teams shot at
 //! their end most consistently.
 
@@ -14,11 +16,52 @@ pub struct Direction {
     pub home_start: char,
     /// Video second at which the teams change ends, if they do.
     pub switch_at: Option<f64>,
+    /// The teams change ends when this period starts; its video second (`switch_at`) comes from
+    /// the scoreboard (see [`Direction::note_period`] / [`Direction::with_periods`]).
+    pub switch_period: Option<u32>,
+    /// Readings in a row that showed `switch_period` or later (one misread digit does not switch).
+    votes: u8,
 }
 
 impl Direction {
     pub fn new(home_start: char, switch_at: Option<f64>) -> Option<Self> {
-        matches!(home_start, 'l' | 'r').then_some(Self { home_start, switch_at })
+        matches!(home_start, 'l' | 'r').then_some(Self { home_start, switch_at, switch_period: None, votes: 0 })
+    }
+
+    /// Ends change when period `period` starts (its time is filled in from the scoreboard).
+    pub fn at_period(home_start: char, period: u32) -> Option<Self> {
+        Self::new(home_start, None).map(|d| Self { switch_period: Some(period).filter(|p| *p >= 2), ..d })
+    }
+
+    /// A scoreboard reading during a run: the first time two readings in a row show the switch
+    /// period (or a later one), the teams change ends from there on.
+    pub fn note_period(&mut self, period: Option<u32>, t: f64) {
+        let (Some(want), None) = (self.switch_period, self.switch_at) else { return };
+        match period {
+            Some(p) if p >= want => {
+                self.votes += 1;
+                if self.votes >= 2 {
+                    self.switch_at = Some(t);
+                }
+            }
+            Some(_) => self.votes = 0,
+            None => {}
+        }
+    }
+
+    /// The switch time from the scoreboard readings of a whole game (start of `switch_period`).
+    pub fn with_periods(mut self, readings: &[crate::scoreboard::Reading]) -> Self {
+        if self.switch_at.is_none() && self.switch_period.is_some() {
+            let tl = crate::scoreboard::timeline::resolve(readings, &Default::default());
+            let want = self.switch_period.unwrap_or(0);
+            self.switch_at = tl.segments.iter().find(|s| matches!(s.kind, crate::scoreboard::timeline::SegmentKind::Period(p) if p >= want)).map(|s| s.t0);
+            if self.switch_at.is_none() {
+                for r in readings {
+                    self.note_period(r.period, r.t);
+                }
+            }
+        }
+        self
     }
 
     /// End the home team attacks at video second `t`.
@@ -31,15 +74,18 @@ impl Direction {
         if side == self.home_target(t) { Team::Home } else { Team::Away }
     }
 
-    /// From `"l"` / `"r"` (also `left` / `right`, `links` / `rechts`) and an optional switch time
-    /// (`"24:00"`, `"1440"`, empty = no switch). `None` for anything else, e.g. `"auto"`.
+    /// From `"l"` / `"r"` (also `left` / `right`, `links` / `rechts`) and an optional switch: a time
+    /// (`"24:00"`, `"1440"`), a period (`"period:3"`) or empty = no switch. `None` for anything else, e.g. `"auto"`.
     pub fn parse(home: &str, switch: &str) -> Option<Self> {
         let side = match home.trim().to_lowercase().as_str() {
             "l" | "left" | "links" | "gauche" | "izquierda" => 'l',
             "r" | "right" | "rechts" | "droite" | "derecha" => 'r',
             _ => return None,
         };
-        Self::new(side, parse_clock(switch))
+        match switch.trim().strip_prefix("period:").and_then(|p| p.trim().parse::<u32>().ok()) {
+            Some(p) => Self::at_period(side, p),
+            None => Self::new(side, parse_clock(switch)),
+        }
     }
 }
 
@@ -105,7 +151,7 @@ pub fn estimate(obs: &[Obs]) -> Option<Estimate> {
     }
     let fits = |d: &Direction| obs.iter().filter(|o| d.attacker(o.side, o.t) == o.team).count();
     let best_of = |switch_at: Option<f64>| {
-        ['l', 'r'].into_iter().map(|h| Direction { home_start: h, switch_at }).map(|d| (fits(&d), d)).max_by_key(|x| x.0).unwrap()
+        ['l', 'r'].into_iter().filter_map(|h| Direction::new(h, switch_at)).map(|d| (fits(&d), d)).max_by_key(|x| x.0).unwrap()
     };
     let (mut agree, mut dir) = best_of(None);
     let mut ts: Vec<f64> = obs.iter().map(|o| o.t).collect();
@@ -175,7 +221,23 @@ mod tests {
     fn no_switch_without_evidence() {
         let obs: Vec<Obs> = (0..12).map(|i| o(i as f64 * 50.0, if i % 2 == 0 { Team::Home } else { Team::Away }, if i % 2 == 0 { 'l' } else { 'r' })).collect();
         let e = estimate(&obs).unwrap();
-        assert_eq!(e.dir, Direction { home_start: 'l', switch_at: None });
+        assert_eq!(e.dir, Direction::new('l', None).unwrap());
         assert_eq!(e.agree, 12);
+    }
+
+    #[test]
+    fn ends_change_with_the_period_on_the_scoreboard() {
+        let mut d = Direction::parse("l", "period:3").unwrap();
+        assert_eq!((d.switch_period, d.switch_at), (Some(3), None));
+        // one misread 3 does not switch; two readings in a row do
+        d.note_period(Some(3), 100.0);
+        d.note_period(Some(2), 101.0);
+        d.note_period(Some(3), 900.0);
+        assert_eq!(d.switch_at, None);
+        d.note_period(Some(3), 901.0);
+        assert_eq!(d.switch_at, Some(901.0));
+        assert_eq!((d.home_target(10.0), d.home_target(1000.0)), ('l', 'r'));
+        // a time still works
+        assert_eq!(Direction::parse("r", "24:00").unwrap().switch_at, Some(1440.0));
     }
 }

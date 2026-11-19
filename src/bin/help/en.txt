@@ -104,6 +104,7 @@ Game situations (run/live):
                     (list per sport: docs/SCENARIOS.md); appears in the log, as `scenes` in the JSON and in `stats`
   --home-attacks l|r  playing direction: the goal/basket home attacks at the start (left/right as on the minimap); shots, free throws,
                     corners and penalties then count for the attacking team (also for stats and ticker); --switch-at mm:ss change of ends
+                    --switch-period N  change of ends once the scoreboard shows period N (basketball 3, football 2)
 
 Scoreboard (basketball, run, live):
   --scoreboard scoreboard.json   read the score from the board in the panorama (run `scoreboard-calibrate` first); in `stats` every

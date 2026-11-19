@@ -37,6 +37,12 @@ impl TickerSim {
         self.frames += 1;
         self.t_first.get_or_insert(t);
         self.t_last = self.t_last.max(t);
+        // the period on the board decides when the ends change (`--switch-period`)
+        if let Some(d) = self.direction.as_mut() {
+            for e in frame["events"].as_array().into_iter().flatten().filter(|e| e["type"] == "scoreboard") {
+                d.note_period(e["period"].as_u64().map(|p| p as u32), e["t"].as_f64().unwrap_or(t));
+            }
+        }
         // Scoreboard readings arrive with every clock tick; they feed the statistics, not the ticker.
         let mut events: Vec<Value> = frame["events"].as_array().map(|e| e.iter().filter(|e| e["type"] != "scoreboard").cloned().collect()).unwrap_or_default();
         if events.is_empty() {

@@ -65,7 +65,7 @@ const de = {
   direction: {
     title: 'Spielrichtung', hint: 'Auf welches Tor bzw. welchen Korb die Heimmannschaft zu Beginn spielt (links/rechts wie in der Minikarte). Würfe, Freiwürfe, Ecken und Strafwürfe zählen dann für das angreifende Team – auch wenn beim Werfer die Trikotfarbe falsch erkannt wurde.',
     home: 'Heim spielt zu Beginn auf', auto: 'Automatisch schätzen', left: 'Links', right: 'Rechts',
-    switch: 'Seitenwechsel bei (mm:ss im Video)', switchHint: 'Leer lassen, wenn das Video keinen Seitenwechsel enthält. Die Statistik übernimmt die Einstellung sofort, Spielsituationen und Ticker ab der nächsten Verarbeitung.',
+    switch: 'Seitenwechsel', switchHint: 'Den Zeitpunkt liefert die Anzeigetafel (Spielabschnitt). Ohne Tafel schätzt die Statistik ihn aus den Würfen. Die Statistik übernimmt die Einstellung sofort, Spielsituationen und Ticker ab der nächsten Verarbeitung.', switchNone: 'Kein Seitenwechsel', switchTime: 'Zu einer Zeit im Video …', switchTimeLabel: 'Zeit im Video (mm:ss)', switchQ3: 'Ab dem 3. Viertel', switchH2: 'Ab der 2. Halbzeit',
     label: 'Spielrichtung:', line: (side: string, sw: string | null) => `Heim spielt zuerst nach ${side === 'l' ? 'links' : 'rechts'}${sw ? `, Seitenwechsel bei ${sw}` : ''}`,
     given: 'eingestellt', estimated: (a: number, n: number) => `geschätzt – ${a} von ${n} Versuchen passen dazu`,
     unsure: (a: number, n: number) => `unsicher (${a} von ${n} Versuchen) – nicht angewendet; in Schritt 3 einstellen`, unknown: 'unbekannt – in Schritt 3 einstellen',
@@ -204,7 +204,7 @@ const en: Text = {
   direction: {
     title: 'Playing direction', hint: 'Which goal or basket the home team attacks at the start (left/right as on the minimap). Shots, free throws, corners and penalties then count for the attacking team – even when the shooter\'s shirt colour was misread.',
     home: 'Home attacks at the start', auto: 'Estimate automatically', left: 'Left', right: 'Right',
-    switch: 'Change of ends at (mm:ss in the video)', switchHint: 'Leave empty if the video has no change of ends. Statistics use the setting at once; game situations and the ticker from the next processing on.',
+    switch: 'Change of ends', switchHint: 'The moment comes from the scoreboard (period). Without a scoreboard the statistics estimate it from the attempts. The statistics use the setting at once, game situations and ticker from the next processing.', switchNone: 'No change of ends', switchTime: 'At a time in the video …', switchTimeLabel: 'Time in the video (mm:ss)', switchQ3: 'From the 3rd quarter', switchH2: 'From the 2nd half',
     label: 'Playing direction:', line: (side: string, sw: string | null) => `Home attacks ${side === 'l' ? 'left' : 'right'} first${sw ? `, change of ends at ${sw}` : ''}`,
     given: 'set by you', estimated: (a: number, n: number) => `estimated – ${a} of ${n} attempts fit`,
     unsure: (a: number, n: number) => `unsure (${a} of ${n} attempts) – not applied; set it in step 3`, unknown: 'unknown – set it in step 3',
@@ -341,7 +341,7 @@ const fr: Text = {
   direction: {
     title: 'Sens du jeu', hint: 'Le but ou panier que l\'équipe à domicile attaque au début (gauche/droite comme sur la minicarte). Tirs, lancers francs, corners et penaltys comptent alors pour l\'équipe qui attaque – même si la couleur du maillot du tireur a été mal reconnue.',
     home: 'Domicile attaque au début vers', auto: 'Estimer automatiquement', left: 'Gauche', right: 'Droite',
-    switch: 'Changement de côté à (mm:ss dans la vidéo)', switchHint: 'Laisser vide si la vidéo ne contient pas de changement de côté. Les statistiques appliquent le réglage tout de suite ; situations de jeu et fil en direct au prochain traitement.',
+    switch: 'Changement de côté', switchHint: 'L’instant vient du tableau d’affichage (période). Sans tableau, les statistiques l’estiment d’après les tirs. Les statistiques appliquent le réglage aussitôt, situations de jeu et direct au prochain traitement.', switchNone: 'Pas de changement de côté', switchTime: 'À un instant de la vidéo …', switchTimeLabel: 'Instant dans la vidéo (mm:ss)', switchQ3: 'À partir du 3ᵉ quart-temps', switchH2: 'À partir de la 2ᵉ mi-temps',
     label: 'Sens du jeu :', line: (side: string, sw: string | null) => `Domicile attaque d'abord à ${side === 'l' ? 'gauche' : 'droite'}${sw ? `, changement de côté à ${sw}` : ''}`,
     given: 'réglé', estimated: (a: number, n: number) => `estimé – ${a} tentatives sur ${n} concordent`,
     unsure: (a: number, n: number) => `incertain (${a} sur ${n} tentatives) – non appliqué ; à régler à l'étape 3`, unknown: 'inconnu – à régler à l\'étape 3',
@@ -478,7 +478,7 @@ const es: Text = {
   direction: {
     title: 'Dirección de juego', hint: 'La portería o canasta que ataca el equipo local al principio (izquierda/derecha como en el minimapa). Tiros, tiros libres, córneres y penaltis cuentan entonces para el equipo atacante, aunque el color de la camiseta del tirador se haya reconocido mal.',
     home: 'El local ataca al principio hacia', auto: 'Estimar automáticamente', left: 'Izquierda', right: 'Derecha',
-    switch: 'Cambio de campo en (mm:ss del vídeo)', switchHint: 'Déjalo vacío si el vídeo no tiene cambio de campo. Las estadísticas aplican el ajuste al momento; las situaciones de juego y el resumen en directo, desde el próximo procesamiento.',
+    switch: 'Cambio de campo', switchHint: 'El momento lo da el marcador (periodo). Sin marcador, las estadísticas lo estiman a partir de los tiros. Las estadísticas aplican el ajuste al instante; situaciones de juego y directo desde el próximo procesamiento.', switchNone: 'Sin cambio de campo', switchTime: 'En un momento del vídeo …', switchTimeLabel: 'Momento en el vídeo (mm:ss)', switchQ3: 'Desde el 3.er cuarto', switchH2: 'Desde la 2.ª parte',
     label: 'Dirección de juego:', line: (side: string, sw: string | null) => `El local ataca primero hacia la ${side === 'l' ? 'izquierda' : 'derecha'}${sw ? `, cambio de campo en ${sw}` : ''}`,
     given: 'ajustada', estimated: (a: number, n: number) => `estimada: encajan ${a} de ${n} intentos`,
     unsure: (a: number, n: number) => `dudosa (${a} de ${n} intentos): no aplicada; ajústala en el paso 3`, unknown: 'desconocida: ajústala en el paso 3',

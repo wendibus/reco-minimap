@@ -1,4 +1,38 @@
 {
+  "0.23.3": {
+    "de": [
+      "Behoben: Das Taktikboard ließ sich nicht öffnen („keine Zustandszeilen“).",
+      "Taktikboard rund um den Ticker: Unter 6 · Auswertung einen Moment wählen – Korb, Wurfversuch, Freiwurf, Wechsel – und das Board öffnet ein paar Sekunden davor (einstellbar). Ein eigener Zeitpunkt geht weiterhin.",
+      "Seitenwechsel nach Spielabschnitt statt nach Videozeit: im Basketball ab dem 3. Viertel, im Fußball ab der 2. Halbzeit. Der Abschnitt kommt von der Anzeigetafel; ohne Tafel wird der Wechsel geschätzt.",
+      "Laufende Aufträge erscheinen nach einem Neuladen des Fensters wieder mit Fortschritt.",
+      "Ein zweiter Auftrag, der in dieselben Dateien schreiben würde, wird jetzt abgelehnt – zwei gleichzeitige Analysen konnten das Fenster der Mac-App lahmlegen.",
+      "Ein beendetes Taktikboard heißt in der Statuszeile jetzt „Abgebrochen“ statt „Fehlgeschlagen“."
+    ],
+    "en": [
+      "Fixed: the tactics board would not open (“no state lines”).",
+      "Tactics board around the ticker: in 6 · Evaluation pick a moment – basket, attempt, free throw, substitution – and the board opens a few seconds before it (adjustable). Your own time still works.",
+      "Side switch by period instead of video time: in basketball from the 3rd quarter, in football from the 2nd half. The period comes from the scoreboard; without one the switch is estimated.",
+      "Running jobs show up again with their progress after the window is reloaded.",
+      "A second job that would write to the same files is now refused – two analyses at once could freeze the Mac app's window.",
+      "A closed tactics board now reads “Cancelled” in the status bar instead of “Failed”."
+    ],
+    "fr": [
+      "Corrigé : le tableau tactique ne s’ouvrait pas (« aucune ligne d’état »).",
+      "Tableau tactique autour du direct : dans 6 · Évaluation, choisissez un moment – panier, tentative, lancer franc, changement – et le tableau s’ouvre quelques secondes avant (réglable). Un instant libre reste possible.",
+      "Changement de côté par période au lieu du temps vidéo : au basket à partir du 3e quart-temps, au football à partir de la 2e mi-temps. La période vient du tableau d’affichage ; sans tableau, le changement est estimé.",
+      "Les tâches en cours réapparaissent avec leur progression après un rechargement de la fenêtre.",
+      "Une deuxième tâche qui écrirait dans les mêmes fichiers est désormais refusée – deux analyses simultanées pouvaient bloquer la fenêtre de l’app Mac.",
+      "Un tableau tactique fermé affiche désormais « Annulé » dans la barre d’état au lieu de « Échec »."
+    ],
+    "es": [
+      "Corregido: la pizarra táctica no se abría («no hay líneas de estado»).",
+      "Pizarra táctica alrededor del directo: en 6 · Evaluación elige un momento – canasta, intento, tiro libre, cambio – y la pizarra se abre unos segundos antes (ajustable). Un momento propio sigue siendo posible.",
+      "Cambio de lado por periodo en vez de tiempo de vídeo: en baloncesto desde el 3.er cuarto, en fútbol desde la 2.ª parte. El periodo viene del marcador; sin marcador el cambio se estima.",
+      "Los trabajos en curso vuelven a aparecer con su progreso tras recargar la ventana.",
+      "Ahora se rechaza un segundo trabajo que escribiría en los mismos archivos – dos análisis a la vez podían bloquear la ventana de la app de Mac.",
+      "Una pizarra táctica cerrada muestra ahora «Cancelado» en la barra de estado en lugar de «Fallido»."
+    ]
+  },
   "0.23.2": {
     "de": [
       "Behoben: Das Fenster blieb leer bzw. die Anzeige verschwand gleich wieder, wenn die Statistik ein Spiel ohne Box-Score zeigte.",

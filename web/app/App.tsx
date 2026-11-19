@@ -111,7 +111,7 @@ export function App() {
         </div>}
         <footer className={logOpen ? 'mm-log open' : 'mm-log'}>
           <div className="mm-log-head"><button type="button" className="mm-link" data-hint={h.showLog} onClick={() => setLogOpen((v) => !v)}>{logOpen ? '▾' : '▸'} {t.ui.log}</button>
-            {last && <span className={last.status === 'done' ? 'ok' : last.status === 'failed' || last.status === 'cancelled' ? 'bad' : 'mm-muted'}>{t.job.titles[last.kind] ?? last.kind} · {T('status.' + (last.status === 'cancelled' || last.status === 'cancelling' ? 'failed' : last.status))}</span>}
+            {last && <span className={last.status === 'done' ? 'ok' : last.status === 'failed' ? 'bad' : 'mm-muted'}>{t.job.titles[last.kind] ?? last.kind} · {last.status === 'cancelled' || last.status === 'cancelling' ? t.job.cancelled : T('status.' + last.status)}</span>}
             {last && (last.status === 'running') && (last.kind === 'live' || last.kind === 'board') && <Btn hint={h.cancelJob} onClick={() => void app.cancelJob(last.id, true)}>{T('btn.cancel')}</Btn>}
           </div>
           {logOpen && <pre ref={logRef} className="mm-log-body">{lines.join('\n')}</pre>}

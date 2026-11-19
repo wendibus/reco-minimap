@@ -106,6 +106,7 @@ Situations de jeu (run/live) :
                     (liste par sport : docs/SCENARIOS.fr.md) ; apparaît dans le journal, sous `scenes` dans le JSON et dans `stats`
   --home-attacks l|r  sens du jeu : but/panier que domicile attaque au début (gauche/droite comme sur la minicarte) ; tirs, lancers francs,
                     corners et penaltys comptent alors pour l'équipe qui attaque (aussi pour stats et ticker) ; --switch-at mm:ss changement de côté
+                    --switch-period N  changement de côté dès que le tableau affiche la période N (basket 3, football 2)
 
 Tableau d'affichage (basket, run, live) :
   --scoreboard scoreboard.json   lire le score sur le tableau dans le panorama (d'abord `scoreboard-calibrate`) ; dans `stats`, chaque

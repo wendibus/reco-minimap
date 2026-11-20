@@ -599,6 +599,7 @@ pub fn report_full(profile: &SportProfile, frames: &[Value], given: Option<Direc
         .iter()
         .map(|a| json!({"t": r2(a.t), "team": a.team, "x": r2(a.pos.x as f64), "y": r2(a.pos.y as f64), "kind": a.kind, "zone": a.zone, "goal": a.goal, "distance": r2(a.distance as f64), "confidence": r2(a.confidence as f64)}))
         .collect();
+    let board_quality = { let r = super::scoreboard::readings_in(frames); if r.is_empty() { Value::Null } else { super::scoreboard::quality(&r) } };
     json!({
         "reco_minimap_stats": 1,
         "sport": sport,
@@ -619,6 +620,8 @@ pub fn report_full(profile: &SportProfile, frames: &[Value], given: Option<Direc
         "players": super::stats_players::players(frames),
         "score": super::stats_players::score(profile, frames, &att, dir),
         "box_score": super::stats_players::box_score(profile, frames, &att, fixes),
+        // how well the hall scoreboard was read (null: the file has no readings)
+        "board_quality": board_quality,
         "moments": moments,
     })
 }

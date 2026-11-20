@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { HintLayer } from './HintLayer';
 import { JobDialog } from './JobDialog';
-import { api, Btn, chooseNative, MAC_APP_DOWNLOAD, macAppOutdated, EMBEDDED_KINDS, embeddedUrl, LANGS, useApp } from './core';
+import { api, BACKGROUND_KINDS, Btn, chooseNative, MAC_APP_DOWNLOAD, macAppOutdated, EMBEDDED_KINDS, embeddedUrl, LANGS, useApp } from './core';
 import { CalibPanel, EvalPanel, LivePanel, RunPanel, SetupPanel, VideoPanel } from './panels';
 import { StatsPanel } from './stats';
 import { unseen, WhatsNew } from './WhatsNew';
@@ -112,7 +112,7 @@ export function App() {
         <footer className={logOpen ? 'mm-log open' : 'mm-log'}>
           <div className="mm-log-head"><button type="button" className="mm-link" data-hint={h.showLog} onClick={() => setLogOpen((v) => !v)}>{logOpen ? '▾' : '▸'} {t.ui.log}</button>
             {last && <span className={last.status === 'done' ? 'ok' : last.status === 'failed' ? 'bad' : 'mm-muted'}>{t.job.titles[last.kind] ?? last.kind} · {last.status === 'cancelled' || last.status === 'cancelling' ? t.job.cancelled : T('status.' + last.status)}</span>}
-            {last && (last.status === 'running') && (last.kind === 'live' || last.kind === 'board') && <Btn hint={h.cancelJob} onClick={() => void app.cancelJob(last.id, true)}>{T('btn.cancel')}</Btn>}
+            {last && (last.status === 'running') && BACKGROUND_KINDS.has(last.kind) && <Btn hint={h.cancelJob} onClick={() => void app.cancelJob(last.id, true)}>{T('btn.cancel')}</Btn>}
           </div>
           {logOpen && <pre ref={logRef} className="mm-log-body">{lines.join('\n')}</pre>}
         </footer>

@@ -486,11 +486,51 @@ fn score_from_board(frames: &[Value], att: &[Attempt], readings: &[crate::scoreb
         "team_only": {"home": n(&team_only, "home"), "away": n(&team_only, "away")}})
 }
 
+/// The score from the baskets confirmed on the phone in a live replay (attempts mode: every score
+/// event is a manual one), with the shooters named there.
+fn score_from_confirmed(frames: &[Value]) -> Option<Value> {
+    let all: Vec<crate::live_score::ScoreEvent> = frames.iter().flat_map(|f| f["events"].as_array().into_iter().flatten()).filter(|e| e["type"] == "score").filter_map(crate::live_score::parse_event).collect();
+    if all.is_empty() || all.iter().any(|e| e.basis != crate::live_score::Basis::Manual) {
+        return None;
+    }
+    let mut evs = crate::live_score::final_events(&all);
+    evs.sort_by(|a, b| a.t.total_cmp(&b.t));
+    let mut per: HashMap<(&str, u32), i64> = HashMap::new();
+    let mut no_number: HashMap<&str, i64> = HashMap::new();
+    let (mut home, mut away) = (0u32, 0u32);
+    let mut events = Vec::new();
+    let mut timeline = vec![json!({"t": r1(frames.first().and_then(|f| f["t"].as_f64()).unwrap_or(0.0)), "home": 0, "away": 0, "period": null, "clock": null})];
+    for e in &evs {
+        let team = team_str(e.team);
+        if e.team == crate::team::Team::Home { home = e.to } else { away = e.to }
+        match e.number {
+            Some(n) => *per.entry((team, n)).or_default() += e.points as i64,
+            None => *no_number.entry(team).or_default() += e.points as i64,
+        }
+        events.push(json!({"t": r1(e.t), "team": team, "points": e.points, "from": e.from, "to": e.to, "basis": "manual", "probability": 1.0, "candidates": [], "cancelled": false,
+            "attempt": null, "shooter": e.number.map(|n| json!({"number": n, "status": "read"}))}));
+        timeline.push(json!({"t": r1(e.t), "home": home, "away": away, "period": null, "clock": null}));
+    }
+    let list = |team: &str| {
+        let mut v: Vec<(u32, i64)> = per.iter().filter(|((t, _), _)| *t == team).map(|((_, n), p)| (*n, *p)).collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        v.into_iter().map(|(n, p)| json!({"number": n, "points": p, "read": p, "inferred": 0})).collect::<Vec<_>>()
+    };
+    let n = |m: &HashMap<&str, i64>, k: &str| m.get(k).copied().unwrap_or(0);
+    Some(json!({"supported": true, "method": "confirmed", "home": home, "away": away, "start": {"home": 0, "away": 0}, "period": null, "clock": null,
+        "events": events, "timeline": timeline, "players": {"home": list("home"), "away": list("away")},
+        "no_number": {"home": n(&no_number, "home"), "away": n(&no_number, "away")}, "team_only": {"home": 0, "away": 0}}))
+}
+
 /// Estimated score from the attempts and the restarts after them (see the module docs). For
 /// basketball with scoreboard readings in the frames, the board's score with the scorers instead.
 pub fn score(profile: &SportProfile, frames: &[Value], att: &[Attempt], dir: Option<Direction>) -> Value {
     let sport = profile.id.as_str();
     if sport == "basketball" {
+        // baskets confirmed in a live replay (instead of an unreliable board): they are the score
+        if let Some(v) = score_from_confirmed(frames) {
+            return v;
+        }
         // the raw readings of the board -> the most plausible course of the game
         let raw = super::scoreboard::readings_in(frames);
         let readings = crate::scoreboard::timeline::changed_readings(&crate::scoreboard::timeline::resolve(&raw, &Default::default()));

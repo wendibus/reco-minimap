@@ -233,6 +233,26 @@ impl FrameWriter {
         Ok(Self { child, stdin })
     }
 
+    /// Like [`open`](Self::open) for RGB frames of `w`x`h`, scaled to `out` (w, h) on the way.
+    pub fn open_scaled(path: &str, w: usize, h: usize, fps: f64, out: (usize, usize), codec: &Codec) -> Result<Self, String> {
+        let v = match codec {
+            Codec::H264(v) if v != "auto" => v.clone(),
+            _ => auto_h264(out.0, out.1).to_string(),
+        };
+        let mut c = Command::new("ffmpeg");
+        c.args(["-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", &format!("{w}x{h}"), "-framerate", &format!("{fps}"), "-i", "-"]);
+        c.args(["-vf", &format!("scale={}:{}:flags=bicubic", out.0 & !1, out.1 & !1), "-c:v", &v, "-pix_fmt", "yuv420p"]);
+        if v == "libx264" {
+            c.args(["-crf", "20", "-preset", "veryfast"]);
+        } else if v.ends_with("_videotoolbox") {
+            c.args(["-q:v", "62"]);
+        }
+        c.args(["-movflags", "+faststart"]).arg(path);
+        let mut child = c.stdin(Stdio::piped()).stderr(Stdio::inherit()).spawn().map_err(|e| tr!("ffmpeg nicht gefunden ({e})", "ffmpeg not found ({e})", "ffmpeg introuvable ({e})", "no se encuentra ffmpeg ({e})"))?;
+        let stdin = child.stdin.take();
+        Ok(Self { child, stdin })
+    }
+
     pub fn write(&mut self, buf: &[u8]) -> Result<(), String> {
         self.stdin.as_mut().ok_or("writer closed")?.write_all(buf).map_err(|e| tr!("Schreiben an ffmpeg fehlgeschlagen: {e}", "ffmpeg write failed: {e}", "échec de l'écriture vers ffmpeg : {e}", "fallo al escribir en ffmpeg: {e}"))
     }
@@ -458,6 +478,38 @@ impl Frame {
                 }
             }
         }
+    }
+
+    /// The frame as JPEG bytes, at most `max_w` px wide (for previews).
+    pub fn jpeg(&self, max_w: usize) -> Result<Vec<u8>, String> {
+        let mut child = Command::new("ffmpeg")
+            .args(["-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", &format!("{}x{}", self.w, self.h), "-i", "-", "-vf", &format!("scale='min({max_w},iw)':-2"), "-frames:v", "1", "-q:v", "3", "-f", "image2pipe", "-vcodec", "mjpeg", "-"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| tr!("ffmpeg nicht gefunden ({e})", "ffmpeg not found ({e})", "ffmpeg introuvable ({e})", "no se encuentra ffmpeg ({e})"))?;
+        let mut stdin = child.stdin.take().ok_or("ffmpeg stdin")?;
+        let rgb = self.rgb.clone();
+        let writer = std::thread::spawn(move || stdin.write_all(&rgb));
+        let out = child.wait_with_output().map_err(|e| e.to_string())?;
+        let _ = writer.join();
+        if out.stdout.is_empty() {
+            return Err(format!("ffmpeg: {}", String::from_utf8_lossy(&out.stderr).trim()));
+        }
+        Ok(out.stdout)
+    }
+
+    /// A `w`x`h` part of the frame from (`x`, `y`) (clamped to the picture).
+    pub fn crop(&self, x: usize, y: usize, w: usize, h: usize) -> Frame {
+        let (w, h) = (w.min(self.w), h.min(self.h));
+        let (x, y) = (x.min(self.w - w), y.min(self.h - h));
+        let mut rgb = Vec::with_capacity(w * h * 3);
+        for row in y..y + h {
+            let i = (row * self.w + x) * 3;
+            rgb.extend_from_slice(&self.rgb[i..i + w * 3]);
+        }
+        Frame { w, h, rgb }
     }
 
     pub fn write_png(&self, path: &str) -> Result<(), String> {

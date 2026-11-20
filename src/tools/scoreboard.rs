@@ -156,6 +156,34 @@ pub fn readings_in(frames: &[Value]) -> Vec<Reading> {
     v
 }
 
+/// How well the hall scoreboard was read in a result: the share of readings with both scores,
+/// with the clock and the period, and how often a score went down (a misread digit). `ok` is false
+/// when the points of the match cannot be trusted - the evaluation then says so.
+pub fn quality(readings: &[Reading]) -> Value {
+    let n = readings.len();
+    if n == 0 {
+        return json!({"readings": 0, "ok": false});
+    }
+    let share = |f: &dyn Fn(&Reading) -> bool| (readings.iter().filter(|r| f(r)).count() as f64 / n as f64 * 100.0).round() / 100.0;
+    let both = share(&|r| r.home.is_some() && r.away.is_some());
+    let (mut last, mut drops) = ([None::<u32>; 2], 0usize);
+    for r in readings {
+        for (i, v) in [r.home, r.away].into_iter().enumerate() {
+            if let Some(v) = v {
+                if last[i].is_some_and(|l| v < l) {
+                    drops += 1;
+                }
+                last[i] = Some(v);
+            }
+        }
+    }
+    let span = (readings[n - 1].t - readings[0].t).max(60.0);
+    let drops_10 = (drops as f64 / span * 600.0 * 10.0).round() / 10.0;
+    json!({"readings": n, "both": both, "home": share(&|r| r.home.is_some()), "away": share(&|r| r.away.is_some()),
+        "clock": share(&|r| r.clock.is_some()), "period": share(&|r| r.period.is_some()),
+        "drops_per_10min": drops_10, "ok": both >= 0.6 && drops_10 < 3.0})
+}
+
 // ---------------------------------------------------------------- reading a video
 
 /// ffmpeg that decodes only `region` of the video, every frame, as RGB24.
@@ -689,3 +717,25 @@ pub fn compare(tl: &crate::scoreboard::timeline::Timeline, states: &[RefState], 
     }
     c
 }
+
+#[cfg(test)]
+mod quality_tests {
+    use super::*;
+
+    fn rd(t: f64, h: Option<u32>, a: Option<u32>) -> Reading {
+        Reading { t, home: h, away: a, clock: None, period: None }
+    }
+
+    #[test]
+    fn a_board_read_mostly_on_one_side_is_not_trusted() {
+        let good: Vec<Reading> = (0..200).map(|i| rd(i as f64, Some(i / 20), Some(i / 30))).collect();
+        assert_eq!(quality(&good)["ok"], true);
+        // home missing in most readings and a flickering away score
+        let bad: Vec<Reading> = (0..200).map(|i| rd(i as f64, (i % 10 == 0).then_some(7), Some(if i % 2 == 0 { 14 } else { 4 }))).collect();
+        let q = quality(&bad);
+        assert_eq!(q["ok"], false);
+        assert!(q["home"].as_f64().unwrap() < 0.2, "{q}");
+        assert_eq!(quality(&[])["ok"], false);
+    }
+}
+

@@ -42,7 +42,7 @@ struct Job {
 /// Output files named in a job's arguments (relative ones are inside the project folder).
 fn job_outputs(dir: &Path, args: &[String]) -> Vec<PathBuf> {
     args.windows(2)
-        .filter(|w| matches!(w[0].as_str(), "--minimap" | "--alpha" | "--pip" | "--json" | "--dets" | "--metrics" | "--ticker-json"))
+        .filter(|w| matches!(w[0].as_str(), "--minimap" | "--alpha" | "--pip" | "--track" | "--json" | "--dets" | "--metrics" | "--ticker-json"))
         .map(|w| {
             let p = PathBuf::from(&w[1]);
             if p.is_absolute() { p } else { dir.join(p) }
@@ -308,7 +308,7 @@ fn project_files(dir: &Path) -> Value {
         }
     }
     outs.sort_by(|a, b| b["t"].as_u64().cmp(&a["t"].as_u64()));
-    let board = super::scoreboard::load(&dir.join("scoreboard.json").to_string_lossy()).ok().map(|c| json!({"fields": c.fields().len(), "home": if c.home == crate::scoreboard::HomeSide::Right { "right" } else { "left" }}));
+    let board = super::scoreboard::load(&dir.join("scoreboard.json").to_string_lossy()).ok().map(|c| json!({"fields": c.fields().len(), "home": if c.home == crate::scoreboard::HomeSide::Right { "right" } else { "left" }, "digits": [c.left_score.digits, c.right_score.digits], "period": c.period.is_some()}));
     json!({"court": court_v, "scales": rd("scales.json").map(|v| json!({"n": v["n"]})), "teams": rd("teams.json"), "scoreboard": board, "out": outs})
 }
 
@@ -365,18 +365,90 @@ fn pano_u(proj: &dyn crate::geom::Projector, p: crate::geom::Vec2) -> Option<f64
     best.filter(|b| b.2 < 3.0).map(|b| b.0 as f64)
 }
 
+/// The project's video graphics (`overlay`) with everything filled in that the program needs:
+/// short team names, team colours and the period format of the sport.
+fn overlay_json(proj: &Value) -> Value {
+    let mut o = if proj["overlay"].is_object() { proj["overlay"].clone() } else { json!({}) };
+    let name = |k: &str, d: &str| {
+        let n = proj["live"][k].as_str().map(str::trim).unwrap_or("");
+        if n.is_empty() { d.to_string() } else { super::overlay::short_name(n) }
+    };
+    if let Some(b) = o.get_mut("scoreboard").and_then(Value::as_object_mut) {
+        let empty = |b: &serde_json::Map<String, Value>, k: &str| b.get(k).and_then(Value::as_str).is_none_or(|s| s.trim().is_empty());
+        if empty(b, "home") {
+            b.insert("home".into(), json!(name("home_name", trs!("HEIM", "HOME", "DOM", "LOC"))));
+        }
+        if empty(b, "away") {
+            b.insert("away".into(), json!(name("away_name", trs!("GAST", "AWAY", "EXT", "VIS"))));
+        }
+        for (k, d) in [("home_color", "draw_home"), ("away_color", "draw_away")] {
+            if empty(b, k) {
+                if let Some(c) = proj["colors"][d].as_str() {
+                    b.insert(k.into(), json!(c));
+                }
+            }
+        }
+        if empty(b, "period_fmt") {
+            let f = match proj["sport"].as_str().unwrap_or("") {
+                "basketball" | "hockey" | "lacrosse" | "american_football" => "Q{n}",
+                "football" | "futsal" | "handball" | "rugby" => trs!("{n}. HZ", "H{n}", "MT{n}", "{n}ª P"),
+                "volleyball" => trs!("Satz {n}", "Set {n}", "Set {n}", "Set {n}"),
+                _ => "{n}.",
+            };
+            b.insert("period_fmt".into(), json!(f));
+        }
+    }
+    o
+}
+
+/// The project video at `t` (or the calibration time) with the graphics drawn on it, as JPEG.
+/// `track`: as in the 16:9 autotrack video (a part of the panorama) instead of the whole panorama.
+fn overlay_preview(dir: &Path, overlay: &Value, track: bool) -> Result<Vec<u8>, String> {
+    let proj = std::fs::read_to_string(dir.join("project.json")).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).unwrap_or_else(|| json!({}));
+    let video = proj["video"].as_str().unwrap_or("");
+    if video.is_empty() || !Path::new(video).is_file() {
+        return Err(trs!("Video nicht gefunden", "video not found", "vidéo introuvable", "vídeo no encontrado").into());
+    }
+    let mut p2 = proj.clone();
+    p2["overlay"] = overlay.clone();
+    let o = super::overlay::Overlay::from_json(&overlay_json(&p2), ["", ""], [[255, 255, 255], [0, 0, 0]]);
+    let info = super::video::probe(video)?;
+    let mut f = super::video::grab(video, &info, proj["calib_time"].as_f64().unwrap_or(2.0))?;
+    if track {
+        let w = (f.h * 16 / 9).min(f.w) & !1;
+        f = f.crop((f.w - w) / 2, 0, w, f.h);
+    }
+    o.draw(&mut f, Some(super::overlay::Score { home: 43, away: 66, period: Some(3), clock: Some(321) }));
+    f.jpeg(1600)
+}
+
 fn stats_for(dir: &Path, file: &str, fixes: Option<&Value>) -> Result<Value, String> {
     let path = if Path::new(file).is_absolute() { PathBuf::from(file) } else { dir.join(file) };
     let txt = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let frames: Vec<Value> = txt.lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
+    let mut frames: Vec<Value> = txt.lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
     if frames.len() < 2 {
         return Err(trs!("zu wenige Bilder in der Datei", "too few frames in the file", "trop peu d'images dans le fichier", "muy pocas imágenes en el archivo").into());
     }
+    // baskets confirmed when the game was replayed as live
+    let confirmed = super::simulate::apply_baskets(&path, &mut frames);
     let profile = CourtCalib::load(&dir.join("court.json").to_string_lossy()).map(|c| c.profile()).map_err(|e| e.to_string())?;
     let proj = std::fs::read_to_string(dir.join("project.json")).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).unwrap_or_else(|| json!({}));
     // the hand checks sent along (newest) or saved in the project
     let fixes = super::stats_players::parse_fixes(fixes.unwrap_or(&proj["score_fixes"]));
     let mut v = super::stats::report_full(&profile, &frames, project_direction(&proj["direction"]), &fixes);
+    if confirmed {
+        if let Some(q) = v.get_mut("board_quality").and_then(Value::as_object_mut) {
+            q.insert("confirmed".into(), json!(true));
+        }
+    }
+    // a badly read hall scoreboard: what in its calibration may be the cause
+    if let (Some(q), Ok(t)) = (v.get_mut("board_quality").and_then(Value::as_object_mut), std::fs::read_to_string(dir.join("scoreboard.json"))) {
+        if let Ok(sb) = serde_json::from_str::<Value>(&t) {
+            let digits = |k: &str| sb[k]["digits"].as_u64();
+            q.insert("digits".into(), json!([digits("left_score"), digits("right_score")]));
+            q.insert("has_period".into(), json!(sb["period"].is_object()));
+        }
+    }
     // per basket: where the players were in the panorama, for the picture strip
     // get_mut, not v["box_score"]["made"]: indexing would turn a missing box score (null) into {"made": null}
     if let (Some(made), Ok(cal)) = (v.get_mut("box_score").and_then(|b| b.get_mut("made")).and_then(Value::as_array_mut), CourtCalib::load(&dir.join("court.json").to_string_lossy())) {
@@ -518,6 +590,17 @@ fn get_s(v: &Value, k: &str) -> String {
 }
 
 /// Build the CLI arguments for a job kind. Parameters come as structured JSON, never as a shell string.
+/// `--overlay '<json>'` for a job: the graphics of the project, completed from the job's settings.
+fn overlay_args(a: &mut Vec<String>, p: &Value) {
+    let ov = &p["overlay"];
+    let on = |k: &str| ov[k]["on"].as_bool() == Some(true);
+    if !on("scoreboard") && !on("watermark") {
+        return;
+    }
+    let proj = json!({"overlay": ov, "sport": p["sport"], "live": {"home_name": p["home_name"], "away_name": p["away_name"]}, "colors": {"draw_home": p["draw_home"], "draw_away": p["draw_away"]}});
+    pushs(a, &["--overlay", &overlay_json(&proj).to_string()]);
+}
+
 fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> {
     let model = get_s(p, "model_dir");
     let video = get_s(p, "video");
@@ -662,6 +745,17 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
                     ticker_names(&mut a, p);
                 }
                 for (f, v) in &paths { if !f.starts_with("--alpha-bg") { any = true; } pushs(&mut a, &[f, v]); }
+                if o["pip"].as_bool() == Some(true) {
+                    overlay_args(&mut a, p);
+                    for (flag, key) in [("--home-name", "home_name"), ("--away-name", "away_name")] {
+                        if !get_s(p, key).trim().is_empty() && !a.iter().any(|x| x == flag) {
+                            pushs(&mut a, &[flag, get_s(p, key).trim()]);
+                        }
+                    }
+                    if p["audio"].as_bool() == Some(true) {
+                        pushs(&mut a, &["--audio"]);
+                    }
+                }
                 if !any {
                     return Err(trs!("keine Ausgabe gewählt", "no output chosen", "aucune sortie choisie", "no se ha elegido ninguna salida").into());
                 }
@@ -702,6 +796,7 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
                 if p["adaptive"].as_bool() == Some(true) {
                     pushs(&mut a, &["--adaptive-live"]);
                 }
+                overlay_args(&mut a, p);
             }
         }
         "board" => {
@@ -727,6 +822,83 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
                     }
                 }
             }
+        }
+        "render" => {
+            // after a run the UI names the segment; its result is out/<name>.jsonl
+            let f = if p["by_name"].as_bool() == Some(true) { dir.join("out").join(format!("{}.jsonl", sanitize(&get_s(p, "file")))).to_string_lossy().into_owned() } else { get_s(p, "file") };
+            need(&f, trs!("Datei", "file", "fichier", "archivo"))?;
+            need(&video, trs!("Video", "video", "vidéo", "vídeo"))?;
+            if !dir.join("court.json").exists() {
+                return Err(trs!("Kalibrierung fehlt (court.json)", "calibration is missing (court.json)", "calibrage manquant (court.json)", "falta la calibración (court.json)").into());
+            }
+            let stem = sanitize(&Path::new(&f).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default());
+            let out = |suffix: &str| dir.join("out").join(format!("{stem}{suffix}")).to_string_lossy().into_owned();
+            pushs(&mut a, &["render", &f, "--video", &video, "--court", "court.json"]);
+            if dir.join("teams.json").exists() {
+                pushs(&mut a, &["--teams", "teams.json"]);
+            }
+            let (track, pip) = (p["track"].as_bool() == Some(true), p["pip"].as_bool() == Some(true));
+            if !track && !pip {
+                return Err(trs!("keine Ausgabe gewählt", "no output chosen", "aucune sortie choisie", "no se ha elegido ninguna salida").into());
+            }
+            if track {
+                pushs(&mut a, &["--track", &out("_track.mp4")]);
+                if let Some(z) = p["zoom"].as_f64() {
+                    pushs(&mut a, &["--zoom", &format!("{z}")]);
+                }
+            }
+            if pip {
+                pushs(&mut a, &["--pip", &out("_panorama.mp4")]);
+            }
+            for (flag, key) in [("--draw-home", "draw_home"), ("--draw-away", "draw_away")] {
+                if !get_s(p, key).is_empty() {
+                    pushs(&mut a, &[flag, &get_s(p, key)]);
+                }
+            }
+            if p["audio"].as_bool() == Some(true) {
+                pushs(&mut a, &["--audio"]);
+            }
+            if p["minimap"].as_bool() == Some(false) {
+                pushs(&mut a, &["--no-minimap"]);
+            }
+            overlay_args(&mut a, p);
+        }
+        "simulate" => {
+            // a finished analysis played back as if live: confirm the baskets on the phone
+            let f = get_s(p, "file");
+            need(&f, trs!("Datei", "file", "fichier", "archivo"))?;
+            if !dir.join("court.json").exists() {
+                return Err(trs!("Kalibrierung fehlt (court.json)", "calibration is missing (court.json)", "calibrage manquant (court.json)", "falta la calibración (court.json)").into());
+            }
+            pushs(&mut a, &["simulate", &f, "--court", "court.json", "--port", &get_s(p, "port"), "--speed", &get_s(p, "speed")]);
+            if dir.join("teams.json").exists() {
+                pushs(&mut a, &["--teams", "teams.json"]);
+            }
+            if matches!(get_s(p, "mode").as_str(), "board" | "attempts") {
+                pushs(&mut a, &["--mode", &get_s(p, "mode")]);
+            }
+            if !get_s(p, "from").trim().is_empty() {
+                pushs(&mut a, &["--from", get_s(p, "from").trim()]);
+            }
+            let pk = get_s(p, "pick_key");
+            if pk.len() >= 16 && pk.bytes().all(|b| b.is_ascii_alphanumeric()) {
+                pushs(&mut a, &["--pick-key", &pk]);
+            }
+            let nm = &p["numbers"];
+            for (flag, key) in [("--roster-home", "roster_home"), ("--roster-away", "roster_away")] {
+                if !get_s(nm, key).is_empty() {
+                    pushs(&mut a, &[flag, &get_s(nm, key)]);
+                }
+            }
+            for (flag, key) in [("--draw-home", "draw_home"), ("--draw-away", "draw_away"), ("--ticker-names", "ticker_names"), ("--home-name", "home_name"), ("--away-name", "away_name")] {
+                if !get_s(p, key).trim().is_empty() {
+                    pushs(&mut a, &[flag, get_s(p, key).trim()]);
+                }
+            }
+            if p["network"].as_bool() == Some(true) {
+                pushs(&mut a, &["--host", "0.0.0.0"]);
+            }
+            overlay_args(&mut a, p);
         }
         "fetch_ocr" => pushs(&mut a, &["fetch-ocr"]),
         "fetch_model" => pushs(&mut a, &["fetch-model"]),
@@ -1004,6 +1176,10 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
             jres(&mut s, json!({"ok": true, "busy": busy}));
         }
         ("POST", "/api/basket/strip") => match basket_strip(&get_s(&b, "video"), b["t"].as_f64().unwrap_or(0.0), b["u"].as_f64().unwrap_or(0.5)) {
+            Ok(jpg) => respond(&mut s, "200 OK", "image/jpeg", &jpg),
+            Err(e) => err(&mut s, e),
+        },
+        ("POST", "/api/overlay/preview") => match overlay_preview(Path::new(&get_s(&b, "dir")), &b["overlay"], b["track"].as_bool() == Some(true)) {
             Ok(jpg) => respond(&mut s, "200 OK", "image/jpeg", &jpg),
             Err(e) => err(&mut s, e),
         },

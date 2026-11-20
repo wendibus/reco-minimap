@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><title>reco-minimap scoreboard</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+/* A transparent page for OBS (browser source 1920x1080 over the camera): the scoreboard and the
+   watermark of the project, in the same five looks as in the videos. ?floor=1 shows a grey floor. */
+html,body{margin:0;height:100%;background:transparent;overflow:hidden;font-family:Arial,"Helvetica Neue",Helvetica,sans-serif;font-weight:700}
+body.floor{background:#5b6470}
+#sb,#wm{position:fixed;--u:calc(min(100vh,56.25vw)/1080)}
+#sb{display:none;color:var(--fg);--op:.85}
+.box{background:color-mix(in srgb,var(--bg) calc(var(--op)*100%),transparent)}
+.num{font-variant-numeric:tabular-nums}
+/* classic */
+.classic{border-radius:calc(8*var(--u));overflow:hidden;min-width:calc(170*var(--u))}
+.classic .row{display:flex;align-items:center;height:calc(50*var(--u))}
+.classic .stripe{width:calc(9*var(--u));align-self:stretch;margin:calc(6*var(--u)) 0;border-radius:calc(2*var(--u))}
+.classic .name{flex:1;padding:0 calc(16*var(--u));font-size:calc(28*var(--u))}
+.classic .score{width:calc(69*var(--u));margin-right:calc(5*var(--u));height:calc(40*var(--u));display:grid;place-items:center;font-size:calc(34*var(--u));background:rgba(255,255,255,.1);border-radius:calc(5*var(--u))}
+.classic .info{height:calc(34*var(--u));display:grid;place-items:center;font-size:calc(21*var(--u));border-top:max(1px,var(--u)) solid rgba(255,255,255,.25)}
+/* bar */
+.bar{display:flex;align-items:stretch;height:calc(56*var(--u));border-radius:calc(6*var(--u));overflow:hidden}
+.bar .stripe{width:calc(8*var(--u))}
+.bar .name{display:grid;place-items:center;padding:0 calc(18*var(--u));font-size:calc(26*var(--u));min-width:calc(60*var(--u))}
+.bar .score{width:calc(78*var(--u));display:grid;place-items:center;font-size:calc(34*var(--u))}
+.bar .info{display:grid;place-items:center;padding:0 calc(18*var(--u));font-size:calc(22*var(--u));min-width:calc(14*var(--u))}
+/* compact */
+.compact{display:flex;align-items:center;gap:calc(10*var(--u));height:calc(40*var(--u));padding:0 calc(16*var(--u));border-radius:calc(20*var(--u));font-size:calc(24*var(--u))}
+.compact .dot{width:calc(6*var(--u));height:calc(20*var(--u));border-radius:calc(3*var(--u))}
+.compact .sep{opacity:.6}
+.compact .info{font-size:calc(18*var(--u));opacity:.8;margin-left:calc(6*var(--u))}
+/* big */
+.big{display:flex;align-items:center;gap:calc(22*var(--u));padding:0 calc(22*var(--u));height:calc(130*var(--u));border-radius:calc(12*var(--u))}
+.big .team{display:grid;justify-items:center;min-width:calc(110*var(--u))}
+.big .score{font-size:calc(78*var(--u));line-height:1}
+.big .bar2{width:70%;height:calc(5*var(--u));border-radius:calc(3*var(--u));margin:calc(8*var(--u)) 0 calc(4*var(--u))}
+.big .name{font-size:calc(22*var(--u))}
+.big .info{font-size:calc(24*var(--u));opacity:.9}
+/* minimal */
+.minimal{display:grid;justify-items:center;text-shadow:calc(2*var(--u)) calc(2*var(--u)) calc(3*var(--u)) rgba(0,0,0,.6)}
+.minimal .line{display:flex;gap:calc(10*var(--u));font-size:calc(38*var(--u))}
+.minimal .line span[data-ul]{border-bottom:calc(4*var(--u)) solid}
+.minimal .info{font-size:calc(20*var(--u));opacity:.9;margin-top:calc(4*var(--u))}
+#wm{display:none;color:#fff;font-size:calc(34*var(--u));text-shadow:calc(2*var(--u)) calc(2*var(--u)) calc(2*var(--u)) rgba(0,0,0,.6)}
+</style></head>
+<body><div id="sb"></div><div id="wm"></div>
+<script>
+const Q = new URLSearchParams(location.search);
+if (Q.get('floor') === '1') document.body.classList.add('floor');
+let cfg = null, score = null;
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const lum = h => { const n = parseInt(String(h).slice(1), 16) || 0; return 0.2126 * (n >> 16) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255); };
+const on = c => lum(c) > 150 ? '#0c0e12' : '#ffffff';
+// a team colour too close to the box gets lighter (as in the videos)
+function visible(c, bg) {
+  const p = h => [0, 2, 4].map(i => parseInt(String(h).slice(1 + i, 3 + i), 16) || 0), a = p(c), b = p(bg);
+  if (Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) >= 90) return c;
+  const t = lum(bg) < 128 ? 255 : 0;
+  return '#' + a.map(v => Math.round(v * 0.55 + t * 0.45).toString(16).padStart(2, '0')).join('');
+}
+function place(el, anchor, m) {
+  const a = anchor || 'tl', s = el.style;
+  s.left = s.right = s.top = s.bottom = s.transform = '';
+  const tx = a[1] === 'c' ? '-50%' : '0', ty = a[0] === 'm' ? '-50%' : '0';
+  if (a[1] === 'l') s.left = m; else if (a[1] === 'r') s.right = m; else s.left = '50%';
+  if (a[0] === 't') s.top = m; else if (a[0] === 'b') s.bottom = m; else s.top = '50%';
+  s.transform = `translate(${tx},${ty})`;
+}
+const clock = c => c == null ? '' : `${Math.floor(c / 60)}:${String(c % 60).padStart(2, '0')}`;
+function render() {
+  const sb = cfg?.overlay?.scoreboard, wm = cfg?.overlay?.watermark;
+  const el = document.getElementById('sb'), w = document.getElementById('wm');
+  if (wm && wm.on) {
+    w.style.display = 'block'; w.textContent = (wm.text || '').trim() || 'RecoCam'; w.style.opacity = wm.opacity ?? 0.5;
+    w.style.setProperty('--u', `calc(min(100vh,56.25vw)/1080*${wm.scale || 1})`);
+    place(w, wm.anchor || 'tr', `calc(28*var(--u))`);
+  } else w.style.display = 'none';
+  if (!sb || !sb.on || !score) { el.style.display = 'none'; return; }
+  const bg = sb.bg || '#10141a', fg = sb.fg || '#ffffff';
+  const col = [visible(sb.home_color || cfg.home, bg), visible(sb.away_color || cfg.away, bg)];
+  const name = [sb.home || 'HOME', sb.away || 'AWAY'], sc = [score.home ?? 0, score.away ?? 0];
+  const info = [sb.period !== false && score.period != null ? String(sb.period_fmt || 'Q{n}').replace('{n}', score.period) : '', sb.clock !== false ? clock(score.clock) : ''].filter(Boolean).join(' ');
+  el.style.setProperty('--bg', bg); el.style.setProperty('--fg', fg); el.style.setProperty('--op', sb.opacity ?? 0.85);
+  el.style.setProperty('--u', `calc(min(100vh,56.25vw)/1080*${sb.scale || 1})`);
+  const p = sb.preset || 'classic';
+  let h = '';
+  if (p === 'classic') h = `<div class="classic box">${[0, 1].map(i => `<div class="row"><div class="stripe" style="background:${col[i]}"></div><div class="name">${esc(name[i])}</div><div class="score num">${sc[i]}</div></div>`).join('')}${info ? `<div class="info">${esc(info)}</div>` : ''}</div>`;
+  else if (p === 'bar') h = `<div class="bar box"><div class="stripe" style="background:${col[0]}"></div><div class="name">${esc(name[0])}</div><div class="score num" style="background:${col[0]};color:${on(col[0])}">${sc[0]}</div><div class="info">${esc(info)}</div><div class="score num" style="background:${col[1]};color:${on(col[1])}">${sc[1]}</div><div class="name">${esc(name[1])}</div><div class="stripe" style="background:${col[1]}"></div></div>`;
+  else if (p === 'compact') h = `<div class="compact box"><span class="dot" style="background:${col[0]}"></span><span>${esc(name[0])}</span><span class="num">${sc[0]}</span><span class="sep">–</span><span class="num">${sc[1]}</span><span>${esc(name[1])}</span><span class="dot" style="background:${col[1]}"></span>${info ? `<span class="info">${esc(info)}</span>` : ''}</div>`;
+  else if (p === 'big') h = `<div class="big box">${[0, 1].map(i => `<div class="team" style="order:${i * 2}"><div class="score num">${sc[i]}</div><div class="bar2" style="background:${col[i]}"></div><div class="name">${esc(name[i])}</div></div>`).join('')}<div class="info" style="order:1">${esc(info || ':')}</div></div>`;
+  else h = `<div class="minimal"><div class="line"><span data-ul style="border-color:${col[0]}">${esc(name[0])}</span><span class="num">${sc[0]}</span><span>:</span><span class="num">${sc[1]}</span><span data-ul style="border-color:${col[1]}">${esc(name[1])}</span></div>${info ? `<div class="info">${esc(info)}</div>` : ''}</div>`;
+  el.innerHTML = h; el.style.display = 'block';
+  place(el, sb.anchor || 'tl', `calc(28*var(--u))`);
+}
+fetch('/config.json').then(r => r.json()).then(c => { cfg = c; render(); });
+function connect() {
+  const es = new EventSource('/events');
+  es.onmessage = e => { const m = JSON.parse(e.data); if (m.score && JSON.stringify(m.score) !== JSON.stringify(score)) { score = m.score; render(); } };
+  es.onerror = () => { es.close(); setTimeout(connect, 1000); };
+}
+connect();
+</script></body></html>

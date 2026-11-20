@@ -409,6 +409,7 @@ fn main() {
         "replay" => cmd_replay(&o, &input),
         "render" => cmd_render(&o, &input),
         "simulate" => cmd_simulate(&o, &input),
+        "clean-plate" => cmd_clean_plate(&o, &input),
         "live" => cmd_live(&o, &input),
         other => fail(tr!("unbekannter Befehl '{other}' (calibrate | selfcheck | colors | run)", "unknown command '{other}' (see --help)", "commande inconnue « {other} » (voir --help)", "comando desconocido '{other}' (ver --help)")),
     }
@@ -530,7 +531,18 @@ fn cmd_calibrate(o: &Opts, input: &str) {
             Err(_) => (info.w as f64 / info.h.max(1) as f64 >= 2.5).then_some(reco_minimap::lens::LensModel::Cylinder),
         },
     };
-    calib::run(input, &info, o.f("time", 5.0), out, !o.has("no-open"), profile, o.s("lang").unwrap_or("de"), lens).unwrap_or_else(|e| fail(e));
+    // `--clear-view N`: the hall without players - the median of N moments spread over a video, or of
+    // a live picture over N × 2 s (a stream cannot seek)
+    let n = o.u("clear-view", 0).min(60) as usize;
+    let (plate, original) = if n < 5 {
+        (None, None)
+    } else if info.duration.is_some_and(|d| d > 60.0) {
+        (Some(clean_plate(o, input, &info, n)), None)
+    } else {
+        let (p, last) = live_plate(input, &info, n);
+        (Some(p), Some(last))
+    };
+    calib::run(input, &info, o.f("time", 5.0), out, !o.has("no-open"), profile, o.s("lang").unwrap_or("de"), lens, plate, original).unwrap_or_else(|e| fail(e));
     eprintln!("{}", tr!("Fertig: {out}", "Done: {out}", "Terminé : {out}", "Listo: {out}"));
 }
 
@@ -1747,7 +1759,7 @@ fn cmd_live(o: &Opts, input: &str) {
         Some(_) => { eprintln!("{}", trs!("Hinweis: Werfer am Handy wählen geht nur bei Basketball mit Anzeigetafel.", "Note: naming shooters on a phone needs basketball with a scoreboard.", "Remarque : choisir les tireurs sur le téléphone nécessite le basket avec tableau d'affichage.", "Nota: elegir tiradores en el móvil requiere baloncesto con marcador.")); false }
         None => false,
     };
-    let addr = live::serve(hub.clone(), &host, o.u("port", 8765) as u16).unwrap_or_else(|e| fail(e));
+    let addr = live::shown_addr(&live::serve(hub.clone(), &host, o.u("port", 8765) as u16).unwrap_or_else(|e| fail(e)));
     eprintln!("{}", tr!("\nLive-Overlay: http://{addr}/", "\nLive overlay: http://{addr}/", "\nIncrustation en direct : http://{addr}/", "\nSuperposición en directo: http://{addr}/"));
     eprintln!("{}", trs!("  OBS: Quelle hinzufügen -> Browser -> URL oben, Breite 1400 / Höhe 800 (oder passend), Hintergrund bleibt transparent.", "  OBS: add a source -> Browser -> the URL above, width 1400 / height 800 (or as needed); the background stays transparent.", "  OBS : ajouter une source -> Navigateur -> l'URL ci-dessus, largeur 1400 / hauteur 800 (ou selon besoin) ; le fond reste transparent.", "  OBS: añade una fuente -> Navegador -> la URL de arriba, ancho 1400 / alto 800 (o lo que convenga); el fondo queda transparente."));
     eprintln!("{}", tr!("Live-Ticker: http://{addr}/ticker   (Anzeige: {})", "Live ticker: http://{addr}/ticker   (shows: {})", "Fil en direct : http://{addr}/ticker   (affiche : {})", "Resumen en directo: http://{addr}/ticker   (muestra: {})", match ticker_mode { "names" => trs!("Namen", "names", "noms", "nombres"), "both" => trs!("Nummern und Namen", "numbers and names", "numéros et noms", "números y nombres"), _ => trs!("nur Nummern", "numbers only", "numéros seulement", "solo números") }));
@@ -2561,7 +2573,7 @@ fn cmd_simulate(o: &Opts, result: &str) {
         }
     }
     let host = o.s("host").unwrap_or("127.0.0.1").to_string();
-    let addr = live::serve(hub.clone(), &host, o.u("port", 8765) as u16).unwrap_or_else(|e| fail(e));
+    let addr = live::shown_addr(&live::serve(hub.clone(), &host, o.u("port", 8765) as u16).unwrap_or_else(|e| fail(e)));
     eprintln!("{}", tr!("\nNachspielen: http://{addr}/  ·  Scoreboard (OBS): http://{addr}/scoreboard  ·  Ticker: http://{addr}/ticker", "\nReplay: http://{addr}/  ·  scoreboard (OBS): http://{addr}/scoreboard  ·  ticker: http://{addr}/ticker", "\nRejeu : http://{addr}/  ·  tableau (OBS) : http://{addr}/scoreboard  ·  fil : http://{addr}/ticker", "\nRepetición: http://{addr}/  ·  marcador (OBS): http://{addr}/scoreboard  ·  resumen: http://{addr}/ticker"));
     if let Some(k) = o.s("pick-key") {
         eprintln!("{}", tr!("Handy: http://{addr}/pick?key={k}", "Phone: http://{addr}/pick?key={k}", "Téléphone : http://{addr}/pick?key={k}", "Móvil: http://{addr}/pick?key={k}"));
@@ -2580,6 +2592,88 @@ fn cmd_simulate(o: &Opts, result: &str) {
         }
         Err(e) => fail(e),
     }
+}
+
+/// `clean-plate <video> [--frames 25] [--model DIR] --out plate.png`: the empty hall - the median of
+/// moments spread over the video (players found by the model are left out).
+fn cmd_clean_plate(o: &Opts, input: &str) {
+    let info = open_info(o, input);
+    let out = o.s("out").unwrap_or_else(|| fail(trs!("--out plate.png fehlt", "--out plate.png is missing", "--out plate.png manquant", "falta --out plate.png")));
+    let n = o.u("frames", 25).clamp(5, 60) as usize;
+    let t0 = Instant::now();
+    let plate = clean_plate(o, input, &info, n);
+    std::fs::write(out, plate.png().unwrap_or_else(|e| fail(e))).unwrap_or_else(|e| fail(format!("{out}: {e}")));
+    eprintln!("{}", tr!("Freie Sicht aus {n} Bildern in {:.0} s: {out}", "Clear view from {n} frames in {:.0} s: {out}", "Vue dégagée à partir de {n} images en {:.0} s : {out}", "Vista despejada de {n} imágenes en {:.0} s: {out}", t0.elapsed().as_secs_f64()));
+}
+
+/// A clear view from a live picture: one frame every 2 s, `n` of them, then the median (and the
+/// newest frame as the original).
+fn live_plate(input: &str, info: &video::VideoInfo, n: usize) -> (video::Frame, video::Frame) {
+    if info.w == 0 {
+        fail::<()>(trs!("--size WxH angeben, z.B. --size 1920x1080 (Live-Quellen werden nicht vorab geprüft)", "pass --size WxH, e.g. --size 1920x1080 (live sources are not probed beforehand)", "indiquer --size LxH, p. ex. --size 1920x1080 (les sources en direct ne sont pas analysées au préalable)", "indica --size AnxAl, p. ej. --size 1920x1080 (las fuentes en directo no se analizan antes)"));
+    }
+    let every = (info.fps * 2.0).round().max(1.0) as u32;
+    let mut reader = video::FrameReader::open(input, info, 0.0, None, every).unwrap_or_else(|e| fail(e));
+    let mut frames = Vec::with_capacity(n);
+    while frames.len() < n {
+        if progress::stop_requested() && frames.len() >= 5 {
+            break;
+        }
+        let Some(f) = reader.next() else { break };
+        frames.push(f);
+        let k = frames.len();
+        progress::report(Some(k as f64 / n as f64), None, &tr!("Live-Bild wird freier: {k} von {n} (noch ~{} s)", "Clearing the live picture: {k} of {n} (~{} s left)", "Image en direct dégagée : {k} sur {n} (~{} s restantes)", "Despejando la imagen en directo: {k} de {n} (quedan ~{} s)", (n - k) * 2));
+    }
+    if frames.len() < 3 {
+        fail::<()>(trs!("zu wenige Bilder von der Live-Quelle", "too few frames from the live source", "trop peu d'images de la source en direct", "muy pocas imágenes de la fuente en directo"));
+    }
+    let plate = video::median_plate(&frames, None);
+    (plate, frames.pop().unwrap())
+}
+
+/// The pixels of `f` covered by people (players, referees - anyone the model finds), with a margin
+/// and the shadow at the feet.
+fn player_mask(model: &mut RfDetr, tiles: &[reco_minimap::detect::Tile], f: &video::Frame) -> Vec<bool> {
+    let mut m = vec![false; f.w * f.h];
+    let dets = model.detect(f, tiles).unwrap_or_default();
+    for d in dets.iter().filter(|d| d.class != Class::Ball) {
+        let (mx, my) = (d.w * 0.15 + 2.0, d.h * 0.08 + 2.0);
+        let x0 = (d.cx - d.w / 2.0 - mx).max(0.0) as usize;
+        let x1 = ((d.cx + d.w / 2.0 + mx) as usize).min(f.w);
+        let y0 = (d.cy - d.h / 2.0 - my).max(0.0) as usize;
+        let y1 = ((d.cy + d.h / 2.0 + my + d.h * 0.08) as usize).min(f.h);
+        for y in y0..y1 {
+            m[y * f.w + x0.min(x1)..y * f.w + x1].fill(true);
+        }
+    }
+    m
+}
+
+/// The clear view of `input` from `n` moments (with the model's player boxes left out when
+/// `--model` is given), reporting progress.
+fn clean_plate(o: &Opts, input: &str, info: &video::VideoInfo, n: usize) -> video::Frame {
+    let times = video::plate_times(info, n);
+    let done = std::sync::atomic::AtomicUsize::new(0);
+    let frames = std::thread::scope(|sc| {
+        let h = sc.spawn(|| video::grab_many(input, info, &times, &done));
+        let mut prog = progress::Throttle::new(std::time::Duration::from_millis(400));
+        while !h.is_finished() {
+            let k = done.load(std::sync::atomic::Ordering::SeqCst);
+            prog.report(Some(k as f64 / n as f64 * 0.8), None, &tr!("Freie Sicht: Bild {k} von {n}", "Clear view: frame {k} of {n}", "Vue dégagée : image {k} sur {n}", "Vista despejada: imagen {k} de {n}"));
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        h.join().unwrap()
+    }).unwrap_or_else(|e| fail(e));
+    let masks: Option<Vec<Vec<bool>>> = o.s("model").map(|_| {
+        let mut model = load_model(o);
+        let tiles = plan(o, info);
+        frames.iter().enumerate().map(|(k, f)| {
+            progress::report(Some(0.8 + 0.15 * k as f64 / frames.len() as f64), None, &tr!("Freie Sicht: Spieler ausblenden {}/{}", "Clear view: hiding players {}/{}", "Vue dégagée : masquer les joueurs {}/{}", "Vista despejada: ocultando jugadores {}/{}", k + 1, frames.len()));
+            player_mask(&mut model, &tiles, f)
+        }).collect()
+    });
+    progress::report(Some(0.95), None, trs!("Freie Sicht: Median", "Clear view: median", "Vue dégagée : médiane", "Vista despejada: mediana"));
+    video::median_plate(&frames, masks.as_deref())
 }
 
 fn cmd_replay(o: &Opts, path: &str) {

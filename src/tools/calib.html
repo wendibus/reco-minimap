@@ -29,6 +29,9 @@ canvas#legend{display:block;width:100%;border:.5px solid var(--sep);border-radiu
   <h1 id="t_title"></h1>
   <p id="t_intro"></p>
   <p id="t_sides"></p>
+  <div id="platebox" style="display:none;flex-direction:column;gap:4px;font-size:12.5px"><b id="t_view"></b>
+   <div style="display:flex;gap:12px;flex-wrap:wrap"><label><input type="radio" name="view" value="frame.png" checked> <span id="t_view_plate"></span></label><label><input type="radio" name="view" value="original.png"> <span id="t_view_orig"></span></label></div>
+   <span id="t_view_hint" style="color:var(--label-2);font-size:11.5px"></span></div>
   <div id="lensbox" style="display:flex;flex-direction:column;gap:4px;font-size:12.5px"><b id="t_lens"></b>
    <div style="display:flex;gap:12px;flex-wrap:wrap"><label><input type="radio" name="lens" value="none"> <span id="t_lens_none"></span></label><label><input type="radio" name="lens" value="fisheye"> <span id="t_lens_fish"></span></label><label><input type="radio" name="lens" value="panorama"> <span id="t_lens_pano"></span></label></div>
    <span id="t_lenshint" style="color:var(--label-2);font-size:11.5px"></span></div>
@@ -61,7 +64,9 @@ function texts(){document.title=T('calp.title');$('t_title').textContent=T('calp
  $('t_legend').textContent=T('calp.legend');$('t_cam').textContent='▲ '+T('calp.camera');$('undo').textContent='↶ '+T('calp.undo');$('redo').textContent='↷ '+T('calp.redo');$('undo').title=T('calp.undo_key');$('redo').title=T('calp.redo_key');$('skip').textContent=T('calp.skip');$('save').textContent=T('calp.save');$('t_lens').textContent=T('calp.lens_title');$('t_lens_none').textContent=T('calp.lens_none');$('t_lens_fish').textContent=T('calp.lens_fisheye');$('t_lens_pano').textContent=T('calp.lens_panorama');$('t_pick').textContent=T('calp.pick_color');$('t_colorhint').textContent=T('calp.color_hint');$('t_auto').textContent=T('calp.auto');$('t_autohint').textContent=T('calp.auto_hint');$('t_outside').textContent=T('calp.outside');
  ['fl','fr','nr','nl'].forEach((k,i)=>$('t_o'+i).textContent=T('calp.c_'+k));$('autobtn').textContent=T('calp.auto_btn');$('snapbtn').textContent=T('calp.snap_btn');$('snapbtn').title=T('calp.snap_hint');$('t_showlines').textContent=T('calp.show_lines');$('t_erase').textContent=T('calp.erase');$('t_erase_clear').textContent=T('calp.erase_clear');$('t_erasehint').textContent=T('calp.erase_hint');$('t_lenshint').textContent=T('calp.lens_hint');$('t_priv').textContent=T('calp.privacy');
  if(info)$('t_scaled').textContent=T('calp.scaled',{l:info.field[0],w:info.field[1]});}
-async function init(){info=await (await fetch('api/info')).json();if(info.lang)setLang(info.lang);texts();setLens(info.lens||'none');saved=snap();document.querySelectorAll('input[name=lens]').forEach(r=>r.onchange=()=>{record();solve();});img.onload=()=>{resize();build();draw();};img.src='frame.png';requestAnimationFrame(legend);}
+async function init(){info=await (await fetch('api/info')).json();if(info.lang)setLang(info.lang);texts();setLens(info.lens||'none');saved=snap();document.querySelectorAll('input[name=lens]').forEach(r=>r.onchange=()=>{record();solve();});img.onload=()=>{resize();build();draw();};img.src='frame.png';requestAnimationFrame(legend);
+ if(info.plate){$('platebox').style.display='flex';$('t_view').textContent=T('calp.view');$('t_view_plate').textContent=T('calp.view_plate');$('t_view_orig').textContent=T('calp.view_orig');$('t_view_hint').textContent=T('calp.view_hint');
+  document.querySelectorAll('input[name=view]').forEach(r=>r.onchange=()=>{img.src=r.value;});}}
 // Small top-down field: every landmark as a dot (green = set), the one to click next blinking.
 // "far" is at the top and the camera at the bottom, as in the landmark names.
 const outside=()=>[0,1,2,3].map(i=>$('o'+i).checked);

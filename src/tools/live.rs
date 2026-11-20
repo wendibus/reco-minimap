@@ -554,6 +554,24 @@ fn handle(mut s: TcpStream, hub: Arc<Hub>) {
 }
 
 /// Start serving in background threads; returns the bound address.
+/// The address to show for links: a server on all interfaces (`0.0.0.0`) is shown with this
+/// computer's address in the local network, so the link works on a phone as printed.
+pub fn shown_addr(addr: &str) -> String {
+    match addr.strip_prefix("0.0.0.0:") {
+        Some(port) => format!("{}:{port}", super::board_srv::lan_address().unwrap_or_else(|| "127.0.0.1".into())),
+        None => addr.to_string(),
+    }
+}
+
+/// Whether a server on `port` answers on this computer (`127.0.0.1`) and on its address in the
+/// local network - the address a phone uses. (Reaching it from here does not prove that the
+/// network lets a phone through: guest networks and client isolation are only seen from the phone.)
+pub fn reach(port: u16) -> Value {
+    let try_ = |ip: &str| ip.parse::<std::net::IpAddr>().ok().is_some_and(|ip| TcpStream::connect_timeout(&std::net::SocketAddr::new(ip, port), Duration::from_millis(600)).is_ok());
+    let lan = super::board_srv::lan_address();
+    json!({"local": try_("127.0.0.1"), "lan": lan.as_deref().is_some_and(try_), "ip": lan, "port": port})
+}
+
 pub fn serve(hub: Arc<Hub>, host: &str, port: u16) -> Result<String, String> {
     let listener = TcpListener::bind((host, port)).map_err(|e| tr!("{host}:{port}: {e} (Port belegt? --port ändern)", "{host}:{port}: {e} (port in use? change --port)", "{host}:{port} : {e} (port occupé ? changer --port)", "{host}:{port}: {e} (¿puerto ocupado? cambia --port)"))?;
     let addr = listener.local_addr().map_err(|e| e.to_string())?.to_string();

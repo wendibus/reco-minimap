@@ -1,4 +1,4 @@
-import { QrButton, QrDialog } from './Qr';
+import { QrButton, QrDialog, ReachCheck } from './Qr';
 import { OverlayCard, RenderCard } from './overlay';
 import { useEffect, useState } from 'react';
 import { api, Btn, Card, chooseNative, Check, clock, Color, Labeled, Num, PathField, secs, Sel, showFile, Text, useApp, type Json, type OutFile } from './core';
@@ -154,8 +154,9 @@ export function CalibPanel() {
   return <>
     <Card title={T('cal.field')} hint={T('cal.field_hint')}>
       <div className="mm-row mm-gap"><span className="mm-muted">{T('cal.time')}</span><div style={{ width: 90 }}><Num k="calib_time" label="" /></div>
-        <Btn primary hint={t.hints.calibrate} onClick={() => void runJob('calibrate', { ...common(), sport: project.sport, time: project.calib_time, lang, lens: project.lens || (project.fisheye ? 'fisheye' : ''), length: project.custom.length, width: project.custom.width, team_size: project.sport === 'custom' ? project.custom.team_size : '', referees: project.sport === 'custom' ? project.custom.referees : '' })}>{T('cal.field_btn')}</Btn>
+        <Btn primary hint={t.hints.calibrate} onClick={() => void runJob('calibrate', { ...common(), clear_view: project.calib_clear !== false, sport: project.sport, time: project.calib_time, lang, lens: project.lens || (project.fisheye ? 'fisheye' : ''), length: project.custom.length, width: project.custom.width, team_size: project.sport === 'custom' ? project.custom.team_size : '', referees: project.sport === 'custom' ? project.custom.referees : '' })}>{T('cal.field_btn')}</Btn>
         <span className={c ? 'ok' : 'mm-muted'}>{c ? T('cal.field_state', { n: c.points, rms: (+c.rms).toFixed(2) }) + (c.lens ? ' · ' + T(c.lens === 'panorama' ? 'calp.lens_panorama' : 'calp.lens_fisheye') : '') : T('cal.field_none')}</span></div>
+      <Check k="calib_clear" label={t.clear.label} /><p className="mm-hint">{t.clear.hint}</p>
       <div style={{ maxWidth: 360 }}><Sel k="lens" label={T('calp.lens_title')} options={[['', T('cal.lens_auto')], ['none', T('calp.lens_none')], ['fisheye', T('calp.lens_fisheye')], ['panorama', T('calp.lens_panorama')]]} /></div><p className="mm-hint">{T('cal.lens_hint')}</p>
     </Card>
     <Card title={T('cal.scales')} hint={T('cal.scales_hint')}>
@@ -306,6 +307,7 @@ export function LivePanel() {
       <Labeled label={T('live.source')}><PathField value={l.source ?? ''} prompt={T('live.source')} onChange={(v) => set('live.source', v)} /></Labeled>
       <div className="mm-grid3"><Text k="live.size" label={T('live.size')} /><Num k="live.fps" label={T('live.fps')} /><Num k="live.port" label={T('live.port')} /></div>
       <Workers />
+      <div className="mm-row mm-gap mm-wrap"><Btn hint={t.clear.liveHint} disabled={!!url || !l.source} onClick={() => void runJob('calibrate', { ...common(), clear_view: true, source: l.source, size: l.size, fps: l.fps, sport: project.sport, time: 0, lang, lens: project.lens || '', length: project.custom.length, width: project.custom.width })}>{t.clear.liveBtn}</Btn></div><p className="mm-hint">{t.clear.liveHint}</p>
       <Check k="live.realtime" label={T('live.realtime')} /><Check k="live.adaptive" label={T('live.adaptive')} />
       <h3>{T('ticker.title')}</h3><p className="mm-hint">{T('ticker.ui_hint')}</p>
       <div className="mm-grid3"><Sel k="live.ticker_names" label={T('ticker.ui_show')} options={['numbers', 'names', 'both'].map((m) => [m, T('ticker.m_' + m)])} /></div><p className="mm-hint">{T('run.roster_where')}</p>
@@ -327,6 +329,7 @@ export function LivePanel() {
       {url && <><h3>{T('live.url')}</h3><a href={url} target="_blank" rel="noreferrer">{url}</a> · <a href={`${url}?floor=1&debug=1`} target="_blank" rel="noreferrer">{T('live.test')}</a><p className="mm-hint">{T('live.obs')}</p>
         {(project.overlay?.scoreboard?.on || project.overlay?.watermark?.on) && <><h3>{t.overlay.obs}</h3><a href={`${url}scoreboard`} target="_blank" rel="noreferrer">{url}scoreboard</a> · <a href={`${url}scoreboard?floor=1`} target="_blank" rel="noreferrer">{T('live.test')}</a></>}
         <h3>{T('ticker.link')}</h3><div className="mm-row mm-gap mm-wrap"><a href={turl} target="_blank" rel="noreferrer" className="mm-grow mm-break">{turl}</a><QrButton url={turl} title={T('ticker.link')} /></div>{l.network && !init?.lan_ip && <p className="bad small">{T('ticker.ui_noip')}</p>}
+        <ReachCheck port={Number(l.port) || 8765} network={l.network === true} />
         {l.ticker_approve && <><h3>{T('ticker.ui_admin')}</h3><a href={`${url}ticker/admin`} target="_blank" rel="noreferrer">{url}ticker/admin</a></>}</>}
     </Card>
     <OverlayCard />
@@ -367,6 +370,7 @@ function SimulateCard({ outs }: { outs: OutFile[] }) {
     {job && <>
       {phone && <><h3>{ts.phone}</h3><div className="mm-row mm-gap mm-wrap"><a href={phone} target="_blank" rel="noreferrer" className="mm-grow mm-break">{phone}</a><QrButton url={phone} title={ts.phone} /></div></>}
       {s.network && !init?.lan_ip && <p className="bad small">{T('ticker.ui_noip')}</p>}
+      <ReachCheck port={port} network={s.network === true} />
       <p><a href={base} target="_blank" rel="noreferrer">{T('live.url')}</a>{(project.overlay?.scoreboard?.on || project.overlay?.watermark?.on) && <> · <a href={`${base}scoreboard?floor=1`} target="_blank" rel="noreferrer">{ts.overlay}</a></>} · <a href={`${base}ticker`} target="_blank" rel="noreferrer">{ts.ticker}</a></p>
     </>}
     <p className="mm-hint">{ts.saved}</p>

@@ -67,6 +67,9 @@ const de = {
     scan: 'Mit der Kamera des Handys scannen. Das Handy muss im selben WLAN sein wie dieser Rechner.',
     local: 'Dieser Link funktioniert nur auf diesem Rechner. „Für andere Geräte im Netzwerk erreichbar“ einschalten und neu starten – dann zeigt der QR-Code die Adresse im WLAN.',
     copy: 'Link kopieren', copied: 'Kopiert', close: 'Schließen',
+    reachWait: 'Server startet …', reachLocal: 'Nur auf diesem Rechner erreichbar – „Vom Handy im gleichen WLAN erreichbar“ einschalten und neu starten.',
+    reachLan: (a: string) => `Im WLAN erreichbar unter ${a}`,
+    reachPhone: (ip: string) => `Öffnet das Handy den Link trotzdem nicht: Am Handy unter Einstellungen → WLAN → (i) muss die IP-Adresse mit ${ip.split('.').slice(0, 3).join('.')}. beginnen (kein Gäste-WLAN, keine Client-Isolation im Router, VPN aus). Am Mac unter Systemeinstellungen → Datenschutz & Sicherheit → Lokales Netzwerk „Reco Minimap“ erlauben.`,
     nextStart: 'Der neue Link gilt ab dem nächsten Start.',
   },
   overlay: {
@@ -92,6 +95,10 @@ const de = {
     mode: 'Was bestätigen', modes: { auto: 'Automatisch (nach Tafel-Qualität)', board: 'Körbe der Anzeigetafel – Werfer benennen', attempts: 'Alle Wurfversuche – Treffer/daneben, Werfer, Punkte' } as Record<string, string>,
     modeHint: 'Ohne verlässlich gelesene Tafel nimmt „Automatisch“ die erkannten Wurfversuche. Freiwürfe und übersehene Körbe trägst du am Handy unter „Korb nachtragen“ nach.',
     network: 'Vom Handy im gleichen WLAN erreichbar', needNet: 'Ohne diese Option erreicht das Handy die Seite nicht.', start: 'Nachspielen starten', stop: 'Beenden', phone: 'Handy-Seite', overlay: 'Scoreboard (OBS)', ticker: 'Ticker', saved: 'Jede Entscheidung wird sofort gespeichert (Name.baskets.json); ein neuer Start macht dort weiter.',
+  },
+  clear: {
+    label: 'Freie Sicht – Spieler ausblenden', hint: 'Setzt das Bild aus 25 Momenten des ganzen Spiels zusammen; wer sich bewegt, verschwindet. Die Linien liegen frei – auch für die automatische Kalibrierung. Dauert ein paar Sekunden mehr. In der Kalibrierung lässt sich auf das Originalbild umschalten.',
+    liveBtn: 'Feld am Live-Bild kalibrieren', liveHint: 'Nimmt 50 Sekunden lang alle 2 s ein Bild der Live-Quelle und blendet die Spieler aus – danach öffnet sich die Kalibrierung. Am besten beim Aufwärmen.',
   },
   direction: {
     title: 'Spielrichtung', hint: 'Auf welches Tor bzw. welchen Korb die Heimmannschaft zu Beginn spielt (links/rechts wie in der Minikarte). Würfe, Freiwürfe, Ecken und Strafwürfe zählen dann für das angreifende Team – auch wenn beim Werfer die Trikotfarbe falsch erkannt wurde.',
@@ -240,6 +247,9 @@ const en: Text = {
     scan: 'Scan with the phone camera. The phone must be in the same Wi-Fi as this computer.',
     local: 'This link only works on this computer. Turn on “Reachable for other devices in the network” and start again – the QR code then shows the address in the Wi-Fi.',
     copy: 'Copy link', copied: 'Copied', close: 'Close',
+    reachWait: 'Server starting …', reachLocal: 'Only reachable on this computer – turn on “Reachable from a phone on the same Wi-Fi” and start again.',
+    reachLan: (a: string) => `Reachable on the Wi-Fi at ${a}`,
+    reachPhone: (ip: string) => `If the phone still cannot open the link: on the phone under Settings → Wi-Fi → (i) the IP address must start with ${ip.split('.').slice(0, 3).join('.')}. (no guest Wi-Fi, no client isolation in the router, VPN off). On the Mac allow “Reco Minimap” under System Settings → Privacy & Security → Local Network.`,
     nextStart: 'The new link works from the next start.',
   },
   overlay: {
@@ -265,6 +275,10 @@ const en: Text = {
     mode: 'What to confirm', modes: { auto: 'Automatic (by scoreboard quality)', board: 'Scoreboard baskets – name the shooter', attempts: 'All shot attempts – made/missed, shooter, points' } as Record<string, string>,
     modeHint: 'Without a reliably read scoreboard, “Automatic” uses the detected shot attempts. Add free throws and missed baskets on the phone under “Add a basket”.',
     network: 'Reachable from a phone on the same Wi-Fi', needNet: 'Without this option the phone cannot reach the page.', start: 'Start replay', stop: 'Stop', phone: 'Phone page', overlay: 'Scoreboard (OBS)', ticker: 'Ticker', saved: 'Every decision is saved at once (name.baskets.json); a new start continues from there.',
+  },
+  clear: {
+    label: 'Clear view – remove the players', hint: 'Puts the picture together from 25 moments of the whole game; whatever moves disappears. The lines are free – for the automatic calibration too. Takes a few seconds longer. In the calibration you can switch to the original frame.',
+    liveBtn: 'Calibrate the court on the live picture', liveHint: 'Takes a frame of the live source every 2 s for 50 seconds and removes the players – then the calibration opens. Best during the warm-up.',
   },
   direction: {
     title: 'Playing direction', hint: 'Which goal or basket the home team attacks at the start (left/right as on the minimap). Shots, free throws, corners and penalties then count for the attacking team – even when the shooter\'s shirt colour was misread.',
@@ -411,6 +425,9 @@ const fr: Text = {
     scan: 'Scanner avec l’appareil photo du téléphone. Le téléphone doit être sur le même Wi-Fi que cet ordinateur.',
     local: 'Ce lien ne fonctionne que sur cet ordinateur. Activer l’accès depuis les autres appareils du réseau et redémarrer – le code QR affiche alors l’adresse sur le Wi-Fi.',
     copy: 'Copier le lien', copied: 'Copié', close: 'Fermer',
+    reachWait: 'Démarrage du serveur …', reachLocal: 'Accessible seulement sur cet ordinateur – activer « Accessible depuis un téléphone sur le même Wi-Fi » et relancer.',
+    reachLan: (a: string) => `Accessible sur le Wi-Fi à ${a}`,
+    reachPhone: (ip: string) => `Si le téléphone n’ouvre toujours pas le lien : sur le téléphone, sous Réglages → Wi-Fi → (i), l’adresse IP doit commencer par ${ip.split('.').slice(0, 3).join('.')}. (pas de Wi-Fi invité, pas d’isolation des clients dans le routeur, VPN coupé). Sur le Mac, autoriser « Reco Minimap » sous Réglages Système → Confidentialité et sécurité → Réseau local.`,
     nextStart: 'Le nouveau lien est valable à partir du prochain démarrage.',
   },
   overlay: {
@@ -436,6 +453,10 @@ const fr: Text = {
     mode: 'Que confirmer', modes: { auto: 'Automatique (selon la qualité du tableau)', board: 'Paniers du tableau – nommer le tireur', attempts: 'Toutes les tentatives – réussi/manqué, tireur, points' } as Record<string, string>,
     modeHint: 'Sans tableau lu de façon fiable, « Automatique » utilise les tentatives détectées. Ajoute les lancers francs et paniers manqués sur le téléphone sous « Ajouter un panier ».',
     network: 'Accessible depuis un téléphone sur le même Wi-Fi', needNet: 'Sans cette option, le téléphone ne peut pas atteindre la page.', start: 'Lancer le rejeu', stop: 'Arrêter', phone: 'Page téléphone', overlay: 'Tableau (OBS)', ticker: 'Fil', saved: 'Chaque décision est enregistrée aussitôt (nom.baskets.json) ; un nouveau lancement reprend là.',
+  },
+  clear: {
+    label: 'Vue dégagée – masquer les joueurs', hint: 'Compose l’image à partir de 25 moments de tout le match ; ce qui bouge disparaît. Les lignes sont dégagées – aussi pour le calibrage automatique. Prend quelques secondes de plus. Dans le calibrage, on peut revenir à l’image d’origine.',
+    liveBtn: 'Calibrer le terrain sur l’image en direct', liveHint: 'Prend une image de la source en direct toutes les 2 s pendant 50 secondes et masque les joueurs – puis le calibrage s’ouvre. Idéal pendant l’échauffement.',
   },
   direction: {
     title: 'Sens du jeu', hint: 'Le but ou panier que l\'équipe à domicile attaque au début (gauche/droite comme sur la minicarte). Tirs, lancers francs, corners et penaltys comptent alors pour l\'équipe qui attaque – même si la couleur du maillot du tireur a été mal reconnue.',
@@ -582,6 +603,9 @@ const es: Text = {
     scan: 'Escanéalo con la cámara del móvil. El móvil debe estar en la misma wifi que este ordenador.',
     local: 'Este enlace solo funciona en este ordenador. Activa el acceso desde otros dispositivos de la red y vuelve a iniciar: el código QR mostrará entonces la dirección en la wifi.',
     copy: 'Copiar enlace', copied: 'Copiado', close: 'Cerrar',
+    reachWait: 'Iniciando el servidor …', reachLocal: 'Solo accesible en este ordenador: activa «Accesible desde un móvil en la misma wifi» y vuelve a iniciar.',
+    reachLan: (a: string) => `Accesible en la wifi en ${a}`,
+    reachPhone: (ip: string) => `Si el móvil sigue sin abrir el enlace: en el móvil, en Ajustes → Wi-Fi → (i), la dirección IP debe empezar por ${ip.split('.').slice(0, 3).join('.')}. (sin wifi de invitados, sin aislamiento de clientes en el router, VPN desactivada). En el Mac, permite «Reco Minimap» en Ajustes del Sistema → Privacidad y seguridad → Red local.`,
     nextStart: 'El nuevo enlace vale a partir del próximo inicio.',
   },
   overlay: {
@@ -607,6 +631,10 @@ const es: Text = {
     mode: 'Qué confirmar', modes: { auto: 'Automático (según la calidad del marcador)', board: 'Canastas del marcador: nombrar al tirador', attempts: 'Todos los intentos: anotado/fallado, tirador, puntos' } as Record<string, string>,
     modeHint: 'Sin un marcador leído de forma fiable, «Automático» usa los intentos detectados. Añade tiros libres y canastas no vistas en el móvil en «Añadir una canasta».',
     network: 'Accesible desde un móvil en la misma wifi', needNet: 'Sin esta opción el móvil no llega a la página.', start: 'Iniciar repetición', stop: 'Terminar', phone: 'Página del móvil', overlay: 'Marcador (OBS)', ticker: 'Resumen', saved: 'Cada decisión se guarda al momento (nombre.baskets.json); un nuevo inicio sigue desde ahí.',
+  },
+  clear: {
+    label: 'Vista despejada: ocultar jugadores', hint: 'Compone la imagen a partir de 25 momentos de todo el partido; lo que se mueve desaparece. Las líneas quedan libres, también para la calibración automática. Tarda unos segundos más. En la calibración se puede volver a la imagen original.',
+    liveBtn: 'Calibrar el campo con la imagen en directo', liveHint: 'Toma una imagen de la fuente en directo cada 2 s durante 50 segundos y oculta a los jugadores; luego se abre la calibración. Mejor durante el calentamiento.',
   },
   direction: {
     title: 'Dirección de juego', hint: 'La portería o canasta que ataca el equipo local al principio (izquierda/derecha como en el minimapa). Tiros, tiros libres, córneres y penaltis cuentan entonces para el equipo atacante, aunque el color de la camiseta del tirador se haya reconocido mal.',

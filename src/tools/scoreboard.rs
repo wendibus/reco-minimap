@@ -393,6 +393,48 @@ pub(crate) fn encode_jpeg(w: usize, h: usize, rgb: &[u8]) -> Result<Vec<u8>, Str
     Ok(out)
 }
 
+fn clock(t: f64) -> String {
+    let s = t.max(0.0) as u64;
+    format!("{}:{:02}", s / 60, s % 60)
+}
+
+/// How well the board in `q` is seen in an RGB frame: lit digits on a dark ground give a large gap
+/// between the brightest pixels and the median; a person in front raises the median, a dark or
+/// switched-off board lowers the top.
+pub(crate) fn board_visibility(rgb: &[u8], w: usize, h: usize, q: &Quad) -> f64 {
+    let xs = q.iter().map(|p| p[0]);
+    let ys = q.iter().map(|p| p[1]);
+    let x0 = xs.clone().fold(f64::MAX, f64::min).max(0.0) as usize;
+    let x1 = (xs.fold(f64::MIN, f64::max).max(0.0) as usize).min(w);
+    let y0 = ys.clone().fold(f64::MAX, f64::min).max(0.0) as usize;
+    let y1 = (ys.fold(f64::MIN, f64::max).max(0.0) as usize).min(h);
+    if x1 <= x0 + 2 || y1 <= y0 + 2 {
+        return 0.0;
+    }
+    let mut v: Vec<u8> = Vec::with_capacity((x1 - x0) * (y1 - y0));
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let i = (y * w + x) * 3;
+            v.push(rgb[i].max(rgb[i + 1]).max(rgb[i + 2]));
+        }
+    }
+    v.sort_unstable();
+    let at = |f: f64| v[((v.len() - 1) as f64 * f) as usize] as f64;
+    at(0.97) - at(0.5)
+}
+
+/// The five moments (of 25 spread over the video) where the board in `q` is seen best.
+fn best_moments(input: &str, info: &VideoInfo, q: &Quad) -> Vec<(f64, f64)> {
+    eprintln!("{}", trs!("Suche die Momente, in denen die Tafel am besten zu sehen ist …", "Looking for the moments where the board is seen best …", "Recherche des moments où le tableau est le mieux visible …", "Buscando los momentos en que el marcador se ve mejor …"));
+    let times = super::video::plate_times(info, 25);
+    let done = std::sync::atomic::AtomicUsize::new(0);
+    let Ok(frames) = super::video::grab_many_at(input, info, &times, &done) else { return Vec::new() };
+    let mut m: Vec<(f64, f64)> = frames.iter().map(|(t, f)| (*t, board_visibility(&f.rgb, f.w, f.h, q))).collect();
+    m.sort_by(|a, b| b.1.total_cmp(&a.1));
+    m.truncate(5);
+    m
+}
+
 fn scan(input: &str, info: &VideoInfo, t: f64) -> Result<(Burst, Vec<Candidate>), String> {
     let every = (info.fps / BURST_FPS).round().max(1.0) as u32;
     let mut rd = FrameReader::open(input, info, t, Some(BURST_SECS), every)?;
@@ -440,6 +482,8 @@ fn rectify(burst: &Burst, corners: &Quad) -> Result<Rectified, String> {
 
 struct Session {
     time: f64,
+    /// Moments of the video where the board is seen best (time, score), best first.
+    moments: Vec<(f64, f64)>,
     burst: Burst,
     cands: Vec<Candidate>,
     rect: Option<Rectified>,
@@ -469,7 +513,7 @@ fn info_json(s: &Session, info: &VideoInfo, existing: &Option<Config>, lang: &st
         }
         None => (Value::Null, Value::Null, "left"),
     };
-    json!({"w": info.w, "h": info.h, "time": s.time, "lang": lang, "candidates": cands_json(&s.cands), "saved": saved, "fields": fields, "home": home})
+    json!({"w": info.w, "h": info.h, "time": s.time, "moments": s.moments.iter().map(|m| json!({"t": m.0.round(), "score": m.1.round()})).collect::<Vec<_>>(), "lang": lang, "candidates": cands_json(&s.cands), "saved": saved, "fields": fields, "home": home})
 }
 
 fn save_from(body: &str, sess: &mut Session, info: &VideoInfo, prev: Option<&Config>, out: &str) -> Result<(), String> {
@@ -513,7 +557,27 @@ pub fn calibrate(input: &str, info: &VideoInfo, t: f64, out: &str, open: bool, l
         n => tr!("{n} Kandidat(en) gefunden.", "{n} candidate(s) found.", "{n} candidat(s) trouvé(s).", "{n} candidato(s) encontrado(s)."),
     });
     let existing = load(out).ok();
-    let mut sess = Session { time: t, burst, cands, rect: None, jpg_max: None, jpg_first: None };
+    // the moments where the board is seen best: where it was saved before, else the best candidate
+    let region = existing.as_ref().and_then(|c| {
+        let (sx, sy) = (info.w as f64 / c.frame[0] as f64, info.h as f64 / c.frame[1] as f64);
+        c.board.as_ref().map(|b| b.corners.map(|p| [p[0] * sx, p[1] * sy]))
+    }).or_else(|| cands.first().map(|c| c.corners));
+    let moments = match region {
+        Some(q) if info.duration.is_some_and(|d| d > 120.0) => best_moments(input, info, &q),
+        _ => Vec::new(),
+    };
+    let (mut t, mut burst, mut cands) = (t, burst, cands);
+    // clearly better somewhere else (covered or dark at the chosen time): start there
+    if let (Some(q), Some(&(bt, bs))) = (region, moments.first()) {
+        let here = board_visibility(&burst.first, burst.w, burst.h, &q);
+        if bs > here * 1.25 + 4.0 && (bt - t).abs() > BURST_SECS {
+            eprintln!("{}", tr!("Anzeigetafel bei {} besser zu sehen – Kalibrierung startet dort.", "The scoreboard is seen better at {} – the calibration starts there.", "Le tableau est mieux visible à {} – le calibrage commence là.", "El marcador se ve mejor en {}: la calibración empieza ahí.", clock(bt)));
+            if let Ok((b, c)) = scan(input, info, bt) {
+                (t, burst, cands) = (bt, b, if c.is_empty() { cands } else { c });
+            }
+        }
+    }
+    let mut sess = Session { time: t, moments, burst, cands, rect: None, jpg_max: None, jpg_first: None };
     let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
     let url = format!("http://127.0.0.1:{port}/?lang={lang}");
@@ -555,7 +619,7 @@ pub fn calibrate(input: &str, info: &VideoInfo, t: f64, out: &str, open: bool, l
                 let t = serde_json::from_str::<Value>(&body).ok().and_then(|v| v["time"].as_f64()).unwrap_or(sess.time).max(0.0);
                 match scan(input, info, t) {
                     Ok((b, c)) => {
-                        sess = Session { time: t, burst: b, cands: c, rect: None, jpg_max: None, jpg_first: None };
+                        sess = Session { time: t, moments: std::mem::take(&mut sess.moments), burst: b, cands: c, rect: None, jpg_max: None, jpg_first: None };
                         js(&mut s, json!({"ok": true, "candidates": cands_json(&sess.cands)}));
                     }
                     Err(e) => js(&mut s, json!({"ok": false, "error": e})),

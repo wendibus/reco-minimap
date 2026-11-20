@@ -49,6 +49,7 @@ input[type=number]{width:100%;box-sizing:border-box;background:var(--control);co
    <div id="cands" style="display:flex;flex-direction:column;gap:6px;margin:8px 0"></div>
    <div class="row"><button id="manual"></button></div>
    <div class="row" style="margin-top:8px"><span id="t_time"></span><input id="time" type="number" step="1" min="0" style="width:80px"><button id="rescan"></button></div>
+   <div id="momentbox" hidden style="margin-top:6px"><span id="t_moments" style="font-size:12px;color:var(--label-2)"></span><div id="moments" class="row" style="flex-wrap:wrap;gap:6px;margin-top:4px"></div></div>
    <div class="row" style="margin-top:10px"><button id="next" class="primary" disabled></button></div>
   </div>
   <div id="p2" hidden>
@@ -303,17 +304,26 @@ $('overlay').onchange = async (e) => {
   draw();
 };
 $('manual').onclick = () => { S.manual = []; S.sel = -1; S.corners = null; S.valid = false; $('next').disabled = true; renderCands(); draw(); };
-$('rescan').onclick = async () => {
+// keep: another moment of the same board (the saved corners and fields stay)
+async function scanAt(time, keep) {
   status(T('sbp.scanning'));
   try {
-    const j = await post('api/scan', { time: parseFloat($('time').value) || 0 }); if (!j.ok) throw new Error(j.error);
+    const j = await post('api/scan', { time }); if (!j.ok) throw new Error(j.error);
     await loadImg(frameImg, `frame.jpg?mode=${overlay ? 'max' : 'single'}&ts=${++tsn}`);
-    S.sel = -1; S.corners = null; S.valid = false; $('next').disabled = true; INFO.saved = null; S.fieldsFor = null;
+    S.sel = -1; S.corners = null; S.valid = false; $('next').disabled = true;
+    if (!keep) { INFO.saved = null; S.fieldsFor = null; }
     buildCands(j.candidates);
-    if (S.cands.length) selectCand(0); else draw();
+    if (S.cands.length) { selectCand(0); if (keep && INFO.saved) S.fieldsFor = cornersKey(); } else draw();
     status(j.candidates.length ? '' : T('sbp.none'), j.candidates.length ? '' : 'err');
   } catch (e) { status(e.message, 'err'); }
-};
+}
+$('rescan').onclick = () => scanAt(parseFloat($('time').value) || 0, false);
+const mmss = (t) => `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, '0')}`;
+function buildMoments() {
+  const ms = INFO.moments || []; $('momentbox').hidden = !ms.length; $('t_moments').textContent = T('sbp.moments');
+  $('moments').innerHTML = '';
+  [...ms].sort((a, b) => a.t - b.t).forEach((m) => { const b = document.createElement('button'); b.textContent = mmss(m.t); b.title = T('sbp.moments'); b.onclick = () => { $('time').value = m.t; scanAt(m.t, true); }; $('moments').appendChild(b); });
+}
 $('save').onclick = async () => {
   const fields = {}; for (const k in F) if (F[k].rect) fields[k] = F[k];
   for (const k of ['left_score', 'right_score', 'clock']) if (!fields[k]) return status(T('sbp.missing', { f: fieldLabel(k) }), 'err');
@@ -397,7 +407,7 @@ window.addEventListener('resize', () => { fit(); resize(); });
   texts(); buildFields();
   if (INFO.fields) for (const k in INFO.fields) if (F[k]) Object.assign(F[k], INFO.fields[k]);
   const hr = document.querySelector(`input[name=home][value=${INFO.home === 'right' ? 'right' : 'left'}]`); if (hr) hr.checked = true;
-  $('time').value = Math.round(INFO.time);
+  $('time').value = Math.round(INFO.time); buildMoments();
   showStep(1);
   await loadImg(frameImg, `frame.jpg?mode=max&ts=${++tsn}`);
   buildCands(INFO.candidates);

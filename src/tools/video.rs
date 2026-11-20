@@ -595,6 +595,11 @@ pub fn median_plate(frames: &[Frame], masks: Option<&[Vec<bool>]>) -> Frame {
 
 /// Grab the frames at `times` (a few at once) - `done` counts the finished ones.
 pub fn grab_many(input: &str, info: &VideoInfo, times: &[f64], done: &std::sync::atomic::AtomicUsize) -> Result<Vec<Frame>, String> {
+    Ok(grab_many_at(input, info, times, done)?.into_iter().map(|x| x.1).collect())
+}
+
+/// As `grab_many`, each frame with its time (frames that could not be read are left out).
+pub fn grab_many_at(input: &str, info: &VideoInfo, times: &[f64], done: &std::sync::atomic::AtomicUsize) -> Result<Vec<(f64, Frame)>, String> {
     let workers = 4.min(times.len()).max(1);
     let slots: Vec<std::sync::Mutex<Option<Frame>>> = times.iter().map(|_| std::sync::Mutex::new(None)).collect();
     let next = std::sync::atomic::AtomicUsize::new(0);
@@ -612,7 +617,7 @@ pub fn grab_many(input: &str, info: &VideoInfo, times: &[f64], done: &std::sync:
             });
         }
     });
-    let frames: Vec<Frame> = slots.into_iter().filter_map(|m| m.into_inner().unwrap()).collect();
+    let frames: Vec<(f64, Frame)> = slots.into_iter().zip(times).filter_map(|(m, &t)| Some((t, m.into_inner().unwrap()?))).collect();
     if frames.len() < 3 {
         return Err(trs!("zu wenige Bilder für die freie Sicht", "too few frames for the clear view", "trop peu d'images pour la vue dégagée", "muy pocas imágenes para la vista despejada").into());
     }

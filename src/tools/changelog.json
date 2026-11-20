@@ -1,4 +1,34 @@
 {
+  "0.24.1": {
+    "de": [
+      "Freie Sicht für die Kalibrierung: Das Bild wird aus 25 Momenten des ganzen Spiels zusammengesetzt (Median), Spieler und Schiedsrichter verschwinden, die Linien liegen frei – auch für die automatische Feldsuche. Umschalter auf das Originalbild in der Kalibrierung.",
+      "Feld am Live-Bild kalibrieren (5 · Live): 50 Sekunden lang alle 2 s ein Bild der Live-Quelle, Spieler ausgeblendet, dann öffnet sich die Kalibrierung.",
+      "Anzeigetafel kalibrieren: Das Programm sucht im ganzen Video die Momente, in denen die Tafel am besten zu sehen ist (unverdeckt, Ziffern hell), startet dort und bietet die fünf besten zum Umschalten an – die eingerichtete Tafel bleibt dabei erhalten.",
+      "Live und Live nachspielen zeigen, ob der Server im WLAN erreichbar ist, und was zu prüfen ist, wenn das Handy den Link trotzdem nicht öffnet (Gäste-WLAN, Client-Isolation, „Lokales Netzwerk“ in macOS).",
+      "Links im Protokoll zeigen die WLAN-Adresse statt 0.0.0.0."
+    ],
+    "en": [
+      "Clear view for the calibration: the picture is put together from 25 moments of the whole game (median); players and referees disappear and the lines are free – for the automatic court search too. Switch to the original frame in the calibration.",
+      "Calibrate the court on the live picture (5 · Live): a frame of the live source every 2 s for 50 seconds, players removed, then the calibration opens.",
+      "Scoreboard calibration: the program looks through the whole video for the moments where the board is seen best (not covered, digits bright), starts there and offers the five best to switch between – the board already set up is kept.",
+      "Live and Replay live show whether the server can be reached on the Wi-Fi, and what to check if the phone still cannot open the link (guest Wi-Fi, client isolation, “Local Network” in macOS).",
+      "Links in the log show the Wi-Fi address instead of 0.0.0.0."
+    ],
+    "fr": [
+      "Vue dégagée pour le calibrage : l’image est composée de 25 moments de tout le match (médiane) ; joueurs et arbitres disparaissent, les lignes sont dégagées – aussi pour la recherche automatique du terrain. Bascule vers l’image d’origine dans le calibrage.",
+      "Calibrer le terrain sur l’image en direct (5 · Direct) : une image de la source en direct toutes les 2 s pendant 50 secondes, joueurs masqués, puis le calibrage s’ouvre.",
+      "Calibrage du tableau d’affichage : le programme cherche dans toute la vidéo les moments où le tableau est le mieux visible (non masqué, chiffres lumineux), commence là et propose les cinq meilleurs – le tableau déjà configuré est conservé.",
+      "Direct et Rejouer en direct indiquent si le serveur est accessible sur le Wi-Fi et quoi vérifier si le téléphone n’ouvre toujours pas le lien (Wi-Fi invité, isolation des clients, « Réseau local » dans macOS).",
+      "Les liens du journal affichent l’adresse Wi-Fi au lieu de 0.0.0.0."
+    ],
+    "es": [
+      "Vista despejada para la calibración: la imagen se compone de 25 momentos de todo el partido (mediana); jugadores y árbitros desaparecen y las líneas quedan libres, también para la búsqueda automática del campo. Cambio a la imagen original en la calibración.",
+      "Calibrar el campo con la imagen en directo (5 · En vivo): una imagen de la fuente en directo cada 2 s durante 50 segundos, sin jugadores, y luego se abre la calibración.",
+      "Calibración del marcador: el programa busca en todo el vídeo los momentos en que el marcador se ve mejor (sin tapar, cifras brillantes), empieza ahí y ofrece los cinco mejores para cambiar entre ellos; el marcador ya configurado se mantiene.",
+      "En directo y Repetir en directo muestran si el servidor es accesible en la wifi y qué revisar si el móvil sigue sin abrir el enlace (wifi de invitados, aislamiento de clientes, «Red local» en macOS).",
+      "Los enlaces del registro muestran la dirección wifi en lugar de 0.0.0.0."
+    ]
+  },
   "0.24.0": {
     "de": [
       "Live nachspielen (6 · Auswertung): Eine fertige Analyse läuft ab wie live – 1× bis 8× – mit Handy-Seite, Scoreboard-Einblendung und Ticker. Am Handy bestätigst du jeden Wurfversuch (Treffer/daneben, Werfer, 1/2/3 Punkte) und trägst übersehene Körbe und Freiwürfe nach. Das Ergebnis wird sofort gespeichert und gilt für Statistik und neue Videos.",

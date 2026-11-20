@@ -1220,6 +1220,11 @@ fn handle(mut s: TcpStream, ui: Arc<Ui>) {
             }
         }
         // jobs still running, so that a reloaded page shows them again
+        // can a phone reach the live / replay server? (as far as this computer can tell)
+        ("POST", "/api/reach") => {
+            let port = b["port"].as_u64().filter(|p| (1..=65535).contains(p)).unwrap_or(0) as u16;
+            jres(&mut s, json!({"ok": true, "reach": super::live::reach(port)}));
+        }
         ("GET", "/api/jobs") => {
             let jobs = ui.jobs.lock().unwrap();
             let mut list: Vec<Value> = jobs.iter().filter(|(_, j)| matches!(j.status.lock().unwrap().as_str(), "running" | "cancelling")).map(|(id, j)| {

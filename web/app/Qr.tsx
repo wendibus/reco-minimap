@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import qrcode from 'qrcode-generator';
-import { useApp } from './core';
+import { api, useApp } from './core';
 
 /** A QR code as SVG: dark modules on a white field with the quiet zone the standard asks for. */
 export function QrCode({ text, size = 240 }: { text: string; size?: number }) {
@@ -57,4 +57,23 @@ export function QrButton({ url, title, note }: { url: string; title: string; not
     <button type="button" className="secondary-button" data-hint={t.qr.hint} onClick={() => setOpen(true)}>▦ {t.qr.button}</button>
     {open && <QrDialog url={url} title={title} note={note} onClose={() => setOpen(false)} />}
   </>;
+}
+
+/** While a live or replay server runs: can it be reached in the local network (as far as this
+ *  computer can tell), and what to check when a phone still cannot open the link. */
+export function ReachCheck({ port, network }: { port: number; network: boolean }) {
+  const { t } = useApp();
+  const tq = t.qr;
+  const [r, setR] = useState<{ local: boolean; lan: boolean; ip: string | null } | null>(null);
+  useEffect(() => {
+    let stop = false;
+    const go = () => void api('/api/reach', { port }).then((v) => { if (!stop && v.ok) setR(v.reach); });
+    go();
+    const id = window.setInterval(go, 5000);
+    return () => { stop = true; window.clearInterval(id); };
+  }, [port]);
+  if (!r) return null;
+  if (!r.local) return <p className="mm-muted small">{tq.reachWait}</p>;
+  if (!network || !r.lan) return <p className="bad small">✗ {tq.reachLocal}</p>;
+  return <><p className="ok small">✓ {tq.reachLan(`${r.ip}:${port}`)}</p><p className="mm-hint">{tq.reachPhone(r.ip ?? '')}</p></>;
 }

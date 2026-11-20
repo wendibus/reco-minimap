@@ -67,6 +67,9 @@ const de = {
     scan: 'Mit der Kamera des Handys scannen. Das Handy muss im selben WLAN sein wie dieser Rechner.',
     local: 'Dieser Link funktioniert nur auf diesem Rechner. „Für andere Geräte im Netzwerk erreichbar“ einschalten und neu starten – dann zeigt der QR-Code die Adresse im WLAN.',
     copy: 'Link kopieren', copied: 'Kopiert', close: 'Schließen',
+    reachWait: 'Server startet …', reachLocal: 'Nur auf diesem Rechner erreichbar – „Vom Handy im gleichen WLAN erreichbar“ einschalten und neu starten.',
+    reachLan: (a: string) => `Im WLAN erreichbar unter ${a}`,
+    reachPhone: (ip: string) => `Öffnet das Handy den Link trotzdem nicht: Am Handy unter Einstellungen → WLAN → (i) muss die IP-Adresse mit ${ip.split('.').slice(0, 3).join('.')}. beginnen (kein Gäste-WLAN, keine Client-Isolation im Router, VPN aus). Am Mac unter Systemeinstellungen → Datenschutz & Sicherheit → Lokales Netzwerk „Reco Minimap“ erlauben.`,
     nextStart: 'Der neue Link gilt ab dem nächsten Start.',
   },
   overlay: {
@@ -240,6 +243,9 @@ const en: Text = {
     scan: 'Scan with the phone camera. The phone must be in the same Wi-Fi as this computer.',
     local: 'This link only works on this computer. Turn on “Reachable for other devices in the network” and start again – the QR code then shows the address in the Wi-Fi.',
     copy: 'Copy link', copied: 'Copied', close: 'Close',
+    reachWait: 'Server starting …', reachLocal: 'Only reachable on this computer – turn on “Reachable from a phone on the same Wi-Fi” and start again.',
+    reachLan: (a: string) => `Reachable on the Wi-Fi at ${a}`,
+    reachPhone: (ip: string) => `If the phone still cannot open the link: on the phone under Settings → Wi-Fi → (i) the IP address must start with ${ip.split('.').slice(0, 3).join('.')}. (no guest Wi-Fi, no client isolation in the router, VPN off). On the Mac allow “Reco Minimap” under System Settings → Privacy & Security → Local Network.`,
     nextStart: 'The new link works from the next start.',
   },
   overlay: {
@@ -411,6 +417,9 @@ const fr: Text = {
     scan: 'Scanner avec l’appareil photo du téléphone. Le téléphone doit être sur le même Wi-Fi que cet ordinateur.',
     local: 'Ce lien ne fonctionne que sur cet ordinateur. Activer l’accès depuis les autres appareils du réseau et redémarrer – le code QR affiche alors l’adresse sur le Wi-Fi.',
     copy: 'Copier le lien', copied: 'Copié', close: 'Fermer',
+    reachWait: 'Démarrage du serveur …', reachLocal: 'Accessible seulement sur cet ordinateur – activer « Accessible depuis un téléphone sur le même Wi-Fi » et relancer.',
+    reachLan: (a: string) => `Accessible sur le Wi-Fi à ${a}`,
+    reachPhone: (ip: string) => `Si le téléphone n’ouvre toujours pas le lien : sur le téléphone, sous Réglages → Wi-Fi → (i), l’adresse IP doit commencer par ${ip.split('.').slice(0, 3).join('.')}. (pas de Wi-Fi invité, pas d’isolation des clients dans le routeur, VPN coupé). Sur le Mac, autoriser « Reco Minimap » sous Réglages Système → Confidentialité et sécurité → Réseau local.`,
     nextStart: 'Le nouveau lien est valable à partir du prochain démarrage.',
   },
   overlay: {
@@ -582,6 +591,9 @@ const es: Text = {
     scan: 'Escanéalo con la cámara del móvil. El móvil debe estar en la misma wifi que este ordenador.',
     local: 'Este enlace solo funciona en este ordenador. Activa el acceso desde otros dispositivos de la red y vuelve a iniciar: el código QR mostrará entonces la dirección en la wifi.',
     copy: 'Copiar enlace', copied: 'Copiado', close: 'Cerrar',
+    reachWait: 'Iniciando el servidor …', reachLocal: 'Solo accesible en este ordenador: activa «Accesible desde un móvil en la misma wifi» y vuelve a iniciar.',
+    reachLan: (a: string) => `Accesible en la wifi en ${a}`,
+    reachPhone: (ip: string) => `Si el móvil sigue sin abrir el enlace: en el móvil, en Ajustes → Wi-Fi → (i), la dirección IP debe empezar por ${ip.split('.').slice(0, 3).join('.')}. (sin wifi de invitados, sin aislamiento de clientes en el router, VPN desactivada). En el Mac, permite «Reco Minimap» en Ajustes del Sistema → Privacidad y seguridad → Red local.`,
     nextStart: 'El nuevo enlace vale a partir del próximo inicio.',
   },
   overlay: {

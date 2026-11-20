@@ -1747,7 +1747,7 @@ fn cmd_live(o: &Opts, input: &str) {
         Some(_) => { eprintln!("{}", trs!("Hinweis: Werfer am Handy wählen geht nur bei Basketball mit Anzeigetafel.", "Note: naming shooters on a phone needs basketball with a scoreboard.", "Remarque : choisir les tireurs sur le téléphone nécessite le basket avec tableau d'affichage.", "Nota: elegir tiradores en el móvil requiere baloncesto con marcador.")); false }
         None => false,
     };
-    let addr = live::serve(hub.clone(), &host, o.u("port", 8765) as u16).unwrap_or_else(|e| fail(e));
+    let addr = live::shown_addr(&live::serve(hub.clone(), &host, o.u("port", 8765) as u16).unwrap_or_else(|e| fail(e)));
     eprintln!("{}", tr!("\nLive-Overlay: http://{addr}/", "\nLive overlay: http://{addr}/", "\nIncrustation en direct : http://{addr}/", "\nSuperposición en directo: http://{addr}/"));
     eprintln!("{}", trs!("  OBS: Quelle hinzufügen -> Browser -> URL oben, Breite 1400 / Höhe 800 (oder passend), Hintergrund bleibt transparent.", "  OBS: add a source -> Browser -> the URL above, width 1400 / height 800 (or as needed); the background stays transparent.", "  OBS : ajouter une source -> Navigateur -> l'URL ci-dessus, largeur 1400 / hauteur 800 (ou selon besoin) ; le fond reste transparent.", "  OBS: añade una fuente -> Navegador -> la URL de arriba, ancho 1400 / alto 800 (o lo que convenga); el fondo queda transparente."));
     eprintln!("{}", tr!("Live-Ticker: http://{addr}/ticker   (Anzeige: {})", "Live ticker: http://{addr}/ticker   (shows: {})", "Fil en direct : http://{addr}/ticker   (affiche : {})", "Resumen en directo: http://{addr}/ticker   (muestra: {})", match ticker_mode { "names" => trs!("Namen", "names", "noms", "nombres"), "both" => trs!("Nummern und Namen", "numbers and names", "numéros et noms", "números y nombres"), _ => trs!("nur Nummern", "numbers only", "numéros seulement", "solo números") }));
@@ -2561,7 +2561,7 @@ fn cmd_simulate(o: &Opts, result: &str) {
         }
     }
     let host = o.s("host").unwrap_or("127.0.0.1").to_string();
-    let addr = live::serve(hub.clone(), &host, o.u("port", 8765) as u16).unwrap_or_else(|e| fail(e));
+    let addr = live::shown_addr(&live::serve(hub.clone(), &host, o.u("port", 8765) as u16).unwrap_or_else(|e| fail(e)));
     eprintln!("{}", tr!("\nNachspielen: http://{addr}/  ·  Scoreboard (OBS): http://{addr}/scoreboard  ·  Ticker: http://{addr}/ticker", "\nReplay: http://{addr}/  ·  scoreboard (OBS): http://{addr}/scoreboard  ·  ticker: http://{addr}/ticker", "\nRejeu : http://{addr}/  ·  tableau (OBS) : http://{addr}/scoreboard  ·  fil : http://{addr}/ticker", "\nRepetición: http://{addr}/  ·  marcador (OBS): http://{addr}/scoreboard  ·  resumen: http://{addr}/ticker"));
     if let Some(k) = o.s("pick-key") {
         eprintln!("{}", tr!("Handy: http://{addr}/pick?key={k}", "Phone: http://{addr}/pick?key={k}", "Téléphone : http://{addr}/pick?key={k}", "Móvil: http://{addr}/pick?key={k}"));

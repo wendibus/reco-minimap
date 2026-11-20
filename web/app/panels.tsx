@@ -1,4 +1,4 @@
-import { QrButton, QrDialog } from './Qr';
+import { QrButton, QrDialog, ReachCheck } from './Qr';
 import { OverlayCard, RenderCard } from './overlay';
 import { useEffect, useState } from 'react';
 import { api, Btn, Card, chooseNative, Check, clock, Color, Labeled, Num, PathField, secs, Sel, showFile, Text, useApp, type Json, type OutFile } from './core';
@@ -327,6 +327,7 @@ export function LivePanel() {
       {url && <><h3>{T('live.url')}</h3><a href={url} target="_blank" rel="noreferrer">{url}</a> · <a href={`${url}?floor=1&debug=1`} target="_blank" rel="noreferrer">{T('live.test')}</a><p className="mm-hint">{T('live.obs')}</p>
         {(project.overlay?.scoreboard?.on || project.overlay?.watermark?.on) && <><h3>{t.overlay.obs}</h3><a href={`${url}scoreboard`} target="_blank" rel="noreferrer">{url}scoreboard</a> · <a href={`${url}scoreboard?floor=1`} target="_blank" rel="noreferrer">{T('live.test')}</a></>}
         <h3>{T('ticker.link')}</h3><div className="mm-row mm-gap mm-wrap"><a href={turl} target="_blank" rel="noreferrer" className="mm-grow mm-break">{turl}</a><QrButton url={turl} title={T('ticker.link')} /></div>{l.network && !init?.lan_ip && <p className="bad small">{T('ticker.ui_noip')}</p>}
+        <ReachCheck port={Number(l.port) || 8765} network={l.network === true} />
         {l.ticker_approve && <><h3>{T('ticker.ui_admin')}</h3><a href={`${url}ticker/admin`} target="_blank" rel="noreferrer">{url}ticker/admin</a></>}</>}
     </Card>
     <OverlayCard />
@@ -367,6 +368,7 @@ function SimulateCard({ outs }: { outs: OutFile[] }) {
     {job && <>
       {phone && <><h3>{ts.phone}</h3><div className="mm-row mm-gap mm-wrap"><a href={phone} target="_blank" rel="noreferrer" className="mm-grow mm-break">{phone}</a><QrButton url={phone} title={ts.phone} /></div></>}
       {s.network && !init?.lan_ip && <p className="bad small">{T('ticker.ui_noip')}</p>}
+      <ReachCheck port={port} network={s.network === true} />
       <p><a href={base} target="_blank" rel="noreferrer">{T('live.url')}</a>{(project.overlay?.scoreboard?.on || project.overlay?.watermark?.on) && <> · <a href={`${base}scoreboard?floor=1`} target="_blank" rel="noreferrer">{ts.overlay}</a></>} · <a href={`${base}ticker`} target="_blank" rel="noreferrer">{ts.ticker}</a></p>
     </>}
     <p className="mm-hint">{ts.saved}</p>

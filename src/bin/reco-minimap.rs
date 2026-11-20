@@ -407,6 +407,8 @@ fn main() {
         "svg" => cmd_svg(&o, &input),
         "run" => cmd_run(&o, &input),
         "replay" => cmd_replay(&o, &input),
+        "render" => cmd_render(&o, &input),
+        "simulate" => cmd_simulate(&o, &input),
         "live" => cmd_live(&o, &input),
         other => fail(tr!("unbekannter Befehl '{other}' (calibrate | selfcheck | colors | run)", "unknown command '{other}' (see --help)", "commande inconnue « {other} » (voir --help)", "comando desconocido '{other}' (ver --help)")),
     }
@@ -1722,8 +1724,11 @@ fn cmd_live(o: &Opts, input: &str) {
     let ticker = ticker_cfg(o, &profile.id);
     let ticker_mode = ticker.names.clone();
     let ticker_mode = ticker_mode.as_str();
+    let mut live_score: Option<reco_minimap::tools::overlay::Score> = None;
+    // scoreboard and watermark of the `/scoreboard` page (`--overlay '<json>'`, completed by the interface)
+    let overlay_cfg: serde_json::Value = o.s("overlay").and_then(|j| serde_json::from_str(j).ok()).unwrap_or(serde_json::Value::Null);
     let hub = Hub::with_ticker(serde_json::json!({"home": hex(draw_home), "away": hex(draw_away), "referee": "#000000", "hide_referees": o.has("hide-referees"), "ball": "#ff8c00", "floor": "#262c34", "linecolor": "#e1e4e8",
-        "sport": profile.id, "numbers": o.has("numbers"), "field": [profile.field.length, profile.field.width], "lines": profile.lines.iter().map(|pl| pl.iter().map(|p| [(p.x * 100.0).round() / 100.0, (p.y * 100.0).round() / 100.0]).collect::<Vec<_>>()).collect::<Vec<_>>()}).to_string(), Some(ticker));
+        "overlay": overlay_cfg, "sport": profile.id, "numbers": o.has("numbers"), "field": [profile.field.length, profile.field.width], "lines": profile.lines.iter().map(|pl| pl.iter().map(|p| [(p.x * 100.0).round() / 100.0, (p.y * 100.0).round() / 100.0]).collect::<Vec<_>>()).collect::<Vec<_>>()}).to_string(), Some(ticker));
     // copies of the public feed for a web site: a folder and/or an upload (static files only, no code on the receiving side)
     let sink = reco_minimap::tools::ticker_pub::Sink {
         dir: o.s("ticker-export").map(std::path::PathBuf::from),
@@ -1878,12 +1883,30 @@ fn cmd_live(o: &Opts, input: &str) {
         if let Some(r) = board_reading.as_ref() {
             v["scoreboard"] = reco_minimap::tools::scoreboard::reading_json(r);
         }
+        // what the `/scoreboard` page shows: the scorer's score (or the board's), period and clock
+        for r in &board_readings {
+            let s = live_score.get_or_insert_with(Default::default);
+            if scorer.is_none() {
+                s.home = r.home.unwrap_or(s.home);
+                s.away = r.away.unwrap_or(s.away);
+            }
+            s.period = r.period.or(s.period);
+            s.clock = r.clock;
+        }
         if let Some(sc) = scorer.as_mut() {
             let mut ev = reco_minimap::live_score::Snapshot::from_frame(&v).map(|snap| sc.push_frame(snap)).unwrap_or_default();
             for r in &board_readings {
                 ev.extend(sc.push_reading(r));
             }
             log_scores(&ev);
+            let s = live_score.get_or_insert_with(Default::default);
+            for e in ev.iter().filter(|e| !e.retracted) {
+                match e.team {
+                    Team::Home => s.home = e.to,
+                    Team::Away => s.away = e.to,
+                    Team::Unknown => {}
+                }
+            }
             if picking {
                 for e in &ev {
                     hub.offer_pick(&e.to_json(), pick_candidates(e, &v, &profile));
@@ -1904,6 +1927,9 @@ fn cmd_live(o: &Opts, input: &str) {
                     a.extend(manual);
                 }
             }
+        }
+        if let Some(s) = live_score {
+            v["score"] = serde_json::json!({"home": s.home, "away": s.away, "period": s.period, "clock": s.clock});
         }
         let line = v.to_string();
         if let Some(j) = jsonl.as_mut() {
@@ -2118,6 +2144,13 @@ fn cmd_run(o: &Opts, input: &str) {
         r_pip = Some(Renderer::with_profile(theme.clone(), profile.clone()));
         w_pip = Some(FrameWriter::open(p, info.w as usize, info.h as usize, out_fps, false, &codec).unwrap_or_else(|e| fail(e)));
     }
+    // scoreboard and watermark in the panorama video (`--overlay '<json>'`)
+    let pip_overlay = o.s("overlay").filter(|_| w_pip.is_some()).map(|j| {
+        let v: serde_json::Value = serde_json::from_str(j).unwrap_or_else(|e| fail(format!("--overlay: {e}")));
+        reco_minimap::tools::overlay::Overlay::from_json(&v, [o.s("home-name").unwrap_or(""), o.s("away-name").unwrap_or("")], [draw_home, draw_away])
+    });
+    let mut pip_score: Option<reco_minimap::tools::overlay::Score> = None;
+    let mut last_t = 0.0f64;
     if let Some(p) = o.s("json") {
         jsonl = Some(std::io::BufWriter::new(std::fs::File::create(p).unwrap_or_else(|e| fail(format!("{p}: {e}")))));
     }
@@ -2207,6 +2240,7 @@ fn cmd_run(o: &Opts, input: &str) {
         let this = idx * every as u64; // ffmpeg only delivers every Nth frame
         idx += 1;
         let t = t_start + this as f64 / info.fps;
+        last_t = t;
         let selection=if adaptive {
             search.select(t,&tiles,info.w,info.h,o.u("ball-search-tiles",2))
         } else {reco_minimap::search::SearchPlan{indices:(0..tiles.len()).collect(),full_sweep:true,recovery_tiles:0,coasting_targets:0}};
@@ -2274,6 +2308,9 @@ fn cmd_run(o: &Opts, input: &str) {
             let c = r.render(&state);
             let (ox, oy) = (frame.w.saturating_sub(c.w + 24), frame.h.saturating_sub(c.h + 24));
             frame.blit(&c, ox, oy);
+            if let Some(ov) = pip_overlay.as_ref() {
+                ov.draw(&mut frame, pip_score.filter(|_| scorer.is_some()));
+            }
             w.write(&frame.rgb).unwrap_or_else(|e| fail(e));
         }
         if jsonl.is_some() || tsim.is_some() {
@@ -2291,6 +2328,19 @@ fn cmd_run(o: &Opts, input: &str) {
                         ev.extend(sc.push_reading(r));
                     }
                     log_scores(&ev);
+                    // the score the panorama video shows
+                    let ps = pip_score.get_or_insert_with(Default::default);
+                    for e in ev.iter().filter(|e| !e.retracted) {
+                        match e.team {
+                            Team::Home => ps.home = e.to,
+                            Team::Away => ps.away = e.to,
+                            Team::Unknown => {}
+                        }
+                    }
+                    for r in &rs {
+                        ps.period = r.period.or(ps.period);
+                        ps.clock = r.clock;
+                    }
                     n_scores += ev.iter().filter(|e| !e.update).count();
                     if let Some(a) = fj["events"].as_array_mut() {
                         a.extend(ev.iter().map(|e| e.to_json()));
@@ -2379,6 +2429,12 @@ fn cmd_run(o: &Opts, input: &str) {
     for w in [w_min, w_alpha, w_pip].into_iter().flatten() {
         w.finish().unwrap_or_else(|e| fail(e));
     }
+    // the sound of the source under the panorama video
+    if let (true, Some(p)) = (o.has("audio"), o.s("pip")) {
+        if let Err(e) = reco_minimap::tools::render_video::add_audio(p, input, t_start, (last_t - t_start).max(0.0) + 1.0 / info.fps) {
+            eprintln!("{e}");
+        }
+    }
     if let Some(mut j) = jsonl {
         let _ = j.flush();
         drop(j);
@@ -2446,6 +2502,86 @@ fn dets_from_json(v: &serde_json::Value) -> Option<(f64, Vec<Det>)> {
 
 /// Tracking, ball and situations from recorded detections: everything after the detector, without the video.
 /// Thresholds can only be raised above the ones used while recording, so record with low ones to compare.
+/// `render result.jsonl --video V [--track out.mp4] [--pip out.mp4]`: new videos from a finished
+/// analysis - autotrack (16:9, follows the play) and/or the panorama with the minimap - with the
+/// scoreboard and watermark of `--overlay '<json>'` and the sound of the source with `--audio`.
+fn cmd_render(o: &Opts, result: &str) {
+    use reco_minimap::tools::render_video as rv;
+    let video = o.s("video").unwrap_or_else(|| fail(trs!("--video fehlt (das Quellvideo der Analyse)", "--video is missing (the source video of the analysis)", "--video manquant (la vidéo source de l'analyse)", "falta --video (el vídeo de origen del análisis)")));
+    let (track, pip) = (o.s("track"), o.s("pip"));
+    if track.is_none() && pip.is_none() {
+        fail::<()>(trs!("kein Ausgang gewählt: --track und/oder --pip", "no output chosen: --track and/or --pip", "aucune sortie choisie : --track et/ou --pip", "no se ha elegido ninguna salida: --track y/o --pip"));
+    }
+    let info = video::probe(video).unwrap_or_else(|e| fail(e));
+    let (cal, profile) = load_court(o.s("court").unwrap_or_else(|| fail(trs!("--court court.json fehlt", "--court court.json is missing", "--court court.json manquant", "falta --court court.json"))));
+    let projector = cal.projector().unwrap_or_else(|| fail(trs!("court.json: Homographie nicht lösbar", "court.json: the homography cannot be solved", "court.json : l'homographie ne peut pas être résolue", "court.json: no se puede resolver la homografía")));
+    let teams = read_teams(o);
+    let (home, away) = (o.s("draw-home").and_then(parse_hex).unwrap_or(teams.home), o.s("draw-away").and_then(parse_hex).unwrap_or(teams.away));
+    let theme = Theme { px_per_m: Renderer::default_px_per_m(&profile), home, away, min_alpha: o.f("min-alpha", 0.8) as f32, show_numbers: o.has("numbers"), keeper_stripes: !o.has("no-stripes"), home_keeper: o.s("draw-home-gk").and_then(parse_hex), away_keeper: o.s("draw-away-gk").and_then(parse_hex), show_referees: !o.has("hide-referees"), ..Theme::default() };
+    let ov: serde_json::Value = o.s("overlay").map(|j| serde_json::from_str(j).unwrap_or_else(|e| fail(format!("--overlay: {e}")))).unwrap_or(serde_json::json!({}));
+    let overlay = reco_minimap::tools::overlay::Overlay::from_json(&ov, ["", ""], [home, away]);
+    if overlay.scoreboard.is_some() && !reco_minimap::tools::overlay::has_font() {
+        eprintln!("{}", trs!("Hinweis: keine Systemschrift gefunden – das Scoreboard zeigt nur Ziffern (RECO_FONT=<datei.ttf> setzt eine Schrift).", "Note: no system font found – the scoreboard shows digits only (RECO_FONT=<file.ttf> sets a font).", "Remarque : aucune police système trouvée – le tableau n'affiche que les chiffres (RECO_FONT=<fichier.ttf> définit une police).", "Nota: no se encontró ninguna fuente del sistema; el marcador solo muestra cifras (RECO_FONT=<archivo.ttf> define una fuente)."));
+    }
+    // baskets confirmed in a live replay: they make the score of the scoreboard
+    let manual = std::fs::read_to_string(rv::baskets_path(std::path::Path::new(result))).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .map(|v| (v["events"].as_array().cloned().unwrap_or_default(), v["replace"].as_bool() == Some(true)))
+        .filter(|m| !m.0.is_empty());
+    let size = o.s("track-size").and_then(|s| s.split_once('x')).and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?))).unwrap_or((1920, 1080));
+    let p = rv::Params {
+        result, video, info: &info, profile, projector: Box::new(projector), theme, overlay, manual, track, pip, track_size: size,
+        zoom: o.f("zoom", 0.8) as f32, minimap: !o.has("no-minimap"), audio: o.has("audio"), codec: Codec::H264(o.s("vcodec").unwrap_or("auto").to_string()),
+        span: clock_opt(o, "start").map(|a| (a, t_duration(o).map(|d| a + d).unwrap_or(f64::MAX))),
+    };
+    let mut ticker = progress::Throttle::new(std::time::Duration::from_millis(500));
+    match rv::render(p, |f, m| ticker.report(Some(f), None, m)) {
+        Ok(outs) => {
+            progress::report(Some(1.0), None, "");
+            for p in outs {
+                println!("{}", tr!("Video: {p}", "video: {p}", "vidéo : {p}", "vídeo: {p}"));
+            }
+        }
+        Err(e) => fail(e),
+    }
+}
+
+fn cmd_simulate(o: &Opts, result: &str) {
+    use reco_minimap::tools::{live, simulate as sim};
+    let (_cal, profile) = load_court(o.s("court").unwrap_or_else(|| fail(trs!("--court court.json fehlt", "--court court.json is missing", "--court court.json manquant", "falta --court court.json"))));
+    let teams = read_teams(o);
+    let (home, away) = (o.s("draw-home").and_then(parse_hex).unwrap_or(teams.home), o.s("draw-away").and_then(parse_hex).unwrap_or(teams.away));
+    let overlay_cfg: serde_json::Value = o.s("overlay").and_then(|j| serde_json::from_str(j).ok()).unwrap_or(serde_json::Value::Null);
+    let ticker = ticker_cfg(o, &profile.id);
+    let hub = live::Hub::with_ticker(serde_json::json!({"home": hex(home), "away": hex(away), "referee": "#000000", "hide_referees": o.has("hide-referees"), "ball": "#ff8c00", "floor": "#262c34", "linecolor": "#e1e4e8",
+        "overlay": overlay_cfg, "sport": profile.id, "numbers": o.has("numbers"), "replay": true, "field": [profile.field.length, profile.field.width], "lines": profile.lines.iter().map(|pl| pl.iter().map(|p| [(p.x * 100.0).round() / 100.0, (p.y * 100.0).round() / 100.0]).collect::<Vec<_>>()).collect::<Vec<_>>()}).to_string(), Some(ticker));
+    let roster = |k: &str| o.s(k).map(parse_roster).unwrap_or_default().iter().map(|&n| n as u64).collect::<Vec<_>>();
+    if let Some(k) = o.s("pick-key") {
+        if !hub.enable_picks(k, roster("roster-home"), roster("roster-away")) {
+            fail::<()>(trs!("--pick-key: mindestens 16 Buchstaben/Ziffern", "--pick-key: at least 16 letters/digits", "--pick-key : au moins 16 lettres/chiffres", "--pick-key: al menos 16 letras/cifras"));
+        }
+    }
+    let host = o.s("host").unwrap_or("127.0.0.1").to_string();
+    let addr = live::serve(hub.clone(), &host, o.u("port", 8765) as u16).unwrap_or_else(|e| fail(e));
+    eprintln!("{}", tr!("\nNachspielen: http://{addr}/  ·  Scoreboard (OBS): http://{addr}/scoreboard  ·  Ticker: http://{addr}/ticker", "\nReplay: http://{addr}/  ·  scoreboard (OBS): http://{addr}/scoreboard  ·  ticker: http://{addr}/ticker", "\nRejeu : http://{addr}/  ·  tableau (OBS) : http://{addr}/scoreboard  ·  fil : http://{addr}/ticker", "\nRepetición: http://{addr}/  ·  marcador (OBS): http://{addr}/scoreboard  ·  resumen: http://{addr}/ticker"));
+    if let Some(k) = o.s("pick-key") {
+        eprintln!("{}", tr!("Handy: http://{addr}/pick?key={k}", "Phone: http://{addr}/pick?key={k}", "Téléphone : http://{addr}/pick?key={k}", "Móvil: http://{addr}/pick?key={k}"));
+    }
+    let mode = match o.s("mode").unwrap_or("auto") {
+        "board" => Some(sim::Mode::Board),
+        "attempts" => Some(sim::Mode::Attempts),
+        _ => None,
+    };
+    let p = sim::Params { result, goals: profile.goals.clone(), speed: o.f("speed", 1.0), from: clock_opt(o, "from"), mode, baskets: reco_minimap::tools::render_video::baskets_path(std::path::Path::new(result)) };
+    let mut ticker = progress::Throttle::new(std::time::Duration::from_millis(500));
+    match sim::run(hub, p, |f, m| ticker.report(Some(f), None, m)) {
+        Ok(n) => {
+            progress::report(Some(1.0), None, "");
+            println!("{}", tr!("{n} Körbe bestätigt", "{n} baskets confirmed", "{n} paniers confirmés", "{n} canastas confirmadas"));
+        }
+        Err(e) => fail(e),
+    }
+}
+
 fn cmd_replay(o: &Opts, path: &str) {
     let text = std::fs::read_to_string(path).unwrap_or_else(|e| fail(format!("{path}: {e}")));
     let mut lines = text.lines().filter(|l| !l.trim().is_empty());

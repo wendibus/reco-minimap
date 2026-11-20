@@ -18,6 +18,7 @@ type Stats = Json & {
     period?: number | null; clock?: number | null; board?: BoardEvent[];
     players?: Record<'home' | 'away', BoardPoints[]>; no_number?: Record<'home' | 'away', number>; team_only?: Record<'home' | 'away', number> };
   box_score?: BoxScore | null;
+  board_quality?: { readings: number; ok: boolean; both?: number; home?: number; away?: number; clock?: number; period?: number; drops_per_10min?: number; digits?: (number | null)[]; has_period?: boolean; confirmed?: boolean } | null;
   direction?: { source: 'given' | 'estimated' | 'unknown'; home_start: 'l' | 'r' | null; switch_at: number | null; agree: number; total: number; reassigned: number };
   moments: { t: number; type: 'attempt' | 'scene' | 'sub'; kind?: string; team: Team; zone?: string; out?: number | null; in?: number | null }[];
 };
@@ -30,7 +31,7 @@ type Made = { t: number; team: 'home' | 'away'; points: number; kind: string; nu
 type FixStep = { key: string; before: number | null | undefined; after: number | null | undefined };
 type PlayerTime = { number: number; seconds: number; share: number; inferred_share?: number };
 type ScoreEvent = { t: number; team: Team; points: number; kind: string; evidence: string[]; restart_t: number; confidence: 'likely' | 'possible' };
-type BoardEvent = { t: number; team: Team; points: number; from: number; to: number; basis: 'attempt' | 'team_only' | 'correction' | 'jump'; probability: number; candidates: number; cancelled: boolean;
+type BoardEvent = { t: number; team: Team; points: number; from: number; to: number; basis: 'attempt' | 'team_only' | 'correction' | 'jump' | 'manual'; probability: number; candidates: number; cancelled: boolean;
   attempt: { t: number; kind: string } | null; shooter: { number: number | null; status: 'read' | 'inferred' | 'unknown'; track: number } | null };
 type BoardPoints = { number: number; points: number; read: number; inferred: number };
 
@@ -211,15 +212,16 @@ export function StatsPanel() {
     <div className="segmented mm-stats-tabs" role="tablist">{tabs.map(([k, label]) => <button key={k} type="button" role="tab" aria-selected={cur === k} data-hint={ts.tabHint} className={cur === k ? 'active' : ''} onClick={() => pickTab(k)}>{label}</button>)}</div>
 
     {cur === 'overview' && <>
+    {stats.board_quality && !stats.board_quality.ok && !stats.board_quality.confirmed && <BoardWarning q={stats.board_quality} />}
     <div className="mm-tiles">
-      {stats.score?.supported && (stats.score.method === 'scoreboard' || stats.score.events.length > 0) && <Tile label={ts.scoreTile} value={`${stats.score.home}:${stats.score.away}`} sub={stats.score.method === 'scoreboard' ? ts.scoreBoardSub + (stats.score.period ? ' · ' + ts.gamePeriod(stats.score.period) : '') : stats.score.likely ? ts.scoreLikely(stats.score.likely.home, stats.score.likely.away) : undefined} />}
+      {stats.score?.supported && (boardLike(stats.score.method) || stats.score.events.length > 0) && <Tile label={ts.scoreTile} value={`${stats.score.home}:${stats.score.away}`} sub={stats.score.method === 'confirmed' ? ts.scoreConfirmedSub : stats.score.method === 'scoreboard' ? ts.scoreBoardSub + (stats.score.period ? ' · ' + ts.gamePeriod(stats.score.period) : '') : stats.score.likely ? ts.scoreLikely(stats.score.likely.home, stats.score.likely.away) : undefined} />}
       {sec.shots && <><Tile label={`${ts.attempts} · ${ts.home}`} value={stats.totals.home} swatch={colors.home} /><Tile label={`${ts.attempts} · ${ts.away}`} value={stats.totals.away} swatch={colors.away} /></>}
       {sec.possession && <Tile label={`${ts.possession} · ${ts.home}`} value={`${Math.round(stats.possession.home * 100)} %`} sub={`${ts.away} ${Math.round(stats.possession.away * 100)} %`} />}
       <Tile label={ts.ballSeen} value={`${Math.round(stats.possession.ball_seen * 100)} %`} />
       <Tile label={ts.duration} value={clock(dur)} sub={`${clock(stats.t0)} – ${clock(stats.t1)}`} />
     </div>
 
-    {stats.score && (stats.score.method === 'scoreboard'
+    {stats.score && (boardLike(stats.score.method)
       ? <><BoardScoreCard s={stats} colors={colors} names={teamName} kindLabel={kindLabel} /></>
       : <ScoreCard s={stats} colors={colors} names={teamName} kindLabel={kindLabel} />)}
     {sec.periods && stats.attempts.length > 0 && <Card title={ts.periods} hint={ts.periodsHint}>
@@ -232,7 +234,7 @@ export function StatsPanel() {
 
     {cur === 'players' && <>
     {stats.box_score?.without_number ? <BoxScoreCard b={stats.box_score} colors={colors} names={teamName} roster={roster} /> : <>
-      {stats.score?.method === 'scoreboard' && <PointsCard s={stats} colors={colors} names={teamName} roster={roster} />}
+      {boardLike(stats.score?.method) && <PointsCard s={stats} colors={colors} names={teamName} roster={roster} />}
       {stats.players && <PlayersCard p={stats.players} span={dur} colors={colors} names={teamName} roster={roster} />}
     </>}
     </>}
@@ -472,6 +474,22 @@ function DirectionLine({ d }: { d: NonNullable<Stats['direction']> }) {
   </p>;
 }
 
+/** A hall scoreboard that was barely read: why points are missing and what helps. */
+/** Score from the hall scoreboard, or from the baskets confirmed in a live replay. */
+const boardLike = (m?: string) => m === 'scoreboard' || m === 'confirmed';
+
+function BoardWarning({ q }: { q: NonNullable<Stats['board_quality']> }) {
+  const { t } = useApp();
+  const ts = t.stats, pc = (x?: number) => Math.round((x ?? 0) * 100);
+  const [l, r] = q.digits ?? [];
+  return <Card title={ts.boardPoorTitle}>
+    <p className="bad">{ts.boardPoor(pc(q.home), pc(q.away), q.drops_per_10min ?? 0)}</p>
+    {l != null && r != null && (l < 2 || r < 2) && <p>{ts.boardDigits(l, r)}</p>}
+    {q.has_period === false && <p>{ts.boardNoPeriod}</p>}
+    <p className="mm-hint">{ts.boardFix}</p>
+  </Card>;
+}
+
 /** The estimated score with every scoring event and its evidence. */
 function ScoreCard({ s, colors, names, kindLabel }: { s: Stats; colors: Record<Team, string>; names: Record<Team, string>; kindLabel: (k?: string) => string }) {
   const { t } = useApp();
@@ -499,11 +517,12 @@ function BoardScoreCard({ s, colors, names, kindLabel }: { s: Stats; colors: Rec
     if (e.basis === 'jump') return ts.jump;
     if (e.basis === 'team_only' || !e.shooter) return ts.teamOnly;
     const n = e.shooter.number;
+    if (e.basis === 'manual') return n == null ? ts.noNumber : `#${n} · ${ts.numberConfirmed}`;
     return n == null ? ts.noNumber : `#${n} · ${e.shooter.status === 'inferred' ? ts.numberInferred : ts.numberRead}`;
   };
-  return <Card title={ts.scoreBoard} hint={ts.scoreHintBoard}>
+  return <Card title={sc.method === 'confirmed' ? ts.scoreConfirmed : ts.scoreBoard} hint={sc.method === 'confirmed' ? ts.scoreConfirmedHint : ts.scoreHintBoard}>
     <div className="mm-legend">{(['home', 'away'] as Team[]).map((k) => <span key={k}><i className="mm-sw" style={{ background: colors[k] }} />{names[k]} <strong>{sc[k as 'home' | 'away']}</strong></span>)}{sc.period ? <span className="mm-muted">{ts.gamePeriod(sc.period)}</span> : null}</div>
-    {ev.length === 0 ? <p className="mm-muted">{s.sport === 'basketball' ? ts.scoreEmptyBasket : ts.scoreEmpty}</p> : <div className="mm-scroll"><table className="mm-table mm-score"><tbody>{ev.map((e, i) => <tr key={i} className={e.cancelled || e.basis !== 'attempt' ? 'mm-weak' : ''}>
+    {ev.length === 0 ? <p className="mm-muted">{s.sport === 'basketball' ? ts.scoreEmptyBasket : ts.scoreEmpty}</p> : <div className="mm-scroll"><table className="mm-table mm-score"><tbody>{ev.map((e, i) => <tr key={i} className={e.cancelled || (e.basis !== 'attempt' && e.basis !== 'manual') ? 'mm-weak' : ''}>
       <td>{clock(e.t)}</td><td><i className="mm-sw" style={{ background: colors[e.team] }} />{names[e.team]}</td>
       <td>{e.points > 0 ? '+' : ''}{e.points} <span className="mm-muted">({e.from}→{e.to})</span></td>
       <td>{who(e)}{e.cancelled ? ` · ${ts.cancelled}` : ''}</td>

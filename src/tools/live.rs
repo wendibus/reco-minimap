@@ -2,6 +2,7 @@
 //! Spieldock or any other consumer. std-only HTTP server.
 //!
 //!   GET /              overlay page (transparent canvas; add ?floor=1 to test in a normal browser)
+//!   GET /scoreboard    scoreboard and watermark for OBS (transparent, 1920x1080; the project's `overlay`)
 //!   GET /events        server-sent events: one JSON message per detection update
 //!   GET /state.json    latest message (polling)
 //!   GET /config.json   colours
@@ -101,6 +102,10 @@ struct Pick {
     event: Value,
     candidates: Vec<u64>,
     chosen: Option<Option<u64>>,
+    /// A shot attempt (live replay without a readable scoreboard): made or missed is asked too.
+    attempt: bool,
+    /// For an attempt: in (true) or missed (false), once chosen.
+    made: Option<bool>,
 }
 
 /// The phone page: a secret key in its link, the rosters, the baskets, and the picks waiting to be
@@ -110,6 +115,10 @@ struct Picks {
     roster: [Vec<u64>; 2],
     cards: Vec<Pick>,
     manual: Vec<Value>,
+    /// Baskets may be added on the phone (live replay): the time they get and the next id.
+    add: Option<(f64, u64)>,
+    /// Replay speed shown on the phone (live replay only).
+    speed: Option<f64>,
 }
 
 /// Compare without stopping at the first difference (the key guards the page in the network).
@@ -246,7 +255,7 @@ impl Hub {
         if key.len() < 16 || !key.bytes().all(|b| b.is_ascii_alphanumeric()) {
             return false;
         }
-        *self.picks.lock().unwrap() = Some(Picks { key: key.to_string(), roster: [roster_home, roster_away], cards: Vec::new(), manual: Vec::new() });
+        *self.picks.lock().unwrap() = Some(Picks { key: key.to_string(), roster: [roster_home, roster_away], cards: Vec::new(), manual: Vec::new(), add: None, speed: None });
         true
     }
 
@@ -277,10 +286,82 @@ impl Hub {
                 candidates.insert(0, n);
             }
         }
-        p.cards.push(Pick { sid, event: ev.clone(), candidates, chosen: None });
+        p.cards.push(Pick { sid, event: ev.clone(), candidates, chosen: None, attempt: false, made: None });
         if p.cards.len() > PICKS_KEEP {
             p.cards.remove(0);
         }
+    }
+
+    /// Live replay: allow adding baskets on the phone and show the replay clock and speed.
+    /// `last_sid`: the highest id of baskets added before (new ones count on from there).
+    pub fn enable_adding(&self, speed: f64, last_sid: u64) {
+        if let Some(p) = self.picks.lock().unwrap().as_mut() {
+            p.add = Some((0.0, last_sid.max(9_000_000)));
+            p.speed = Some(speed);
+        }
+    }
+
+    /// The replay's video time (new baskets added on the phone get it).
+    pub fn set_clock(&self, t: f64) {
+        if let Some((now, _)) = self.picks.lock().unwrap().as_mut().and_then(|p| p.add.as_mut()) {
+            *now = t;
+        }
+    }
+
+    /// A shot attempt as a card: the operator says whether it went in and who threw it.
+    /// `ev`: a score-like event (`sid`, `t`, `team`, `points`, `kind: field_goal`).
+    pub fn offer_attempt(&self, ev: &Value, candidates: Vec<u64>) {
+        let mut g = self.picks.lock().unwrap();
+        let Some(p) = g.as_mut() else { return };
+        let Some(sid) = ev["sid"].as_u64() else { return };
+        if p.cards.iter().any(|c| c.sid == sid) {
+            return;
+        }
+        p.cards.push(Pick { sid, event: ev.clone(), candidates, chosen: None, attempt: true, made: None });
+        // open attempts are kept longer: in a replay several come quickly
+        while p.cards.len() > PICKS_KEEP * 2 {
+            p.cards.remove(0);
+        }
+    }
+
+    /// A basket added on the phone (live replay): a new card at the replay time, already made.
+    pub fn add_basket(&self, team: &str, points: i64) -> Option<u64> {
+        let mut g = self.picks.lock().unwrap();
+        let p = g.as_mut()?;
+        let (t, next) = p.add.as_mut()?;
+        if !matches!(team, "home" | "away") || !(1..=3).contains(&points) {
+            return None;
+        }
+        *next += 1;
+        let sid = *next;
+        let ev = json!({"type": "score", "sid": sid, "t": *t, "team": team, "points": points, "kind": if points == 1 { "free_throw" } else { "field_goal" }, "added": true});
+        // counts at once (shooter unknown until named on the card)
+        let mut e = ev.clone();
+        e["made"] = json!(true);
+        e["number"] = Value::Null;
+        e["basis"] = json!("manual");
+        p.manual.push(e);
+        p.cards.push(Pick { sid, event: ev, candidates: Vec::new(), chosen: Some(None), attempt: true, made: Some(true) });
+        Some(sid)
+    }
+
+    /// An attempt card decided: `made` false = missed (no shooter), else in by `number` with `points`.
+    pub fn choose_attempt(&self, sid: u64, made: bool, number: Option<u64>, points: Option<i64>) -> bool {
+        let mut g = self.picks.lock().unwrap();
+        let Some(p) = g.as_mut() else { return false };
+        let Some(c) = p.cards.iter_mut().find(|c| c.sid == sid && c.attempt) else { return false };
+        c.chosen = Some(if made { number } else { None });
+        c.made = Some(made);
+        if let Some(pts) = points.filter(|x| (1..=3).contains(x)) {
+            c.event["points"] = json!(pts);
+            c.event["kind"] = json!(if pts == 1 { "free_throw" } else { "field_goal" });
+        }
+        let mut e = c.event.clone();
+        e["made"] = json!(made);
+        e["number"] = json!(if made { number } else { None });
+        e["basis"] = json!("manual");
+        p.manual.push(e);
+        true
     }
 
     /// The operator named the shooter (`None`: not known). The update goes out with the next frame.
@@ -312,8 +393,12 @@ impl Hub {
             return false;
         }
         c.chosen = None;
+        if c.attempt && c.event["added"] != true {
+            c.made = None;
+        }
         let mut e = c.event.clone();
         e["update"] = json!(true);
+        e["undone"] = json!(true);
         p.manual.push(e);
         true
     }
@@ -335,9 +420,11 @@ impl Hub {
         let cards: Vec<Value> = p.cards.iter().rev().map(|c| {
             let e = &c.event;
             json!({"sid": c.sid, "t": e["t"], "clock": e["clock"], "team": e["team"], "points": e["points"], "kind": e["kind"], "to": e["to"],
-                "auto": e["number"], "candidates": c.candidates, "picked": c.chosen.is_some(), "number": c.chosen.flatten()})
+                "auto": e["number"], "candidates": c.candidates, "picked": c.chosen.is_some(), "number": c.chosen.flatten(),
+                "attempt": c.attempt, "made": c.made, "added": e["added"] == true})
         }).collect();
-        json!({"config": cfg, "roster": {"home": p.roster[0], "away": p.roster[1]}, "cards": cards}).to_string()
+        let replay = p.add.map(|(t, _)| json!({"t": t, "speed": p.speed}));
+        json!({"config": cfg, "roster": {"home": p.roster[0], "away": p.roster[1]}, "cards": cards, "replay": replay}).to_string()
     }
 
     pub fn publish(&self, json: String) {
@@ -400,6 +487,23 @@ fn handle(mut s: TcpStream, hub: Arc<Hub>) {
             match (method.as_str(), p) {
                 ("GET", "/pick") | ("GET", "/pick/") => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("pick.html").as_bytes()),
                 ("GET", "/pick.json") => respond(&mut s, "200 OK", "application/json; charset=utf-8", hub.pick_json().as_bytes()),
+                ("POST", "/pick/add") => {
+                    let pts = q("points").and_then(|v| v.parse::<i64>().ok()).unwrap_or(0);
+                    let r = hub.add_basket(&q("team").unwrap_or_default(), pts);
+                    respond(&mut s, if r.is_some() { "200 OK" } else { "400 Bad Request" }, "application/json", json!({"ok": r.is_some(), "sid": r}).to_string().as_bytes());
+                }
+                ("POST", "/pick/attempt") => {
+                    let sid = q("sid").and_then(|v| v.parse::<u64>().ok());
+                    let made = q("made").as_deref() == Some("1");
+                    let n = q("n").and_then(|v| v.parse::<u64>().ok());
+                    let pts = q("p").and_then(|v| v.parse::<i64>().ok());
+                    let ok = match (sid, q("n").as_deref()) {
+                        (Some(sid), Some("auto")) => hub.unpick(sid),
+                        (Some(sid), _) => hub.choose_attempt(sid, made, n, pts),
+                        _ => false,
+                    };
+                    respond(&mut s, "200 OK", "application/json", json!({"ok": ok}).to_string().as_bytes());
+                }
                 ("POST", "/pick/choose") => {
                     let sid = q("sid").and_then(|v| v.parse::<u64>().ok());
                     let n = q("n").and_then(|v| v.parse::<u64>().ok());
@@ -415,6 +519,7 @@ fn handle(mut s: TcpStream, hub: Arc<Hub>) {
             respond(&mut s, "200 OK", "application/json; charset=utf-8", hub.ticker_json(since).as_bytes());
         }
         "/" => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("live.html").as_bytes()),
+        "/scoreboard" => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("scoreboard_overlay.html").as_bytes()),
         "/i18n.js" => respond(&mut s, "200 OK", "application/javascript; charset=utf-8", include_str!("i18n.js").as_bytes()),
         "/config.json" => respond(&mut s, "200 OK", "application/json", hub.config.as_bytes()),
         "/state.json" => {
@@ -464,6 +569,29 @@ pub fn serve(hub: Arc<Hub>, host: &str, port: u16) -> Result<String, String> {
 #[cfg(test)]
 mod pick_tests {
     use super::*;
+
+    #[test]
+    fn attempts_are_decided_and_baskets_added_in_a_replay() {
+        let hub = Hub::new("{}".into());
+        assert!(hub.enable_picks("abcdefghijklmnop1234", vec![], vec![]));
+        hub.enable_adding(4.0, 9_000_003);
+        hub.set_clock(50.0);
+        hub.offer_attempt(&json!({"type": "score", "sid": 1_000_000, "t": 40.0, "team": "home", "points": 2, "kind": "field_goal"}), vec![8, 12]);
+        assert!(hub.choose_attempt(1_000_000, true, Some(8), Some(3)));
+        let m = hub.take_manual();
+        assert_eq!((m[0]["made"].as_bool(), m[0]["number"].as_u64(), m[0]["points"].as_i64()), (Some(true), Some(8), Some(3)));
+        // an added basket counts at once, at the replay clock, with a new id
+        assert_eq!(hub.add_basket("away", 1), Some(9_000_004));
+        let m = hub.take_manual();
+        assert_eq!((m[0]["t"].as_f64(), m[0]["made"].as_bool(), m[0]["team"].as_str()), (Some(50.0), Some(true), Some("away")));
+        // undone: the card is open again and the decision is withdrawn
+        assert!(hub.unpick(1_000_000));
+        assert_eq!(hub.take_manual()[0]["undone"], true);
+        let v: Value = serde_json::from_str(&hub.pick_json()).unwrap();
+        assert_eq!(v["replay"]["speed"], 4.0);
+        let card = v["cards"].as_array().unwrap().iter().find(|c| c["sid"] == 1_000_000).unwrap();
+        assert_eq!((card["picked"].as_bool(), card["made"].is_null()), (Some(false), true));
+    }
 
     fn get(addr: &str, method: &str, path: &str) -> (String, String) {
         let mut s = TcpStream::connect(addr).unwrap();

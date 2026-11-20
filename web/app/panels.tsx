@@ -1,5 +1,7 @@
+import { QrButton, QrDialog } from './Qr';
+import { OverlayCard, RenderCard } from './overlay';
 import { useEffect, useState } from 'react';
-import { api, Btn, Card, chooseNative, Check, clock, Color, Labeled, Num, PathField, secs, Sel, showFile, Text, useApp, type Json } from './core';
+import { api, Btn, Card, chooseNative, Check, clock, Color, Labeled, Num, PathField, secs, Sel, showFile, Text, useApp, type Json, type OutFile } from './core';
 
 const ALIAS: Record<string, string> = { soccer: 'football', fussball: 'football', 'fußball': 'football', futbol: 'football', 'fútbol': 'football', football11: 'football', field_hockey: 'hockey', 'field-hockey': 'hockey', fieldhockey: 'hockey', feldhockey: 'hockey', basket: 'basketball', hand: 'handball', volley: 'volleyball' };
 export function useSportId() {
@@ -183,6 +185,8 @@ export function CalibPanel() {
       <div className="mm-row mm-gap"><span className="mm-muted">{T('sb.time')}</span><div style={{ width: 90 }}><Num k="scoreboard_time" label="" /></div>
         <Btn primary hint={t.hints.calibrateScoreboard} onClick={() => void runJob('scoreboard_calibrate', { ...common(), time: project.scoreboard_time ?? 60, lang })}>{T('sb.btn')}</Btn>
         <span className={files.scoreboard ? 'ok' : 'mm-muted'}>{files.scoreboard ? T('sb.state', { n: files.scoreboard.fields, side: T(files.scoreboard.home === 'right' ? 'sb.right' : 'sb.left') }) : T('sb.none')}</span></div>
+      {files.scoreboard && (files.scoreboard.digits as number[] | undefined)?.some((d) => d < 2) && <p className="bad small">{t.stats.boardDigits((files.scoreboard.digits as number[])[0], (files.scoreboard.digits as number[])[1])}</p>}
+      {files.scoreboard && files.scoreboard.period === false && <p className="mm-hint">{t.stats.boardNoPeriod}</p>}
     </Card>}
     {['basketball', 'football', 'futsal', 'handball', 'hockey', 'lacrosse'].includes(project.sport) && <Card title={t.direction.title} hint={t.direction.hint}>
       <div className="mm-grid2"><Sel k="direction.home" label={t.direction.home} options={[['', t.direction.auto], ['l', t.direction.left], ['r', t.direction.right]]} /><SwitchSel /></div>
@@ -226,8 +230,14 @@ export function RunPanel() {
     for (let i = 0; i < list.length; i++) {
       const s = list[i];
       log(T('run.queue', { i: i + 1, n: list.length, name: s.name }));
-      const st = await runJob('run', { ...common(), name: s.name, start: s.start, duration: s.duration, every: r.every, scoreboard: r.scoreboard !== false, adaptive: r.adaptive === true, distant: r.distant === true, outputs: r.outputs, ticker_names: project.live?.ticker_names, home_name: project.live?.home_name, away_name: project.live?.away_name, alpha_bg: r.alpha_bg, min_alpha: r.min_alpha, draw_home: c.draw_home, draw_away: c.draw_away, ref_color: c.ref_color }, { index: i + 1, count: list.length, label: s.name });
+      // the autotrack video is made from the result afterwards: it needs the .jsonl
+      const outputs = r.outputs.track ? { ...r.outputs, json: true } : r.outputs;
+      const st = await runJob('run', { ...common(), name: s.name, start: s.start, duration: s.duration, every: r.every, scoreboard: r.scoreboard !== false, adaptive: r.adaptive === true, distant: r.distant === true, outputs, audio: r.audio === true, ticker_names: project.live?.ticker_names, home_name: project.live?.home_name, away_name: project.live?.away_name, alpha_bg: r.alpha_bg, min_alpha: r.min_alpha, draw_home: c.draw_home, draw_away: c.draw_away, ref_color: c.ref_color }, { index: i + 1, count: list.length, label: s.name });
       if (st !== 'done') break;
+      if (r.outputs.track) {
+        const rt = await runJob('render', { ...common(), file: s.name, by_name: true, track: true, audio: r.audio === true, minimap: true, zoom: Number(project.render?.zoom) || 0.8, home_name: project.live?.home_name, away_name: project.live?.away_name, draw_home: c.draw_home, draw_away: c.draw_away }, { index: i + 1, count: list.length, label: s.name });
+        if (rt !== 'done') break;
+      }
     }
     setBusy(false);
   };
@@ -246,7 +256,7 @@ export function RunPanel() {
       <div className="mm-gap"><Btn hint={t.hints.addSegment} onClick={() => mutate((p) => { p.segments.push({ name: T('run.segname') + (p.segments.length + 1), start: 0, duration: 600 }); })}>+ {T('run.add')}</Btn></div>
     </Card>
     <Card title={T('run.outputs')}>
-      <Check k="run.outputs.minimap" label={T('run.out_minimap')} /><Check k="run.outputs.alpha" label={T('run.out_alpha')} /><Check k="run.outputs.pip" label={T('run.out_pip')} /><Check k="run.outputs.json" label={T('run.out_json')} /><Check k="run.outputs.evidence" label={T('run.out_evidence')} />
+      <Check k="run.outputs.minimap" label={T('run.out_minimap')} /><Check k="run.outputs.alpha" label={T('run.out_alpha')} /><Check k="run.outputs.pip" label={T('run.out_pip')} />{r.outputs.pip && <Check k="run.audio" label={t.videos.runAudio} />}<Check k="run.outputs.track" label={t.videos.runTrack} hint={t.videos.runTrackHint} /><Check k="run.outputs.json" label={T('run.out_json')} /><Check k="run.outputs.evidence" label={T('run.out_evidence')} />
       <Check k="run.outputs.ticker" label={t.tickerSim.runOption} /><p className="mm-hint">{t.tickerSim.runHint}</p>
       <p className="mm-hint">{T('run.out_evidence_hint')}</p>
       <Check k="run.scenes" label={T('run.scenes')} /><p className="mm-hint">{T('run.scenes_hint')}</p>
@@ -258,6 +268,7 @@ export function RunPanel() {
       <div className="mm-row mm-gap"><Btn primary hint={t.hints.run} disabled={busy} onClick={() => void start()}>{T('run.start_btn')}</Btn>
         <span className="mm-muted small">{T('run.output_dir')}: <button type="button" className="mm-link" data-hint={t.hints.showFolder} onClick={() => void showFile(`${dir}/out`, false, log)}>{dir}/out</button></span></div>
     </Card>
+    <OverlayCard />
     <Numbers withHires />
     {outs.length > 0 && <Card><table className="mm-table"><tbody>{outs.map((x) => <tr key={x.path}>
       <td><button type="button" className="mm-link" data-hint={t.hints.openFile} onClick={() => void showFile(x.path, true, log)}>{x.name}</button></td><td className="mm-muted">{x.mb} MB</td>
@@ -276,6 +287,7 @@ function newPickKey(): string {
 
 export function LivePanel() {
   const { project, files, set, runJob, common, activeModel, jobs, init, cancelJob, t, lang } = useApp();
+  const [qrNew, setQrNew] = useState(false);
   if (!activeModel() || !files.court || !files.teams) return <Warn>{T('run.need_cal')}</Warn>;
   const l = project.live;
   const job = [...jobs].reverse().find((j) => j.kind === 'live' && (j.status === 'running' || j.status === 'cancelling'));
@@ -306,17 +318,59 @@ export function LivePanel() {
         <Check k="live.pick" label={T('pick.ui_on')} />
         {l.pick && !l.network && <p className="bad small">{T('pick.ui_need_net')}</p>}
         {l.pick && l.pick_key && <div className="mm-row mm-gap mm-wrap"><span className="mm-muted small mm-grow">{T('pick.ui_link')}</span>
-          <Btn hint={T('pick.ui_new_hint')} onClick={() => set('live.pick_key', newPickKey())}>{T('pick.ui_new')}</Btn></div>}
+          <Btn hint={T('pick.ui_new_hint')} onClick={() => { set('live.pick_key', newPickKey()); setQrNew(true); }}>{T('pick.ui_new')}</Btn></div>}
+        {qrNew && l.pick_key && <QrDialog url={`http://${l.network && init?.lan_ip ? init.lan_ip : '127.0.0.1'}:${l.port}/pick?key=${l.pick_key}&lang=${lang}`} title={T('pick.ui_on')} note={url ? t.qr.nextStart : undefined} onClose={() => setQrNew(false)} />}
         {pickUrl && url && <div className="mm-row mm-gap mm-wrap"><a href={pickUrl} target="_blank" rel="noreferrer" className="mm-grow mm-break">{pickUrl}</a>
-          <Btn hint={T('pick.ui_copy')} onClick={() => void navigator.clipboard?.writeText(pickUrl)}>{T('pick.ui_copy')}</Btn></div>}
+          <Btn hint={T('pick.ui_copy')} onClick={() => void navigator.clipboard?.writeText(pickUrl)}>{T('pick.ui_copy')}</Btn><QrButton url={pickUrl} title={T('pick.ui_on')} /></div>}
       </>}
       <div className="mm-row mm-gap"><Btn primary hint={t.hints.liveStart} disabled={!!url} onClick={start}>{T('live.start')}</Btn><Btn hint={t.hints.liveStop} disabled={!url} onClick={() => job && void cancelJob(job.id, true)}>{T('live.stop')}</Btn></div>
       {url && <><h3>{T('live.url')}</h3><a href={url} target="_blank" rel="noreferrer">{url}</a> · <a href={`${url}?floor=1&debug=1`} target="_blank" rel="noreferrer">{T('live.test')}</a><p className="mm-hint">{T('live.obs')}</p>
-        <h3>{T('ticker.link')}</h3><a href={turl} target="_blank" rel="noreferrer">{turl}</a>{l.network && !init?.lan_ip && <p className="bad small">{T('ticker.ui_noip')}</p>}
+        {(project.overlay?.scoreboard?.on || project.overlay?.watermark?.on) && <><h3>{t.overlay.obs}</h3><a href={`${url}scoreboard`} target="_blank" rel="noreferrer">{url}scoreboard</a> · <a href={`${url}scoreboard?floor=1`} target="_blank" rel="noreferrer">{T('live.test')}</a></>}
+        <h3>{T('ticker.link')}</h3><div className="mm-row mm-gap mm-wrap"><a href={turl} target="_blank" rel="noreferrer" className="mm-grow mm-break">{turl}</a><QrButton url={turl} title={T('ticker.link')} /></div>{l.network && !init?.lan_ip && <p className="bad small">{T('ticker.ui_noip')}</p>}
         {l.ticker_approve && <><h3>{T('ticker.ui_admin')}</h3><a href={`${url}ticker/admin`} target="_blank" rel="noreferrer">{url}ticker/admin</a></>}</>}
     </Card>
+    <OverlayCard />
     <Numbers withHires={false} />
   </>;
+}
+
+/** A finished analysis played back as if live: confirm made shots and shooters on the phone. */
+function SimulateCard({ outs }: { outs: OutFile[] }) {
+  const { project, set, runJob, cancelJob, common, jobs, init, t, lang } = useApp();
+  const ts = t.sim;
+  const results = outs.filter((o) => o.name.endsWith('.jsonl') && !o.name.endsWith('.dets.jsonl'));
+  const [file, setFile] = useState(results[0]?.path ?? '');
+  useEffect(() => { if (!results.some((o) => o.path === file)) setFile(results[0]?.path ?? ''); }, [outs]); // eslint-disable-line react-hooks/exhaustive-deps
+  const s = project.simulate ?? {}, l = project.live ?? {}, c = project.colors ?? {};
+  const port = Number(s.port) || 8766;
+  const job = [...jobs].reverse().find((j) => j.kind === 'simulate' && (j.status === 'running' || j.status === 'cancelling'));
+  const host = s.network && init?.lan_ip ? init.lan_ip : '127.0.0.1';
+  const base = `http://127.0.0.1:${port}/`;
+  const phone = l.pick_key ? `http://${host}:${port}/pick?key=${l.pick_key}&lang=${lang}` : '';
+  const start = () => {
+    const key = l.pick_key || newPickKey();
+    if (!l.pick_key) set('live.pick_key', key);
+    void runJob('simulate', { ...common(), file, port, speed: Number(s.speed) || 1, from: s.from ?? '', mode: s.mode || 'auto', pick_key: key, network: s.network === true, ticker_names: l.ticker_names, home_name: l.home_name, away_name: l.away_name, draw_home: c.draw_home, draw_away: c.draw_away });
+  };
+  return <Card title={ts.title} hint={ts.hint}>
+    <Labeled label={ts.file}><select value={file} disabled={!!job} onChange={(e) => setFile(e.target.value)}>{results.map((x) => <option key={x.path} value={x.path}>{x.name}</option>)}</select></Labeled>
+    <div className="mm-grid3">
+      <Sel k="simulate.speed" label={ts.speed} options={Object.entries(ts.speeds)} />
+      <Text k="simulate.from" label={ts.from} placeholder="0:00" />
+      <Num k="simulate.port" label={T('live.port')} />
+    </div>
+    <div className="mm-grid2"><Sel k="simulate.mode" label={ts.mode} options={Object.entries(ts.modes)} /></div>
+    <p className="mm-hint">{ts.modeHint}</p>
+    <Check k="simulate.network" label={ts.network} />
+    {!s.network && <p className="bad small">{ts.needNet}</p>}
+    <div className="mm-row mm-gap"><Btn primary hint={ts.start} disabled={!file || !!job} onClick={start}>{ts.start}</Btn><Btn hint={ts.stop} disabled={!job} onClick={() => job && void cancelJob(job.id, true)}>{ts.stop}</Btn></div>
+    {job && <>
+      {phone && <><h3>{ts.phone}</h3><div className="mm-row mm-gap mm-wrap"><a href={phone} target="_blank" rel="noreferrer" className="mm-grow mm-break">{phone}</a><QrButton url={phone} title={ts.phone} /></div></>}
+      {s.network && !init?.lan_ip && <p className="bad small">{T('ticker.ui_noip')}</p>}
+      <p><a href={base} target="_blank" rel="noreferrer">{T('live.url')}</a>{(project.overlay?.scoreboard?.on || project.overlay?.watermark?.on) && <> · <a href={`${base}scoreboard?floor=1`} target="_blank" rel="noreferrer">{ts.overlay}</a></>} · <a href={`${base}ticker`} target="_blank" rel="noreferrer">{ts.ticker}</a></p>
+    </>}
+    <p className="mm-hint">{ts.saved}</p>
+  </Card>;
 }
 
 // ---------------------------------------------------------------- 6 · evaluation (run report, tactics board)
@@ -361,6 +415,8 @@ export function EvalPanel() {
         <span className="mm-muted">{T('board.ui_trail')}</span><input type="number" min={0} value={trail} style={{ width: 70 }} onChange={(e) => setTrail(+e.target.value || 0)} />
         <Btn primary hint={t.hints.board} disabled={!outs.length || !files.court} onClick={() => { const c = project.colors; mutate((p) => { p.board_at = at.trim(); p.board_trail = trail || 5; p.board_before = before; }); void runJob('board', { file, at: boardAt, trail: trail || 5, draw_home: c.draw_home, draw_away: c.draw_away }); }}>{T('board.ui_open')}</Btn></div>
     </Card>
+    {project.sport === 'basketball' && <SimulateCard outs={files.out} />}
+    <RenderCard outs={files.out} />
   </>;
 }
 

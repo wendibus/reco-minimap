@@ -1,4 +1,38 @@
 {
+  "0.24.0": {
+    "de": [
+      "Live nachspielen (6 · Auswertung): Eine fertige Analyse läuft ab wie live – 1× bis 8× – mit Handy-Seite, Scoreboard-Einblendung und Ticker. Am Handy bestätigst du jeden Wurfversuch (Treffer/daneben, Werfer, 1/2/3 Punkte) und trägst übersehene Körbe und Freiwürfe nach. Das Ergebnis wird sofort gespeichert und gilt für Statistik und neue Videos.",
+      "QR-Code: „Neuen Link erzeugen“ und die Links der Handy-Seite und des Tickers zeigen einen QR-Code – im gleichen WLAN einfach mit dem Handy scannen.",
+      "Scoreboard-Einblendung mit fünf Vorlagen (Klassisch, Leiste, Kompakt, Groß, Minimal), anpassbar in Lage, Größe, Deckkraft, Farben, Kurznamen, Uhr und Viertel – mit Vorschau am eigenen Video. Im Panorama-Video, im neuen Autotrack-Video und als OBS-Seite /scoreboard im Live-Modus.",
+      "Wasserzeichen: standardmäßig „RecoCam“ oben rechts, Text, Lage, Größe und Deckkraft einstellbar.",
+      "Autotrack-Video: ein eigenes 16:9-Video (1920×1080), das ruhig dem Spiel folgt – mit Minimap, Scoreboard und Wasserzeichen. Direkt beim Verarbeiten oder nachträglich aus jeder fertigen Analyse („Video neu erstellen“). Ton aus dem Originalvideo auf Wunsch.",
+      "Hinweis bei schlecht gelesener Anzeigetafel: Die Statistik sagt, wie oft die Tafel lesbar war, nennt mögliche Ursachen (z. B. nur eine Ziffer pro Spielstand eingerichtet, kein Viertel) und verweist auf „Live nachspielen“."
+    ],
+    "en": [
+      "Replay live (6 · Evaluation): a finished analysis plays as if live – 1× to 8× – with the phone page, the scoreboard overlay and the ticker. On the phone you confirm every shot attempt (made/missed, shooter, 1/2/3 points) and add missed baskets and free throws. The result is saved at once and counts for the statistics and new videos.",
+      "QR code: “Make a new link” and the links of the phone page and the ticker show a QR code – just scan it with a phone on the same Wi-Fi.",
+      "Scoreboard overlay with five templates (Classic, Bar, Compact, Big, Minimal), adjustable in position, size, opacity, colours, short names, clock and period – previewed on your own video. In the panorama video, the new autotrack video and as the OBS page /scoreboard in live mode.",
+      "Watermark: “RecoCam” at the top right by default; text, position, size and opacity adjustable.",
+      "Autotrack video: its own 16:9 video (1920×1080) that calmly follows the play – with minimap, scoreboard and watermark. Right when processing or later from any finished analysis (“Make the video again”). Sound from the original video if wanted.",
+      "Note for a badly read scoreboard: the statistics say how often the board was readable, name likely causes (e.g. only one digit per score set up, no period) and point to “Replay live”."
+    ],
+    "fr": [
+      "Rejouer en direct (6 · Évaluation) : une analyse terminée se déroule comme en direct – de 1× à 8× – avec la page téléphone, l’incrustation du tableau et le fil. Sur le téléphone, tu confirmes chaque tentative (réussie/manquée, tireur, 1/2/3 points) et ajoutes les paniers et lancers francs manqués. Le résultat est enregistré aussitôt et compte pour les statistiques et les nouvelles vidéos.",
+      "Code QR : « Créer un nouveau lien » et les liens de la page téléphone et du fil affichent un code QR – à scanner avec un téléphone sur le même Wi-Fi.",
+      "Incrustation du tableau avec cinq modèles (Classique, Barre, Compact, Grand, Minimal), réglables en position, taille, opacité, couleurs, noms courts, chrono et période – avec aperçu sur ta propre vidéo. Dans la vidéo panoramique, la nouvelle vidéo autotrack et comme page OBS /scoreboard en mode direct.",
+      "Filigrane : « RecoCam » en haut à droite par défaut ; texte, position, taille et opacité réglables.",
+      "Vidéo autotrack : une vidéo 16:9 à part (1920×1080) qui suit le jeu calmement – avec minicarte, tableau et filigrane. Dès le traitement ou plus tard depuis toute analyse terminée (« Refaire la vidéo »). Son de la vidéo d’origine si souhaité.",
+      "Avertissement pour un tableau mal lu : les statistiques indiquent à quelle fréquence le tableau était lisible, nomment les causes probables (p. ex. un seul chiffre par score, pas de période) et renvoient à « Rejouer en direct »."
+    ],
+    "es": [
+      "Repetir en directo (6 · Evaluación): un análisis terminado se reproduce como en directo – de 1× a 8× – con la página del móvil, el marcador superpuesto y el resumen. En el móvil confirmas cada intento (anotado/fallado, tirador, 1/2/3 puntos) y añades canastas y tiros libres no vistos. El resultado se guarda al momento y cuenta para las estadísticas y los vídeos nuevos.",
+      "Código QR: «Crear un enlace nuevo» y los enlaces de la página del móvil y del resumen muestran un código QR: basta con escanearlo con un móvil en la misma wifi.",
+      "Marcador superpuesto con cinco plantillas (Clásico, Barra, Compacto, Grande, Mínimo), ajustable en posición, tamaño, opacidad, colores, nombres cortos, reloj y periodo, con vista previa sobre tu propio vídeo. En el vídeo panorámico, el nuevo vídeo autotrack y como página OBS /scoreboard en modo en directo.",
+      "Marca de agua: «RecoCam» arriba a la derecha por defecto; texto, posición, tamaño y opacidad ajustables.",
+      "Vídeo autotrack: un vídeo 16:9 propio (1920×1080) que sigue el juego con calma, con minimapa, marcador y marca de agua. Al procesar o después desde cualquier análisis terminado («Volver a crear el vídeo»). Sonido del vídeo original si se desea.",
+      "Aviso cuando el marcador se lee mal: las estadísticas dicen con qué frecuencia era legible, nombran causas probables (p. ej. una sola cifra por resultado, sin periodo) y remiten a «Repetir en directo»."
+    ]
+  },
   "0.23.3": {
     "de": [
       "Behoben: Das Taktikboard ließ sich nicht öffnen („keine Zustandszeilen“).",

@@ -169,3 +169,12 @@
 /* the Mac app (launcher) is older than this interface needs */
 .mm-app-update { margin: 0 0 12px; padding: 10px 14px; border-radius: 8px; background: color-mix(in srgb, #f5a524 18%, transparent); border: 1px solid color-mix(in srgb, #f5a524 55%, transparent); }
 .mm-app-update a { margin-left: 8px; font-weight: 600; }
+
+/* QR code popup */
+.mm-qr-dialog { justify-items: center; text-align: center; }
+.mm-qr-box { padding: 8px; background: #fff; border-radius: 12px; line-height: 0; }
+.mm-qr { display: block; width: min(260px, 70vw); height: auto; }
+
+/* scoreboard / watermark preview */
+.mm-overlay-preview { display: block; width: 100%; height: auto; border-radius: 10px; margin: 6px 0; background: #000; }
+.segmented.mm-wrap { flex-wrap: wrap; }

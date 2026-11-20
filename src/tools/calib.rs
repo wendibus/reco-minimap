@@ -147,6 +147,8 @@ fn solve(pairs: &[Pair], model: Option<LensModel>, aspect: f64) -> Option<(Homog
 
 struct Shared {
     png: Vec<u8>,
+    /// The clear view (players removed), shown first when there is one.
+    plate_png: Option<Vec<u8>>,
     info: VideoInfo,
     out_path: String,
     video: String,
@@ -394,7 +396,8 @@ fn handle(mut s: TcpStream, st: &Shared) {
         ("GET", "/") => respond(&mut s, "200 OK", "text/html; charset=utf-8", include_str!("calib.html").as_bytes()),
         ("GET", "/theme.css") => respond(&mut s, "200 OK", "text/css; charset=utf-8", include_str!("theme.css").as_bytes()),
         ("GET", "/i18n.js") => respond(&mut s, "200 OK", "application/javascript; charset=utf-8", include_str!("i18n.js").as_bytes()),
-        ("GET", "/frame.png") => respond(&mut s, "200 OK", "image/png", &st.png),
+        ("GET", "/frame.png") => respond(&mut s, "200 OK", "image/png", st.plate_png.as_ref().unwrap_or(&st.png)),
+        ("GET", "/original.png") => respond(&mut s, "200 OK", "image/png", &st.png),
         ("GET", "/lines.jpg") => match st.line_map(line_color_query(&full_path)).map(|m| super::scoreboard::encode_jpeg(m.w, m.h, &m.mask_rgb())) {
             Some(Ok(jpg)) => respond(&mut s, "200 OK", "image/jpeg", &jpg),
             _ => respond(&mut s, "404 Not Found", "text/plain", b"no frame"),
@@ -406,7 +409,7 @@ fn handle(mut s: TcpStream, st: &Shared) {
         ("POST", "/api/snap") => respond(&mut s, "200 OK", "application/json", snap_json(st, &body, model, aspect).to_string().as_bytes()),
         ("POST", "/api/auto") => respond(&mut s, "200 OK", "application/json", auto_json(st, &body, model, aspect).to_string().as_bytes()),
         ("GET", "/api/info") => {
-            let v = json!({"w": st.info.w, "h": st.info.h, "sport": st.profile.id, "lens": st.lens.map(|m| m.key()).unwrap_or("none"), "lens_min": LensLevel::MIN_POINTS, "field": [st.profile.field.length, st.profile.field.width], "lang": st.lang,
+            let v = json!({"w": st.info.w, "h": st.info.h, "sport": st.profile.id, "lens": st.lens.map(|m| m.key()).unwrap_or("none"), "lens_min": LensLevel::MIN_POINTS, "field": [st.profile.field.length, st.profile.field.width], "lang": st.lang, "plate": st.plate_png.is_some(),
                            "landmarks": st.profile.landmarks.iter().map(|l| json!({"key": l.key, "x": l.x, "y": l.y})).collect::<Vec<_>>(),
                            // field markings in metres for the legend that shows where the current landmark lies
                            "lines": st.profile.lines.iter().map(|pl| pl.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>()).collect::<Vec<_>>()});
@@ -471,14 +474,24 @@ pub(crate) fn open_browser(url: &str) {
 }
 
 /// Serve the calibration page until the user saves.
-pub fn run(input: &str, info: &VideoInfo, t: f64, out_path: &str, open: bool, profile: SportProfile, lang: &str, lens: Option<LensModel>) -> Result<(), String> {
-    let png = grab_png(input, t)?;
+/// `plate`: a clear view of the hall (players removed, see `video::median_plate`) - shown first and
+/// used by the automatic calibration; the frame at `t` stays available on the page.
+/// `original`: the single frame when the source cannot seek (a live stream).
+pub fn run(input: &str, info: &VideoInfo, t: f64, out_path: &str, open: bool, profile: SportProfile, lang: &str, lens: Option<LensModel>, plate: Option<Frame>, original: Option<Frame>) -> Result<(), String> {
+    let png = match &original {
+        Some(f) => f.png()?,
+        None => grab_png(input, t)?,
+    };
+    let plate_png = match &plate {
+        Some(p) => Some(p.png()?),
+        None => None,
+    };
     // the automatic calibration works on the decoded frame; without it the page still works by hand
-    let frame = grab(input, info, t).ok();
+    let frame = plate.or(original).or_else(|| grab(input, info, t).ok());
     let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
-    let st = Arc::new(Shared { png, info: info.clone(), out_path: out_path.to_string(), video: input.to_string(), profile, lang: lang.to_string(), lens, frame, lines: std::sync::Mutex::new(None), done: AtomicBool::new(false) });
+    let st = Arc::new(Shared { png, plate_png, info: info.clone(), out_path: out_path.to_string(), video: input.to_string(), profile, lang: lang.to_string(), lens, frame, lines: std::sync::Mutex::new(None), done: AtomicBool::new(false) });
     let url = format!("http://127.0.0.1:{port}/?lang={lang}");
     eprintln!("{}", tr!("Kalibrierung: {url}\n(Seite öffnet sich automatisch; sonst URL im Browser öffnen. Strg+C zum Abbrechen.)", "Calibration: {url}\n(The page opens by itself; otherwise open the URL in a browser. Ctrl+C to cancel.)", "Calibrage : {url}\n(La page s'ouvre toute seule ; sinon ouvrir l'URL dans un navigateur. Ctrl+C pour annuler.)", "Calibración: {url}\n(La página se abre sola; si no, abre la URL en un navegador. Ctrl+C para cancelar.)"));
     if open {

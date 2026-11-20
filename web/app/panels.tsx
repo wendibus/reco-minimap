@@ -154,8 +154,9 @@ export function CalibPanel() {
   return <>
     <Card title={T('cal.field')} hint={T('cal.field_hint')}>
       <div className="mm-row mm-gap"><span className="mm-muted">{T('cal.time')}</span><div style={{ width: 90 }}><Num k="calib_time" label="" /></div>
-        <Btn primary hint={t.hints.calibrate} onClick={() => void runJob('calibrate', { ...common(), sport: project.sport, time: project.calib_time, lang, lens: project.lens || (project.fisheye ? 'fisheye' : ''), length: project.custom.length, width: project.custom.width, team_size: project.sport === 'custom' ? project.custom.team_size : '', referees: project.sport === 'custom' ? project.custom.referees : '' })}>{T('cal.field_btn')}</Btn>
+        <Btn primary hint={t.hints.calibrate} onClick={() => void runJob('calibrate', { ...common(), clear_view: project.calib_clear !== false, sport: project.sport, time: project.calib_time, lang, lens: project.lens || (project.fisheye ? 'fisheye' : ''), length: project.custom.length, width: project.custom.width, team_size: project.sport === 'custom' ? project.custom.team_size : '', referees: project.sport === 'custom' ? project.custom.referees : '' })}>{T('cal.field_btn')}</Btn>
         <span className={c ? 'ok' : 'mm-muted'}>{c ? T('cal.field_state', { n: c.points, rms: (+c.rms).toFixed(2) }) + (c.lens ? ' · ' + T(c.lens === 'panorama' ? 'calp.lens_panorama' : 'calp.lens_fisheye') : '') : T('cal.field_none')}</span></div>
+      <Check k="calib_clear" label={t.clear.label} /><p className="mm-hint">{t.clear.hint}</p>
       <div style={{ maxWidth: 360 }}><Sel k="lens" label={T('calp.lens_title')} options={[['', T('cal.lens_auto')], ['none', T('calp.lens_none')], ['fisheye', T('calp.lens_fisheye')], ['panorama', T('calp.lens_panorama')]]} /></div><p className="mm-hint">{T('cal.lens_hint')}</p>
     </Card>
     <Card title={T('cal.scales')} hint={T('cal.scales_hint')}>
@@ -306,6 +307,7 @@ export function LivePanel() {
       <Labeled label={T('live.source')}><PathField value={l.source ?? ''} prompt={T('live.source')} onChange={(v) => set('live.source', v)} /></Labeled>
       <div className="mm-grid3"><Text k="live.size" label={T('live.size')} /><Num k="live.fps" label={T('live.fps')} /><Num k="live.port" label={T('live.port')} /></div>
       <Workers />
+      <div className="mm-row mm-gap mm-wrap"><Btn hint={t.clear.liveHint} disabled={!!url || !l.source} onClick={() => void runJob('calibrate', { ...common(), clear_view: true, source: l.source, size: l.size, fps: l.fps, sport: project.sport, time: 0, lang, lens: project.lens || '', length: project.custom.length, width: project.custom.width })}>{t.clear.liveBtn}</Btn></div><p className="mm-hint">{t.clear.liveHint}</p>
       <Check k="live.realtime" label={T('live.realtime')} /><Check k="live.adaptive" label={T('live.adaptive')} />
       <h3>{T('ticker.title')}</h3><p className="mm-hint">{T('ticker.ui_hint')}</p>
       <div className="mm-grid3"><Sel k="live.ticker_names" label={T('ticker.ui_show')} options={['numbers', 'names', 'both'].map((m) => [m, T('ticker.m_' + m)])} /></div><p className="mm-hint">{T('run.roster_where')}</p>

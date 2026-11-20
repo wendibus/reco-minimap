@@ -482,8 +482,20 @@ impl Frame {
 
     /// The frame as JPEG bytes, at most `max_w` px wide (for previews).
     pub fn jpeg(&self, max_w: usize) -> Result<Vec<u8>, String> {
+        self.encode(&["-vf", &format!("scale='min({max_w},iw)':-2"), "-q:v", "3", "-vcodec", "mjpeg"])
+    }
+
+    /// The frame as PNG (full size).
+    pub fn png(&self) -> Result<Vec<u8>, String> {
+        self.encode(&["-vcodec", "png"])
+    }
+
+    fn encode(&self, args: &[&str]) -> Result<Vec<u8>, String> {
+        let mut a: Vec<String> = ["-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", &format!("{}x{}", self.w, self.h), "-i", "-", "-frames:v", "1"].iter().map(|x| x.to_string()).collect();
+        a.extend(args.iter().map(|x| x.to_string()));
+        a.extend(["-f", "image2pipe", "-"].iter().map(|x| x.to_string()));
         let mut child = Command::new("ffmpeg")
-            .args(["-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", &format!("{}x{}", self.w, self.h), "-i", "-", "-vf", &format!("scale='min({max_w},iw)':-2"), "-frames:v", "1", "-q:v", "3", "-f", "image2pipe", "-vcodec", "mjpeg", "-"])
+            .args(&a)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -542,5 +554,85 @@ impl FrameWriterPng {
         drop(self.stdin.take());
         self.child.wait().map_err(|e| e.to_string())?;
         Ok(())
+    }
+}
+
+/// Times for a clean plate: `n` moments spread over the video (its first and last 3 % left out:
+/// warm-up, setting up, leaving).
+pub fn plate_times(info: &VideoInfo, n: usize) -> Vec<f64> {
+    let d = info.duration.unwrap_or(0.0).max(1.0);
+    let (a, b) = (d * 0.03, d * 0.97);
+    (0..n).map(|i| a + (b - a) * (i as f64 + 0.5) / n as f64).collect()
+}
+
+/// The empty hall: per pixel and colour the median of `frames` (all the same size). Players move,
+/// so where the floor is free in more than half of the moments, the median shows the floor.
+/// `masks`: per frame the pixels to leave out (players found by the model), or none.
+pub fn median_plate(frames: &[Frame], masks: Option<&[Vec<bool>]>) -> Frame {
+    let (w, h) = (frames[0].w, frames[0].h);
+    let mut rgb = vec![0u8; w * h * 3];
+    let mut vals: Vec<u8> = Vec::with_capacity(frames.len());
+    for px in 0..w * h {
+        for c in 0..3 {
+            vals.clear();
+            for (k, f) in frames.iter().enumerate() {
+                if masks.is_some_and(|m| m[k].get(px).copied().unwrap_or(false)) {
+                    continue;
+                }
+                vals.push(f.rgb[px * 3 + c]);
+            }
+            // a pixel covered in every moment: take all of them
+            if vals.is_empty() {
+                vals.extend(frames.iter().map(|f| f.rgb[px * 3 + c]));
+            }
+            let mid = vals.len() / 2;
+            let (_, m, _) = vals.select_nth_unstable(mid);
+            rgb[px * 3 + c] = *m;
+        }
+    }
+    Frame { w, h, rgb }
+}
+
+/// Grab the frames at `times` (a few at once) - `done` counts the finished ones.
+pub fn grab_many(input: &str, info: &VideoInfo, times: &[f64], done: &std::sync::atomic::AtomicUsize) -> Result<Vec<Frame>, String> {
+    let workers = 4.min(times.len()).max(1);
+    let slots: Vec<std::sync::Mutex<Option<Frame>>> = times.iter().map(|_| std::sync::Mutex::new(None)).collect();
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    std::thread::scope(|sc| {
+        for _ in 0..workers {
+            sc.spawn(|| loop {
+                let i = next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                if i >= times.len() {
+                    break;
+                }
+                if let Ok(f) = grab(input, info, times[i]) {
+                    *slots[i].lock().unwrap() = Some(f);
+                }
+                done.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            });
+        }
+    });
+    let frames: Vec<Frame> = slots.into_iter().filter_map(|m| m.into_inner().unwrap()).collect();
+    if frames.len() < 3 {
+        return Err(trs!("zu wenige Bilder für die freie Sicht", "too few frames for the clear view", "trop peu d'images pour la vue dégagée", "muy pocas imágenes para la vista despejada").into());
+    }
+    Ok(frames)
+}
+
+#[cfg(test)]
+mod plate_tests {
+    use super::*;
+
+    #[test]
+    fn a_player_passing_through_disappears() {
+        // floor grey 100; a "player" (255) on pixel 1 in 2 of 5 moments, on pixel 2 in 4 of 5
+        let f = |p1: u8, p2: u8| Frame { w: 3, h: 1, rgb: vec![100, 100, 100, p1, p1, p1, p2, p2, p2] };
+        let frames = vec![f(255, 255), f(100, 255), f(255, 255), f(100, 255), f(100, 100)];
+        let m = median_plate(&frames, None);
+        assert_eq!(&m.rgb[..6], &[100; 6]);
+        assert_eq!(m.rgb[6], 255, "covered most of the time: the median cannot help ...");
+        // ... but the model's boxes can: leave out what was covered
+        let masks: Vec<Vec<bool>> = frames.iter().map(|x| vec![false, false, x.rgb[6] == 255]).collect();
+        assert_eq!(median_plate(&frames, Some(&masks)).rgb[6], 100);
     }
 }

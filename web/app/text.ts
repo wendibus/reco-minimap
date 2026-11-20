@@ -96,6 +96,10 @@ const de = {
     modeHint: 'Ohne verlässlich gelesene Tafel nimmt „Automatisch“ die erkannten Wurfversuche. Freiwürfe und übersehene Körbe trägst du am Handy unter „Korb nachtragen“ nach.',
     network: 'Vom Handy im gleichen WLAN erreichbar', needNet: 'Ohne diese Option erreicht das Handy die Seite nicht.', start: 'Nachspielen starten', stop: 'Beenden', phone: 'Handy-Seite', overlay: 'Scoreboard (OBS)', ticker: 'Ticker', saved: 'Jede Entscheidung wird sofort gespeichert (Name.baskets.json); ein neuer Start macht dort weiter.',
   },
+  clear: {
+    label: 'Freie Sicht – Spieler ausblenden', hint: 'Setzt das Bild aus 25 Momenten des ganzen Spiels zusammen; wer sich bewegt, verschwindet. Die Linien liegen frei – auch für die automatische Kalibrierung. Dauert ein paar Sekunden mehr. In der Kalibrierung lässt sich auf das Originalbild umschalten.',
+    liveBtn: 'Feld am Live-Bild kalibrieren', liveHint: 'Nimmt 50 Sekunden lang alle 2 s ein Bild der Live-Quelle und blendet die Spieler aus – danach öffnet sich die Kalibrierung. Am besten beim Aufwärmen.',
+  },
   direction: {
     title: 'Spielrichtung', hint: 'Auf welches Tor bzw. welchen Korb die Heimmannschaft zu Beginn spielt (links/rechts wie in der Minikarte). Würfe, Freiwürfe, Ecken und Strafwürfe zählen dann für das angreifende Team – auch wenn beim Werfer die Trikotfarbe falsch erkannt wurde.',
     home: 'Heim spielt zu Beginn auf', auto: 'Automatisch schätzen', left: 'Links', right: 'Rechts',
@@ -272,6 +276,10 @@ const en: Text = {
     modeHint: 'Without a reliably read scoreboard, “Automatic” uses the detected shot attempts. Add free throws and missed baskets on the phone under “Add a basket”.',
     network: 'Reachable from a phone on the same Wi-Fi', needNet: 'Without this option the phone cannot reach the page.', start: 'Start replay', stop: 'Stop', phone: 'Phone page', overlay: 'Scoreboard (OBS)', ticker: 'Ticker', saved: 'Every decision is saved at once (name.baskets.json); a new start continues from there.',
   },
+  clear: {
+    label: 'Clear view – remove the players', hint: 'Puts the picture together from 25 moments of the whole game; whatever moves disappears. The lines are free – for the automatic calibration too. Takes a few seconds longer. In the calibration you can switch to the original frame.',
+    liveBtn: 'Calibrate the court on the live picture', liveHint: 'Takes a frame of the live source every 2 s for 50 seconds and removes the players – then the calibration opens. Best during the warm-up.',
+  },
   direction: {
     title: 'Playing direction', hint: 'Which goal or basket the home team attacks at the start (left/right as on the minimap). Shots, free throws, corners and penalties then count for the attacking team – even when the shooter\'s shirt colour was misread.',
     home: 'Home attacks at the start', auto: 'Estimate automatically', left: 'Left', right: 'Right',
@@ -446,6 +454,10 @@ const fr: Text = {
     modeHint: 'Sans tableau lu de façon fiable, « Automatique » utilise les tentatives détectées. Ajoute les lancers francs et paniers manqués sur le téléphone sous « Ajouter un panier ».',
     network: 'Accessible depuis un téléphone sur le même Wi-Fi', needNet: 'Sans cette option, le téléphone ne peut pas atteindre la page.', start: 'Lancer le rejeu', stop: 'Arrêter', phone: 'Page téléphone', overlay: 'Tableau (OBS)', ticker: 'Fil', saved: 'Chaque décision est enregistrée aussitôt (nom.baskets.json) ; un nouveau lancement reprend là.',
   },
+  clear: {
+    label: 'Vue dégagée – masquer les joueurs', hint: 'Compose l’image à partir de 25 moments de tout le match ; ce qui bouge disparaît. Les lignes sont dégagées – aussi pour le calibrage automatique. Prend quelques secondes de plus. Dans le calibrage, on peut revenir à l’image d’origine.',
+    liveBtn: 'Calibrer le terrain sur l’image en direct', liveHint: 'Prend une image de la source en direct toutes les 2 s pendant 50 secondes et masque les joueurs – puis le calibrage s’ouvre. Idéal pendant l’échauffement.',
+  },
   direction: {
     title: 'Sens du jeu', hint: 'Le but ou panier que l\'équipe à domicile attaque au début (gauche/droite comme sur la minicarte). Tirs, lancers francs, corners et penaltys comptent alors pour l\'équipe qui attaque – même si la couleur du maillot du tireur a été mal reconnue.',
     home: 'Domicile attaque au début vers', auto: 'Estimer automatiquement', left: 'Gauche', right: 'Droite',
@@ -619,6 +631,10 @@ const es: Text = {
     mode: 'Qué confirmar', modes: { auto: 'Automático (según la calidad del marcador)', board: 'Canastas del marcador: nombrar al tirador', attempts: 'Todos los intentos: anotado/fallado, tirador, puntos' } as Record<string, string>,
     modeHint: 'Sin un marcador leído de forma fiable, «Automático» usa los intentos detectados. Añade tiros libres y canastas no vistas en el móvil en «Añadir una canasta».',
     network: 'Accesible desde un móvil en la misma wifi', needNet: 'Sin esta opción el móvil no llega a la página.', start: 'Iniciar repetición', stop: 'Terminar', phone: 'Página del móvil', overlay: 'Marcador (OBS)', ticker: 'Resumen', saved: 'Cada decisión se guarda al momento (nombre.baskets.json); un nuevo inicio sigue desde ahí.',
+  },
+  clear: {
+    label: 'Vista despejada: ocultar jugadores', hint: 'Compone la imagen a partir de 25 momentos de todo el partido; lo que se mueve desaparece. Las líneas quedan libres, también para la calibración automática. Tarda unos segundos más. En la calibración se puede volver a la imagen original.',
+    liveBtn: 'Calibrar el campo con la imagen en directo', liveHint: 'Toma una imagen de la fuente en directo cada 2 s durante 50 segundos y oculta a los jugadores; luego se abre la calibración. Mejor durante el calentamiento.',
   },
   direction: {
     title: 'Dirección de juego', hint: 'La portería o canasta que ataca el equipo local al principio (izquierda/derecha como en el minimapa). Tiros, tiros libres, córneres y penaltis cuentan entonces para el equipo atacante, aunque el color de la camiseta del tirador se haya reconocido mal.',

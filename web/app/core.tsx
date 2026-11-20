@@ -84,7 +84,7 @@ function mergeDefaults(t: Json, d: Json) {
   }
 }
 const defaults = (): Json => ({
-  lang: LANG, sport: 'basketball', custom: { length: 40, width: 20, team_size: 5, referees: 2 }, model_id: '', video: '', calib_time: 60, scoreboard_time: 60, lens: '',
+  lang: LANG, sport: 'basketball', custom: { length: 40, width: 20, team_size: 5, referees: 2 }, model_id: '', video: '', calib_time: 60, calib_clear: true, scoreboard_time: 60, lens: '',
   colors: { draw_home: '#ffffff', draw_away: '#2f6bff', ref_color: '#000000' }, segments: [{ name: T('run.segname') + '1', start: 0, duration: 0 }],
   figures: { torso_top: 0.18, torso_bottom: 0.5, shirt_match: false, no_referees: false, hide_referees: false },
   overlay: { scoreboard: { on: false, preset: 'classic', anchor: 'tl', scale: 1, opacity: 0.85, clock: true, period: true, home: '', away: '', home_color: '', away_color: '', bg: '#10141a', fg: '#ffffff' }, watermark: { on: true, text: 'RecoCam', anchor: 'tr', scale: 1, opacity: 0.5 } },

@@ -627,9 +627,19 @@ fn build_args(kind: &str, dir: &Path, p: &Value) -> Result<Vec<String>, String> 
     };
     match kind {
         "calibrate" => {
-            need(&video, trs!("Video", "video", "vidéo", "vídeo"))?;
+            // from the project video, or from the live source (`source` with its size and rate)
+            let live_src = get_s(p, "source");
+            let src = if live_src.trim().is_empty() { video.clone() } else { live_src.trim().to_string() };
+            need(&src, trs!("Video", "video", "vidéo", "vídeo"))?;
             // the page is shown inside the interface, not in a browser window of its own
-            pushs(&mut a, &["calibrate", &video, "--sport", &get_s(p, "sport"), "--time", &get_s(p, "time"), "--out", "court.json", "--lang", &get_s(p, "lang"), "--no-open"]);
+            pushs(&mut a, &["calibrate", &src, "--sport", &get_s(p, "sport"), "--time", &get_s(p, "time"), "--out", "court.json", "--lang", &get_s(p, "lang"), "--no-open"]);
+            if !live_src.trim().is_empty() {
+                pushs(&mut a, &["--size", &get_s(p, "size"), "--fps", &get_s(p, "fps")]);
+            }
+            // the hall without players: the median of 25 moments (video) or of 50 s of the live picture
+            if p["clear_view"].as_bool() != Some(false) {
+                pushs(&mut a, &["--clear-view", "25"]);
+            }
             // lens: chosen in the interface; empty = as before / a panorama for very wide pictures
             match p["lens"].as_str().filter(|l| ["none", "fisheye", "panorama"].contains(l)) {
                 Some(l) => pushs(&mut a, &["--lens", l]),
